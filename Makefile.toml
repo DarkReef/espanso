@@ -4,7 +4,7 @@ default_to_workspace = false
 [env]
 DEBUG = true 
 RELEASE = false
-NO_X11 = false
+NO_X11 = true
 NO_MODULO = false
 EXEC_PATH = "target/debug/espanso"
 BUILD_ARCH = "current"
