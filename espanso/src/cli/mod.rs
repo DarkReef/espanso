@@ -40,7 +40,6 @@ use espanso_path::Paths;
 //
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-
 #[derive(Parser)]
 #[command(name = "espanso")]
 #[command(about = "A Privacy-first, Cross-platform Text Expander")]
@@ -50,25 +49,28 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub struct Arguments {
   #[command(subcommand)]
   pub command: Command,
-  //command: Option<Commands>,
+
+  // Sets the level of verbosity
+  #[arg(short, long, action = clap::ArgAction::Count)]
+  pub verbose: u8,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum Command {
   /// Send a command to the espanso daemon
   #[clap(subcommand)]
   Cmd(CmdCommand),
   /// Shortcut to open the default text editor to edit config files
   Edit {
-    /// lists test values
-    #[arg(short, long)]
-    list: bool,
+    /// Defaults to "match/base.yml". It contains the relative path of the file you
+    /// want to edit, such as 'config/default.yml' or 'match/base.yml'.
+    /// For convenience, you can also specify the name directly and espanso will 
+    /// figure out the path. For example, specifying 'email' is equivalent to 'match/email.yml'.
+    target_file: Option<String>
   },
   /// Add or remove the 'espanso' command from the PATH
   #[clap(subcommand)]
   EnvPath(EnvPathCommand),
-  /// Prints this message or the help of the given subcommand(s)
-  //Help,
   /// Install a package
   Install { package_name: String },
   /// Print the daemon logs
@@ -124,8 +126,6 @@ pub enum CmdCommand {
   Disable,
   /// Enable expansions
   Enable,
-  // Print this message or the help of the given subcommand(s)
-  // Help,
   /// Open the Espanso's search bar
   Search,
   /// Enable/Disable expansions
@@ -138,8 +138,6 @@ pub enum EnvPathCommand {
   Register,
   /// Remove 'espanso' command from PATH
   Unregister,
-  // Print this message or the help of the given subcommand(s)
-  // Help,
 }
 
 #[allow(dead_code)]
@@ -180,7 +178,7 @@ pub enum LogMode {
 
 // TODO
 enum ArgMatches {
-  Something
+  Something,
 }
 
 impl ArgMatches {
@@ -188,10 +186,10 @@ impl ArgMatches {
     todo!()
   }
 
-  pub fn value_of(&self, _:&str)-> Option<&str>{
+  pub fn value_of(&self, _: &str) -> Option<&str> {
     todo!()
   }
-  pub fn is_present(&self, _:&str)-> bool{
+  pub fn is_present(&self, _: &str) -> bool {
     todo!();
     true
   }
