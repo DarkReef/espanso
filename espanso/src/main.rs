@@ -51,7 +51,7 @@ fn main() {
 
   let log_level = match args.verbose {
     0 | 1 => {
-      println!("Debug mode is off");
+      // println!("Debug mode is off");
       LevelFilter::Info
     }
     2 => {
@@ -99,21 +99,20 @@ fn main() {
       } else {
         println!("`espanso edit` (empty) was passed")
       }
-    },
-    cli::Command::EnvPath(..) => println!(""),
-    cli::Command::Install { .. } => println!(""),
-    cli::Command::Log {} => println!(""),
-    cli::Command::Match {} => println!(""),
-    cli::Command::Migrate {} => println!(""),
-    cli::Command::Package {} => println!(""),
-    cli::Command::Path => println!(""),
-    cli::Command::Restart {} => println!(""),
+    }
+    cli::Command::EnvPath(..) => println!("some dummy output"),
+    cli::Command::Install { .. } => println!("some dummy output"),
+    cli::Command::Log {} => println!("some dummy output"),
+    cli::Command::Match {} => println!("some dummy output"),
+    cli::Command::Package {} => println!("some dummy output"),
+    cli::Command::Path => println!("some dummy output"),
+    cli::Command::Restart {} => println!("some dummy output"),
     cli::Command::Service(command) => println!("{command:?}"),
-    cli::Command::Start {} => println!(""),
-    cli::Command::Status {} => println!(""),
-    cli::Command::Stop {} => println!(""),
-    cli::Command::Uninstall {} => println!(""),
-    cli::Command::Workaround {} => println!(""),
+    cli::Command::Start {} => println!("some dummy output"),
+    cli::Command::Status {} => println!("some dummy output"),
+    cli::Command::Stop {} => println!("some dummy output"),
+    cli::Command::Uninstall {} => println!("some dummy output"),
+    cli::Command::Workaround {} => println!("some dummy output"),
   }
 
   #[cfg(target_os = "macos")]
@@ -123,7 +122,7 @@ fn main() {
 
   let _cli_args: CliModuleArgs = CliModuleArgs::default();
 
-  let exit_code = 1;
+  let exit_code = 0;
 
   std::process::exit(exit_code);
 }

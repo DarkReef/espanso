@@ -87,6 +87,9 @@ caps = "0.5.2"
 const_format = "0.2.14"
 regex.workspace = true
 
+[dev-dependencies]
+trycmd = "0.15.8"
+
 [package.metadata.deb]
 maintainer = "Auca Coyan <aucacoyan@gmail.com>"
 depends = "$auto"

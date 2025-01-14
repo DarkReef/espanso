@@ -19,7 +19,7 @@
 
 use std::{path::PathBuf, u64};
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use espanso_config::{config::ConfigStore, error::NonFatalErrorSet, matches::store::MatchStore};
 use espanso_path::Paths;
 
@@ -37,7 +37,7 @@ use espanso_path::Paths;
 //pub mod util;
 //pub mod workaround;
 //pub mod worker;
-//
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser)]
@@ -64,21 +64,18 @@ pub enum Command {
   Edit {
     /// Defaults to "match/base.yml". It contains the relative path of the file you
     /// want to edit, such as 'config/default.yml' or 'match/base.yml'.
-    /// For convenience, you can also specify the name directly and espanso will 
+    /// For convenience, you can also specify the name directly and espanso will
     /// figure out the path. For example, specifying 'email' is equivalent to 'match/email.yml'.
-    target_file: Option<String>
+    target_file: Option<String>,
   },
   /// Add or remove the 'espanso' command from the PATH
-  #[clap(subcommand)]
-  EnvPath(EnvPathCommand),
+  EnvPath(EnvPathArgs),
   /// Install a package
   Install { package_name: String },
   /// Print the daemon logs
   Log,
   /// List and execute matches from the CLI
   Match,
-  /// Automatically migrate legacy config files to the new v2 format
-  Migrate,
   /// Package-management commands
   Package,
   /// Prints all the espanso directory paths to easily locate configuration and matches
@@ -132,8 +129,38 @@ pub enum CmdCommand {
   Toggle,
 }
 
+#[cfg(target_os = "macos")]
+#[derive(Args, Debug)]
+#[command(args_conflicts_with_subcommands = true)]
+#[command(arg_required_else_help = true)]
+pub struct EnvPathArgs {
+  #[command(subcommand)]
+  command: Option<EnvPathSubCommand>,
+
+  #[arg(short, long)]
+  prompt: bool,
+}
+
+#[cfg(not(target_os = "macos"))]
+#[derive(Args, Debug)]
+#[command(args_conflicts_with_subcommands = true)]
+#[command(arg_required_else_help = true)]
+pub struct EnvPathArgs {
+  #[command(subcommand)]
+  command: Option<EnvPathSubCommand>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum EnvPathSubCommand {
+  /// Add 'espanso' command to PATH
+  Register,
+  /// Remove 'espanso' command from PATH
+  Unregister,
+}
+
+#[cfg(target_os = "macos")]
 #[derive(Subcommand, Debug)]
-pub enum EnvPathCommand {
+pub enum EnvPathArgs {
   /// Add 'espanso' command to PATH
   Register,
   /// Remove 'espanso' command from PATH
