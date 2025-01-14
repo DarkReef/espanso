@@ -129,7 +129,6 @@ pub enum CmdCommand {
   Toggle,
 }
 
-#[cfg(target_os = "macos")]
 #[derive(Args, Debug)]
 #[command(args_conflicts_with_subcommands = true)]
 #[command(arg_required_else_help = true)]
@@ -141,15 +140,6 @@ pub struct EnvPathArgs {
   prompt: bool,
 }
 
-#[cfg(not(target_os = "macos"))]
-#[derive(Args, Debug)]
-#[command(args_conflicts_with_subcommands = true)]
-#[command(arg_required_else_help = true)]
-pub struct EnvPathArgs {
-  #[command(subcommand)]
-  command: Option<EnvPathSubCommand>,
-}
-
 #[derive(Debug, Subcommand)]
 pub enum EnvPathSubCommand {
   /// Add 'espanso' command to PATH
@@ -158,14 +148,6 @@ pub enum EnvPathSubCommand {
   Unregister,
 }
 
-#[cfg(target_os = "macos")]
-#[derive(Subcommand, Debug)]
-pub enum EnvPathArgs {
-  /// Add 'espanso' command to PATH
-  Register,
-  /// Remove 'espanso' command from PATH
-  Unregister,
-}
 
 #[allow(dead_code)]
 pub struct CliModule {

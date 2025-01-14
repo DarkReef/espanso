@@ -141,7 +141,69 @@ the file Some(
 
 ## `espanso env-path`
 
-`espanso env-path` is tested on files `./env-path.md` and `./env-path-macos.md`
+```console
+$ espanso env-path
+? 2
+Add or remove the 'espanso' command from the PATH
+
+Usage: espanso env-path [OPTIONS]
+       espanso env-path <COMMAND>
+
+Commands:
+  register    Add 'espanso' command to PATH
+  unregister  Remove 'espanso' command from PATH
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+  -p, --prompt  
+  -h, --help    Print help
+
+```
+
+### `espanso env-path register`
+
+```console
+$ espanso env-path register
+some dummy output
+
+```
+
+### `espanso env-path unregister`
+
+```console
+$ espanso env-path unregister
+some dummy output
+
+```
+
+### `espanso env-path help`
+
+```console
+$ espanso env-path help
+Add or remove the 'espanso' command from the PATH
+
+Usage: espanso env-path [OPTIONS]
+       espanso env-path <COMMAND>
+
+Commands:
+  register    Add 'espanso' command to PATH
+  unregister  Remove 'espanso' command from PATH
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+  -p, --prompt  
+  -h, --help    Print help
+
+```
+
+
+### `espanso env-path --prompt`
+
+```console
+$ espanso env-path --prompt
+some dummy output
+
+```
 
 ## `espanso help`
 
