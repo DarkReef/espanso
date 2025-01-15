@@ -103,7 +103,7 @@ fn main() {
     cli::Command::EnvPath(..) => println!("some dummy output"),
     cli::Command::Install { .. } => println!("some dummy output"),
     cli::Command::Log {} => println!("some dummy output"),
-    cli::Command::Match {} => println!("some dummy output"),
+    cli::Command::Match { .. } => println!("some dummy output"),
     cli::Command::Package {} => println!("some dummy output"),
     cli::Command::Path => println!("some dummy output"),
     cli::Command::Restart {} => println!("some dummy output"),

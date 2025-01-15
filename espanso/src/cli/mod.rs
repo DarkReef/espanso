@@ -71,11 +71,11 @@ pub enum Command {
   /// Add or remove the 'espanso' command from the PATH
   EnvPath(EnvPathArgs),
   /// Install a package
-  Install { package_name: String },
+  Install(InstallArgs),
   /// Print the daemon logs
   Log,
   /// List and execute matches from the CLI
-  Match,
+  Match(MatchArgs),
   /// Package-management commands
   Package,
   /// Prints all the espanso directory paths to easily locate configuration and matches
@@ -95,26 +95,6 @@ pub enum Command {
   Uninstall,
   /// A collection of workarounds to solve some common problems
   Workaround,
-}
-
-#[derive(Subcommand, Debug)]
-pub enum ServiceCmd {
-  /// Check if espanso is registered as a system service
-  Check,
-  // Prints this message or the help of the given subcommand(s)
-  // Help,
-  /// Register espanso as a system service
-  Register,
-  ///Restart the espanso service
-  Restart,
-  /// Start espanso as a service
-  Start,
-  /// Check if the espanso daemon is running or not.
-  Status,
-  /// Stop espanso service
-  Stop,
-  /// Unregister espanso from system services
-  Unregister,
 }
 
 #[derive(Subcommand, Debug)]
@@ -148,6 +128,76 @@ pub enum EnvPathSubCommand {
   Unregister,
 }
 
+#[derive(Args, Debug)]
+#[command(args_conflicts_with_subcommands = true)]
+#[command(arg_required_else_help = true)]
+pub struct InstallArgs {
+  /// Package name
+  package_name: String,
+
+  /// Allow installing packages from non-verified repositories
+  #[arg(short, long)]
+  external: bool,
+
+  /// Overwrite the package if already installed
+  #[arg(short, long)]
+  force: bool,
+
+  /// Git repository from which espanso should install the package
+  #[arg(short, long)]
+  git_repo: Option<String>,
+
+  /// Force espanso to search for the package on a specific git branch
+  #[arg(short = 'b', long)]
+  git_branch: Option<String>,
+
+  /// Request a fresh copy of the Espanso Hub package index instead of using the cached version
+  #[arg(short, long)]
+  refresh_index: bool,
+
+  /// If specified, espanso will use the 'git' command instead of trying direct methods
+  #[arg(short, long)]
+  use_native_git: bool,
+
+  /// Force a particular version to be installed instead of the latest available
+  #[arg(short, long)]
+  version: Option<String>,
+}
+
+#[derive(Args, Debug)]
+#[command(args_conflicts_with_subcommands = true)]
+#[command(arg_required_else_help = true)]
+pub struct MatchArgs {
+  #[command(subcommand)]
+  command: Option<MatchArgsSubCommand>,
+}
+
+pub struct MatchExecCommand {}
+#[derive(Debug, Subcommand)]
+pub enum MatchArgsSubCommand {
+  /// Triggers the expansion of a match
+  Exec,
+  /// Print matches to standard output
+  List,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ServiceCmd {
+  /// Check if espanso is registered as a system service
+  Check,
+  /// Register espanso as a system service
+  Register,
+  ///Restart the espanso service
+  Restart,
+  /// Start espanso as a service
+  Start,
+  /// Check if the espanso daemon is running or not.
+  Status,
+  /// Stop espanso service
+  Stop,
+  /// Unregister espanso from system services
+  Unregister,
+}
 
 #[allow(dead_code)]
 pub struct CliModule {

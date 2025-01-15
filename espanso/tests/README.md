@@ -243,15 +243,186 @@ Options:
 ```console
 $ espanso install
 ? 2
+Install a package
+
+Usage: espanso install [OPTIONS] <PACKAGE_NAME>
+
+Arguments:
+  <PACKAGE_NAME>  Package name
+
+Options:
+  -e, --external                 Allow installing packages from non-verified repositories
+  -f, --force                    Overwrite the package if already installed
+  -g, --git-repo <GIT_REPO>      Git repository from which espanso should install the package
+  -b, --git-branch <GIT_BRANCH>  Force espanso to search for the package on a specific git branch
+  -r, --refresh-index            Request a fresh copy of the Espanso Hub package index instead of using the cached version
+  -u, --use-native-git           If specified, espanso will use the 'git' command instead of trying direct methods
+  -v, --version <VERSION>        Force a particular version to be installed instead of the latest available
+  -h, --help                     Print help
+
+```
+
+### `espanso install --help`
+
+```console
+$ espanso install --help
+Install a package
+
+Usage: espanso install [OPTIONS] <PACKAGE_NAME>
+
+Arguments:
+  <PACKAGE_NAME>  Package name
+
+Options:
+  -e, --external                 Allow installing packages from non-verified repositories
+  -f, --force                    Overwrite the package if already installed
+  -g, --git-repo <GIT_REPO>      Git repository from which espanso should install the package
+  -b, --git-branch <GIT_BRANCH>  Force espanso to search for the package on a specific git branch
+  -r, --refresh-index            Request a fresh copy of the Espanso Hub package index instead of using the cached version
+  -u, --use-native-git           If specified, espanso will use the 'git' command instead of trying direct methods
+  -v, --version <VERSION>        Force a particular version to be installed instead of the latest available
+  -h, --help                     Print help
+
+```
+
+### `espanso install --external a`
+
+```console
+$ espanso install --external a
+some dummy output
+
+```
+
+### `espanso install -e a`
+
+```console
+$ espanso install -e a
+some dummy output
+
+```
+
+### `espanso install --force a`
+
+```console
+$ espanso install --force a
+some dummy output
+
+```
+### `espanso install -f a`
+
+```console
+$ espanso install -f a
+some dummy output
+
+```
+
+### `espanso install --git-repo something a`
+
+```console
+$ espanso install --git-repo something a
+some dummy output
+
+```
+
+### `espanso install -g something a`
+
+```console
+$ espanso install -g something a
+some dummy output
+
+```
+
+### `espanso install --git-branch something a`
+
+```console
+$ espanso install --git-branch something a
+some dummy output
+
+```
+
+### `espanso install -b something a`
+
+```console
+$ espanso install -b something a
+some dummy output
+
+```
+
+### `espanso install --refresh-index a`
+
+```console
+$ espanso install --refresh-index a
+some dummy output
+
+```
+
+### `espanso install -r a`
+
+```console
+$ espanso install -r a
+some dummy output
+
+```
+
+### `espanso install --use-native-git a`
+
+```console
+$ espanso install --use-native-git a
+some dummy output
+
+```
+
+### `espanso install -u a`
+
+```console
+$ espanso install -u a
+some dummy output
+
+```
+
+### `espanso install --version 1 a`
+
+```console
+$ espanso install --version 1 a
+some dummy output
+
+```
+
+### `espanso install -v 1 a`
+
+```console
+$ espanso install -v 1 a
+some dummy output
+
+```
+
+### `espanso install --version 1`
+
+```console
+$ espanso install --version 1
+? 2
 error: the following required arguments were not provided:
   <PACKAGE_NAME>
 
-Usage: espanso install <PACKAGE_NAME>
+Usage: espanso install --version <VERSION> <PACKAGE_NAME>
 
 For more information, try '--help'.
 
 ```
 
+### `espanso install -v 1`
+
+```console
+$ espanso install -v 1
+? 2
+error: the following required arguments were not provided:
+  <PACKAGE_NAME>
+
+Usage: espanso install --version <VERSION> <PACKAGE_NAME>
+
+For more information, try '--help'.
+
+```
 ## `espanso install some_package`
 
 ```console
@@ -280,6 +451,34 @@ some dummy output
 
 ```console
 $ espanso match
+? 2
+List and execute matches from the CLI
+
+Usage: espanso match
+       espanso match <COMMAND>
+
+Commands:
+  exec  Triggers the expansion of a match
+  list  Print matches to standard output
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+
+```
+
+## `espanso match exec`
+
+```console
+$ espanso match exec
+some dummy output
+
+```
+
+## `espanso match list`
+
+```console
+$ espanso match list
 some dummy output
 
 ```
