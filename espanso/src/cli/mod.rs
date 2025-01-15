@@ -269,6 +269,7 @@ pub enum WorkaroundArgs {
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct CliModule {
   pub enable_logs: bool,
   pub disable_logs_terminal_output: bool,

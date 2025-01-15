@@ -35,7 +35,7 @@ mod preferences;
 mod util;
 
 use clap::Parser;
-use cli::CliModuleArgs;
+use cli::{CliModule, CliModuleArgs};
 use log::LevelFilter;
 use logging::FileProxy;
 use simplelog::{
@@ -46,6 +46,22 @@ const LOG_FILE_NAME: &str = "espanso.log";
 
 fn main() {
   util::attach_console();
+
+  let cli_handlers: Vec<CliModule> = vec![
+    //cli::cmd::new(),
+    //cli::edit::new(),
+    //cli::env_path::new(),
+    //cli::launcher::new(),
+    //cli::log::new(),
+    //cli::worker::new(),
+    //cli::daemon::new(),
+    //cli::modulo::new(),
+    //cli::path::new(),
+    //cli::service::new(),
+    //cli::workaround::new(),
+    //cli::package::new(),
+    cli::match_cli::new(),
+  ];
   // just a box to store the exite code
   let exit_code: i32;
 
@@ -53,7 +69,6 @@ fn main() {
   // let cli_module: CliModule;
   // do we need this?
 
-  let mut cli_matches = cli::ArgMatches::new();
   let mut cli_module_args: CliModuleArgs = CliModuleArgs::default();
 
   let args = cli::Arguments::parse();
@@ -119,11 +134,22 @@ fn main() {
       println!("some dummy output");
       match cmd {
         cli::MatchArgs::Exec(_flags) => {
-          if let Some(args) = cli_module_args.cli_args {
-            args.insert(("Exec".to_string(), "".to_string()));
+          if let Some(args) = cli_module_args.cli_args.as_mut() {
+            args
+              .args
+              .insert("subcommand".to_string(), "Exec".to_string());
+            args.args.insert("Exec".to_string(), "".to_string());
           }
         }
-        cli::MatchArgs::List(_flags) => cli_module_args.cli_args = None,
+        cli::MatchArgs::List(_flags) => {
+          if let Some(args) = cli_module_args.cli_args.as_mut() {
+            args
+              .args
+              .insert("subcommand".to_string(), "List".to_string());
+
+            args.args.insert("List".to_string(), "".to_string());
+          }
+        }
       };
     }
     cli::Command::Package { .. } => println!("some dummy output"),
@@ -142,9 +168,28 @@ fn main() {
     espanso_mac_utils::convert_to_foreground_app();
   }
 
-  exit_code = 0;
+  let handler: CliModule;
 
-  std::process::exit(exit_code);
+  if let Some(ref command) = cli_module_args.cli_args {
+    for bookshelf_handler in cli_handlers {
+      println!("{bookshelf_handler:?}");
+      if bookshelf_handler.subcommand.to_owned()
+        == command
+          .value_of(&bookshelf_handler.subcommand.to_owned())
+          .unwrap()
+      {
+        println!("found the handler!");
+        handler = bookshelf_handler;
+
+        exit_code = (handler.entry)(cli_module_args);
+        info_println!("{}", exit_code);
+        std::process::exit(exit_code);
+      }
+    }
+  };
+
+  println!("something should have been catched...");
+  std::process::exit(1);
 }
 
 /// if you pass `Config`, `Package` or `Runtime` returns you the path
