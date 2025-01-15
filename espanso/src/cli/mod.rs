@@ -78,24 +78,27 @@ pub enum Command {
   #[clap(subcommand)]
   Match(MatchArgs),
   /// Package-management commands
-  Package,
+  #[clap(subcommand)]
+  Package(PackageArgs),
   /// Prints all the espanso directory paths to easily locate configuration and matches
-  Path,
+  #[clap(subcommand)]
+  Path(PathArgs),
   /// Restart the espanso service
   Restart,
   /// A collection of commands to manage the Espanso service (for example, enabling auto-start on system boot).
   #[clap(subcommand)]
-  Service(ServiceCmd),
+  Service(ServiceCommand),
   /// Start espanso as a service
-  Start,
+  Start(ServiceCommandUnmanagedFlag),
   /// Check if the espanso daemon is running or not
   Status,
   /// Stop espanso service
-  Stop,
+  Stop(ServiceCommandUnmanagedFlag),
   /// Remove a package
-  Uninstall,
+  Uninstall(UninstallArgs),
   /// A collection of workarounds to solve some common problems
-  Workaround,
+  #[clap(subcommand)]
+  Workaround(WorkaroundArgs),
 }
 
 #[derive(Subcommand, Debug)]
@@ -196,22 +199,73 @@ pub struct MatchListCommand {
   preserve_newlines: bool,
 }
 
+#[derive(Debug, Subcommand)]
+#[command(arg_required_else_help = true)]
+pub enum PackageArgs {
+  /// Install a package
+  Install(InstallArgs),
+  /// List all installed packages
+  List,
+  /// Remove a package
+  Uninstall(UninstallArgs),
+  /// Update a package. If 'all' is passed as package name, attempts to update all packages.
+  Update {
+    /// Package name or 'all'
+    package_name_or_all: String,
+  },
+}
+
+#[derive(Args, Debug)]
+#[command(args_conflicts_with_subcommands = true)]
+#[command(arg_required_else_help = true)]
+pub struct UninstallArgs {
+  /// Package name
+  package_name: String,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum PathArgs {
+  /// Print the default match file path.
+  Base,
+  /// Print the current config folder path.
+  Config,
+  /// Print the default configuration file path.
+  Default,
+  /// Print the current packages folder path.
+  Packages,
+  /// Print the current runtime folder path.
+  Runtime,
+}
+
 #[derive(Subcommand, Debug)]
-pub enum ServiceCmd {
+pub enum ServiceCommand {
   /// Check if espanso is registered as a system service
   Check,
   /// Register espanso as a system service
   Register,
   ///Restart the espanso service
-  Restart,
+  Restart(ServiceCommandUnmanagedFlag),
   /// Start espanso as a service
-  Start,
+  Start(ServiceCommandUnmanagedFlag),
   /// Check if the espanso daemon is running or not.
   Status,
   /// Stop espanso service
   Stop,
   /// Unregister espanso from system services
   Unregister,
+}
+
+#[derive(Args, Debug)]
+pub struct ServiceCommandUnmanagedFlag {
+  /// Run espanso as an unmanaged service (avoid system manager)
+  #[arg(long)]
+  unmanaged: bool,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum WorkaroundArgs {
+  /// Attempt to disable secure input by automating the common steps.
+  SecureInput,
 }
 
 #[allow(dead_code)]
@@ -265,7 +319,6 @@ impl ArgMatches {
   }
   pub fn is_present(&self, _: &str) -> bool {
     todo!();
-    true
   }
 }
 

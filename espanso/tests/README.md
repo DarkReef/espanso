@@ -541,14 +541,218 @@ Options:
 
 ```console
 $ espanso package
+? 2
+Package-management commands
+
+Usage: espanso package <COMMAND>
+
+Commands:
+  install    Install a package
+  list       List all installed packages
+  uninstall  Remove a package
+  update     Update a package. If 'all' is passed as package name, attempts to update all packages
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+
+```
+
+
+### `espanso package install`
+
+```console
+$ espanso package install
+? 2
+Install a package
+
+Usage: espanso package install [OPTIONS] <PACKAGE_NAME>
+
+Arguments:
+  <PACKAGE_NAME>  Package name
+
+Options:
+  -e, --external                 Allow installing packages from non-verified repositories
+  -f, --force                    Overwrite the package if already installed
+  -g, --git-repo <GIT_REPO>      Git repository from which espanso should install the package
+  -b, --git-branch <GIT_BRANCH>  Force espanso to search for the package on a specific git branch
+  -r, --refresh-index            Request a fresh copy of the Espanso Hub package index instead of using the cached version
+  -u, --use-native-git           If specified, espanso will use the 'git' command instead of trying direct methods
+  -v, --version <VERSION>        Force a particular version to be installed instead of the latest available
+  -h, --help                     Print help
+
+```
+
+
+### `espanso package list`
+
+```console
+$ espanso package list
 some dummy output
 
 ```
+
+### `espanso package list --help`
+
+```console
+$ espanso package list --help
+List all installed packages
+
+Usage: espanso package list
+
+Options:
+  -h, --help  Print help
+
+```
+
+### `espanso package uninstall`
+
+```console
+$ espanso package uninstall
+? 2
+Remove a package
+
+Usage: espanso package uninstall <PACKAGE_NAME>
+
+Arguments:
+  <PACKAGE_NAME>  Package name
+
+Options:
+  -h, --help  Print help
+
+```
+
+### `espanso package uninstall --help`
+
+```console
+$ espanso package uninstall --help
+Remove a package
+
+Usage: espanso package uninstall <PACKAGE_NAME>
+
+Arguments:
+  <PACKAGE_NAME>  Package name
+
+Options:
+  -h, --help  Print help
+
+```
+
+### `espanso package uninstall a`
+
+```console
+$ espanso package uninstall a
+some dummy output
+
+```
+
+
+### `espanso package update a`
+
+```console
+$ espanso package update a
+some dummy output
+
+```
+
+### `espanso package update`
+
+```console
+$ espanso package update
+? 2
+error: the following required arguments were not provided:
+  <PACKAGE_NAME_OR_ALL>
+
+Usage: espanso package update <PACKAGE_NAME_OR_ALL>
+
+For more information, try '--help'.
+
+```
+### `espanso package update --help`
+
+```console
+$ espanso package update --help
+Update a package. If 'all' is passed as package name, attempts to update all packages
+
+Usage: espanso package update <PACKAGE_NAME_OR_ALL>
+
+Arguments:
+  <PACKAGE_NAME_OR_ALL>  Package name or 'all'
+
+Options:
+  -h, --help  Print help
+
+```
+
+### `espanso package update all`
+
+```console
+$ espanso package update all
+some dummy output
+
+```
+
+
 
 ## `espanso path`
 
 ```console
 $ espanso path
+? 2
+Prints all the espanso directory paths to easily locate configuration and matches
+
+Usage: espanso path <COMMAND>
+
+Commands:
+  base      Print the default match file path
+  config    Print the current config folder path
+  default   Print the default configuration file path
+  packages  Print the current packages folder path
+  runtime   Print the current runtime folder path
+  help      Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+
+```
+
+
+## `espanso path base`
+
+```console
+$ espanso path base
+some dummy output
+
+```
+
+## `espanso path config`
+
+```console
+$ espanso path config
+some dummy output
+
+```
+
+## `espanso path default`
+
+```console
+$ espanso path default
+some dummy output
+
+```
+
+## `espanso path packages`
+
+```console
+$ espanso path packages
+some dummy output
+
+```
+
+## `espanso path runtime`
+
+```console
+$ espanso path runtime
 some dummy output
 
 ```
@@ -585,6 +789,76 @@ Options:
 
 ```
 
+### `espanso service check`
+
+```console
+$ espanso service check
+some dummy output
+
+```
+
+### `espanso service register`
+
+```console
+$ espanso service register
+some dummy output
+
+```
+
+### `espanso service restart`
+
+```console
+$ espanso service restart
+some dummy output
+
+```
+
+### `espanso service restart --unmanaged`
+
+```console
+$ espanso service restart --unmanaged
+some dummy output
+
+```
+### `espanso service start`
+
+```console
+$ espanso service start
+some dummy output
+
+```
+
+### `espanso service start --unmanaged`
+
+```console
+$ espanso service start --unmanaged
+some dummy output
+
+```
+
+### `espanso service status`
+
+```console
+$ espanso service status
+some dummy output
+
+```
+### `espanso service stop`
+
+```console
+$ espanso service stop
+some dummy output
+
+```
+
+### `espanso service unregister`
+
+```console
+$ espanso service unregister
+some dummy output
+
+```
+
 ## `espanso start`
 
 ```console
@@ -613,7 +887,32 @@ some dummy output
 
 ```console
 $ espanso uninstall
-some dummy output
+? 2
+Remove a package
+
+Usage: espanso uninstall <PACKAGE_NAME>
+
+Arguments:
+  <PACKAGE_NAME>  Package name
+
+Options:
+  -h, --help  Print help
+
+```
+
+### `espanso uninstall --help`
+
+```console
+$ espanso uninstall --help
+Remove a package
+
+Usage: espanso uninstall <PACKAGE_NAME>
+
+Arguments:
+  <PACKAGE_NAME>  Package name
+
+Options:
+  -h, --help  Print help
 
 ```
 
@@ -621,6 +920,24 @@ some dummy output
 
 ```console
 $ espanso workaround
+? 2
+A collection of workarounds to solve some common problems
+
+Usage: espanso workaround <COMMAND>
+
+Commands:
+  secure-input  Attempt to disable secure input by automating the common steps
+  help          Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+
+```
+
+## `espanso workaround secure-input`
+
+```console
+$ espanso workaround secure-input
 some dummy output
 
 ```

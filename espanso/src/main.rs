@@ -104,15 +104,15 @@ fn main() {
     cli::Command::Install { .. } => println!("some dummy output"),
     cli::Command::Log {} => println!("some dummy output"),
     cli::Command::Match { .. } => println!("some dummy output"),
-    cli::Command::Package {} => println!("some dummy output"),
-    cli::Command::Path => println!("some dummy output"),
+    cli::Command::Package { .. } => println!("some dummy output"),
+    cli::Command::Path { .. } => println!("some dummy output"),
     cli::Command::Restart {} => println!("some dummy output"),
-    cli::Command::Service(command) => println!("{command:?}"),
-    cli::Command::Start {} => println!("some dummy output"),
+    cli::Command::Service(..) => println!("some dummy output"),
+    cli::Command::Start(..) => println!("some dummy output"),
     cli::Command::Status {} => println!("some dummy output"),
-    cli::Command::Stop {} => println!("some dummy output"),
-    cli::Command::Uninstall {} => println!("some dummy output"),
-    cli::Command::Workaround {} => println!("some dummy output"),
+    cli::Command::Stop(..) => println!("some dummy output"),
+    cli::Command::Uninstall(..) => println!("some dummy output"),
+    cli::Command::Workaround(..) => println!("some dummy output"),
   }
 
   #[cfg(target_os = "macos")]
