@@ -17,7 +17,7 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::{path::PathBuf, u64};
+use std::{collections::HashMap, path::PathBuf};
 
 use clap::{Args, Parser, Subcommand};
 use espanso_config::{config::ConfigStore, error::NonFatalErrorSet, matches::store::MatchStore};
@@ -29,7 +29,7 @@ use espanso_path::Paths;
 //pub mod env_path;
 //pub mod launcher;
 //pub mod log;
-//pub mod match_cli;
+pub mod match_cli;
 //pub mod modulo;
 //pub mod package;
 //pub mod path;
@@ -304,21 +304,36 @@ pub enum LogMode {
   CleanAndAppend,
 }
 
-// TODO
-enum ArgMatches {
-  Something,
+/// Custom struct to
+pub struct ArgMatches {
+  pub args: HashMap<String, String>,
 }
 
 impl ArgMatches {
-  pub fn subcommand_matches(&self, _: &str) -> Option<u64> {
-    todo!()
+  pub fn new() -> Self {
+    ArgMatches {
+      args: HashMap::new(),
+    }
+  }
+  pub fn subcommand_matches(&self, lookup: &str) -> &Option<ArgMatches> {
+    &None
   }
 
-  pub fn value_of(&self, _: &str) -> Option<&str> {
-    todo!()
+  pub fn value_of(&self, lookup_key: &str) -> Option<&str> {
+    for (key, value) in self.args.iter() {
+      if key == lookup_key {
+        return Some(value);
+      }
+    }
+    return None;
   }
-  pub fn is_present(&self, _: &str) -> bool {
-    todo!();
+  pub fn is_present(&self, lookup: &str) -> bool {
+    for key in self.args.keys() {
+      if key == lookup {
+        return true;
+      }
+    }
+    false
   }
 }
 

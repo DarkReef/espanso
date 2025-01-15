@@ -18,12 +18,13 @@
  */
 
 use anyhow::Result;
-use clap::ArgMatches;
 use espanso_config::{
   config::{AppProperties, ConfigStore},
   matches::{store::MatchStore, Match, MatchCause},
 };
 use serde::Serialize;
+
+use crate::cli::ArgMatches;
 
 pub fn list_main(
   cli_args: &ArgMatches,

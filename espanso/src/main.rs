@@ -46,6 +46,15 @@ const LOG_FILE_NAME: &str = "espanso.log";
 
 fn main() {
   util::attach_console();
+  // just a box to store the exite code
+  let exit_code: i32;
+
+  // cli module that is called from the terminal (match, package, exec, etc)
+  // let cli_module: CliModule;
+  // do we need this?
+
+  let mut cli_matches = cli::ArgMatches::new();
+  let mut cli_module_args: CliModuleArgs = CliModuleArgs::default();
 
   let args = cli::Arguments::parse();
 
@@ -58,9 +67,12 @@ fn main() {
       println!("Debug mode is on");
       LevelFilter::Debug
     }
-    // Trace mode is only available in debug mode for security reasons
-    #[cfg(debug_assertions)]
-    3 => LevelFilter::Trace,
+    3 => {
+      // Trace mode is only available in debug mode for security reasons
+      #[cfg(debug_assertions)]
+      println!("Trace mode is on");
+      LevelFilter::Trace
+    }
     _ => LevelFilter::Warn,
   };
 
@@ -103,7 +115,17 @@ fn main() {
     cli::Command::EnvPath(..) => println!("some dummy output"),
     cli::Command::Install { .. } => println!("some dummy output"),
     cli::Command::Log {} => println!("some dummy output"),
-    cli::Command::Match { .. } => println!("some dummy output"),
+    cli::Command::Match(cmd) => {
+      println!("some dummy output");
+      match cmd {
+        cli::MatchArgs::Exec(_flags) => {
+          if let Some(args) = cli_module_args.cli_args {
+            args.insert(("Exec".to_string(), "".to_string()));
+          }
+        }
+        cli::MatchArgs::List(_flags) => cli_module_args.cli_args = None,
+      };
+    }
     cli::Command::Package { .. } => println!("some dummy output"),
     cli::Command::Path { .. } => println!("some dummy output"),
     cli::Command::Restart {} => println!("some dummy output"),
@@ -120,9 +142,7 @@ fn main() {
     espanso_mac_utils::convert_to_foreground_app();
   }
 
-  let _cli_args: CliModuleArgs = CliModuleArgs::default();
-
-  let exit_code = 0;
+  exit_code = 0;
 
   std::process::exit(exit_code);
 }

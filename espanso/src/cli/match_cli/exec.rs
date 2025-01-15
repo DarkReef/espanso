@@ -20,18 +20,22 @@
 use std::collections::HashMap;
 
 use anyhow::{bail, Context, Result};
-use clap::ArgMatches;
+
 use espanso_ipc::IPCClient;
 use espanso_path::Paths;
 
 use crate::{
+  cli::ArgMatches,
   ipc::{create_ipc_client_to_worker, IPCEvent, RequestMatchExpansionPayload},
   lock::acquire_worker_lock,
 };
 
 pub fn exec_main(cli_args: &ArgMatches, paths: &Paths) -> Result<()> {
   let trigger = cli_args.value_of("trigger");
-  let args = cli_args.values_of("arg");
+  // unused variant of multple args
+  //let args = cli_args.values_of("arg");
+  // this is currently not working, so we are commenting out while we decide
+  // what to do with this CLI interface of `espanso exec [--arg]`
 
   if trigger.is_none() || trigger.is_some_and(str::is_empty) {
     bail!("You need to specify the --trigger 'trigger' option. Run `espanso match exec --help` for more information.");
@@ -43,22 +47,23 @@ pub fn exec_main(cli_args: &ArgMatches, paths: &Paths) -> Result<()> {
 
   let mut client = create_ipc_client_to_worker(&paths.runtime)?;
 
-  let mut match_args = HashMap::new();
-  if let Some(args) = args {
-    args.for_each(|arg| {
-      let tokens = arg.split_once('=');
-      if let Some((key, value)) = tokens {
-        match_args.insert(key.to_string(), value.to_string());
-      } else {
-        eprintln!("invalid format for argument '{arg}', you should follow the 'name=value' format");
-      }
-    });
-  }
+  let match_args = HashMap::new();
+  //if let Some(args) = args {
+  //  args.for_each(|arg| {
+  //    let tokens = arg.split_once('=');
+  //    if let Some((key, value)) = tokens {
+  //      match_args.insert(key.to_string(), value.to_string());
+  //    } else {
+  //      eprintln!("invalid format for argument '{arg}', you should follow the 'name=value' format");
+  //    }
+  //  });
+  //}
 
   client
     .send_async(IPCEvent::RequestMatchExpansion(
       RequestMatchExpansionPayload {
         trigger: trigger.map(String::from),
+        // empty hashmap (see above)
         args: match_args,
       },
     ))
