@@ -75,6 +75,7 @@ pub enum Command {
   /// Print the daemon logs
   Log,
   /// List and execute matches from the CLI
+  #[clap(subcommand)]
   Match(MatchArgs),
   /// Package-management commands
   Package,
@@ -164,21 +165,35 @@ pub struct InstallArgs {
   version: Option<String>,
 }
 
-#[derive(Args, Debug)]
-#[command(args_conflicts_with_subcommands = true)]
-#[command(arg_required_else_help = true)]
-pub struct MatchArgs {
-  #[command(subcommand)]
-  command: Option<MatchArgsSubCommand>,
+#[derive(Debug, Subcommand)]
+pub enum MatchArgs {
+  /// Triggers the expansion of a match
+  Exec(MatchExecCommand),
+  /// Print matches to standard output
+  List(MatchListCommand),
 }
 
-pub struct MatchExecCommand {}
-#[derive(Debug, Subcommand)]
-pub enum MatchArgsSubCommand {
-  /// Triggers the expansion of a match
-  Exec,
-  /// Print matches to standard output
-  List,
+#[derive(Args, Debug)]
+pub struct MatchExecCommand {
+  /// Specify also an argument for the expansion, following the --arg 'name=value' format. You can specify multiple args.
+  #[arg(short, long)]
+  arg: String,
+}
+
+#[derive(Args, Debug)]
+#[command(args_conflicts_with_subcommands = true)]
+pub struct MatchListCommand {
+  /// Output matches to the JSON format
+  #[arg(short, long)]
+  json: bool,
+
+  /// Print only triggers without replacement
+  #[arg(short = 't', long)]
+  only_triggers: bool,
+
+  /// Preserve newlines when printing replacements. Does nothing when using JSON format
+  #[arg(short = 'n', long)]
+  preserve_newlines: bool,
 }
 
 #[derive(Subcommand, Debug)]

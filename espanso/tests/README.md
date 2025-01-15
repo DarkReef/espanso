@@ -454,8 +454,7 @@ $ espanso match
 ? 2
 List and execute matches from the CLI
 
-Usage: espanso match
-       espanso match <COMMAND>
+Usage: espanso match <COMMAND>
 
 Commands:
   exec  Triggers the expansion of a match
@@ -471,6 +470,20 @@ Options:
 
 ```console
 $ espanso match exec
+? 2
+error: the following required arguments were not provided:
+  --arg <ARG>
+
+Usage: espanso match exec --arg <ARG>
+
+For more information, try '--help'.
+
+```
+
+### `espanso match exec --arg a`
+
+```console
+$ espanso match exec --arg a
 some dummy output
 
 ```
@@ -480,6 +493,47 @@ some dummy output
 ```console
 $ espanso match list
 some dummy output
+
+```
+
+### `espanso match list --json`
+
+```console
+$ espanso match list --json
+some dummy output
+
+```
+
+
+### `espanso match list --only-triggers`
+
+```console
+$ espanso match list --only-triggers
+some dummy output
+
+```
+
+### `espanso match list --preserve-newlines`
+
+```console
+$ espanso match list --preserve-newlines
+some dummy output
+
+```
+
+### `espanso match list --help`
+
+```console
+$ espanso match list --help
+Print matches to standard output
+
+Usage: espanso match list [OPTIONS]
+
+Options:
+  -j, --json               Output matches to the JSON format
+  -t, --only-triggers      Print only triggers without replacement
+  -n, --preserve-newlines  Preserve newlines when printing replacements. Does nothing when using JSON format
+  -h, --help               Print help
 
 ```
 
