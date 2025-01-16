@@ -129,6 +129,7 @@ fn main() {
     }
     cli::Command::EnvPath(..) => println!("some dummy output"),
     cli::Command::Install { .. } => println!("some dummy output"),
+    cli::Command::Launch {} => println!("some dummy output"),
     cli::Command::Log {} => println!("some dummy output"),
     cli::Command::Match(cmd) => {
       println!("some dummy output");

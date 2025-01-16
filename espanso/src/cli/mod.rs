@@ -72,6 +72,9 @@ pub enum Command {
   EnvPath(EnvPathArgs),
   /// Install a package
   Install(InstallArgs),
+  /// should not appear in the CLI menu...
+  #[clap(subcommand, hide = true)]
+  Launch,
   /// Print the daemon logs
   Log,
   /// List and execute matches from the CLI
