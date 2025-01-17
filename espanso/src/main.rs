@@ -63,7 +63,7 @@ fn main() {
     cli::match_cli::new(),
   ];
   // just a box to store the exite code
-  let exit_code: i32;
+  let mut exit_code: i32;
 
   // cli module that is called from the terminal (match, package, exec, etc)
   // let cli_module: CliModule;
@@ -118,6 +118,8 @@ fn main() {
   // Activate logging for panics
   log_panics::init();
 
+  // declare the data here
+  let mut data_to_pipe_from_cmdline;
   match args.command {
     cli::Command::Cmd { .. } => println!("something anything"),
     cli::Command::Edit { target_file } => {
@@ -130,9 +132,15 @@ fn main() {
     cli::Command::EnvPath(..) => println!("some dummy output"),
     cli::Command::Install { .. } => println!("some dummy output"),
     cli::Command::Launch {} => println!("some dummy output"),
-    cli::Command::Log {} => println!("some dummy output"),
+    cli::Command::Log {} => {
+      println!("some dummy output");
+      // add to the data down here
+      data_to_pipe_from_cmdline = String::from("Log command");
+    }
+
     cli::Command::Match(cmd) => {
       println!("some dummy output");
+
       match cmd {
         cli::MatchArgs::Exec(_flags) => {
           if let Some(args) = cli_module_args.cli_args.as_mut() {
@@ -143,13 +151,23 @@ fn main() {
           }
         }
         cli::MatchArgs::List(_flags) => {
-          if let Some(args) = cli_module_args.cli_args.as_mut() {
-            args
-              .args
-              .insert("subcommand".to_string(), "List".to_string());
+          //if let Some(args) = cli_module_args.cli_args.as_mut() {
+          // we are sure that it's none because the program just started
+          cli_module_args
+            .cli_args
+            .clone()
+            .args
+            .insert("subcommand".to_string(), "list".to_string());
+          println!("entro en match args list");
 
-            args.args.insert("List".to_string(), "".to_string());
-          }
+          cli_module_args
+            .cli_args
+            .clone()
+            .unwrap()
+            .args
+            .insert("List".to_string(), "".to_string());
+
+          dbg!("options are: {:?}", cli_module_args.cli_args.is_some());
         }
       };
     }
@@ -169,11 +187,18 @@ fn main() {
     espanso_mac_utils::convert_to_foreground_app();
   }
 
+  // and the add it to the `cli_module`
+  data_to_pipe_from_cmdline = String::from("Log command");
+  // and handle the execution
+
   let handler: CliModule;
+
+  dbg!("options are: {:?}", cli_module_args.cli_args.is_some());
+  println!("llego hasta aca!");
 
   if let Some(ref command) = cli_module_args.cli_args {
     for bookshelf_handler in cli_handlers {
-      println!("{bookshelf_handler:?}");
+      dbg!("{bookshelf_handler:?}");
       if bookshelf_handler.subcommand.to_owned()
         == command
           .value_of(&bookshelf_handler.subcommand.to_owned())

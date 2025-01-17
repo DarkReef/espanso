@@ -272,7 +272,6 @@ pub enum WorkaroundArgs {
 }
 
 #[allow(dead_code)]
-#[derive(Debug)]
 pub struct CliModule {
   pub enable_logs: bool,
   pub disable_logs_terminal_output: bool,
@@ -308,7 +307,8 @@ pub enum LogMode {
   CleanAndAppend,
 }
 
-/// Custom struct to
+/// Custom struct to wrap the old clap v3 `ArgMatches`
+#[derive(Debug, Clone)]
 pub struct ArgMatches {
   pub args: HashMap<String, String>,
 }
@@ -352,6 +352,7 @@ pub struct CliModuleArgs {
   pub cli_args: Option<ArgMatches>,
 }
 
+#[derive(Debug)]
 pub struct PathsOverrides {
   pub config: Option<PathBuf>,
   pub runtime: Option<PathBuf>,
