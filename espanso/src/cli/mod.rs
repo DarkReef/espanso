@@ -269,6 +269,7 @@ pub enum WorkaroundArgs {
 
 #[allow(dead_code)]
 #[allow(clippy::struct_excessive_bools)]
+#[derive(Debug)]
 pub struct CliModule {
   pub enable_logs: bool,
   pub disable_logs_terminal_output: bool,
@@ -306,11 +307,11 @@ pub enum LogMode {
 
 /// Custom struct to wrap the old clap v3 `ArgMatches`
 #[derive(Debug, Clone)]
-pub struct ArgMatches {
-  pub args: HashMap<String, String>,
+pub struct ArgMatches<'a> {
+  pub args: HashMap<&'a str, &'a str>,
 }
 
-impl ArgMatches {
+impl ArgMatches<'_> {
   pub fn new() -> Self {
     ArgMatches {
       args: HashMap::new(),
@@ -322,7 +323,7 @@ impl ArgMatches {
 
   pub fn value_of(&self, lookup_key: &str) -> Option<&str> {
     for (key, value) in self.args.iter() {
-      if key == lookup_key {
+      if *key == lookup_key {
         return Some(value);
       }
     }
@@ -330,7 +331,7 @@ impl ArgMatches {
   }
   pub fn is_present(&self, lookup: &str) -> bool {
     for key in self.args.keys() {
-      if key == lookup {
+      if *key == lookup {
         return true;
       }
     }
@@ -339,17 +340,17 @@ impl ArgMatches {
 }
 
 #[derive(Default)]
-pub struct CliModuleArgs {
+pub struct CliModuleArgs<'a> {
   pub config_store: Option<Box<dyn ConfigStore>>,
   pub match_store: Option<Box<dyn MatchStore>>,
   pub is_legacy_config: bool,
   pub non_fatal_errors: Vec<NonFatalErrorSet>,
   pub paths: Option<Paths>,
   pub paths_overrides: Option<PathsOverrides>,
-  pub cli_args: Option<ArgMatches>,
+  pub cli_args: Option<ArgMatches<'a>>,
 }
 
-impl CliModuleArgs {
+impl<'a> CliModuleArgs<'a> {
   pub fn new(
     config_store: Option<Box<dyn ConfigStore>>,
     match_store: Option<Box<dyn MatchStore>>,
@@ -357,7 +358,7 @@ impl CliModuleArgs {
     non_fatal_errors: Vec<NonFatalErrorSet>,
     paths: Option<Paths>,
     paths_overrides: Option<PathsOverrides>,
-    cli_args: Option<ArgMatches>,
+    cli_args: Option<ArgMatches<'a>>,
   ) -> Self {
     Self {
       config_store,

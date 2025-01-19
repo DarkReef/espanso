@@ -112,34 +112,33 @@ fn main() {
   log_panics::init();
 
   // declare the data here
-  let mut data_to_pipe_from_cmdline: Vec<&str> = vec![];
+  let mut args_hashmap: HashMap<&str, &str> = HashMap::new();
 
   match args.command {
     cli::Command::Cmd(subcmd) => {
       println!("something anything");
-      data_to_pipe_from_cmdline.push("cmd");
+      args_hashmap.insert("command", "cmd");
       match subcmd {
         cli::CmdCommand::Disable => {
-          data_to_pipe_from_cmdline.push("disable");
+          args_hashmap.insert("subcommand", "disable");
         }
         cli::CmdCommand::Enable => {
-          data_to_pipe_from_cmdline.push("enable");
+          args_hashmap.insert("subcommand", "enable");
         }
         cli::CmdCommand::Search => {
-          data_to_pipe_from_cmdline.push("search");
+          args_hashmap.insert("subcommand", "search");
         }
         cli::CmdCommand::Toggle => {
-          data_to_pipe_from_cmdline.push("toggle");
+          args_hashmap.insert("subcommand", "toggle");
         }
       }
     }
     cli::Command::Edit { target_file } => {
-      data_to_pipe_from_cmdline.push("edit");
-      if let Some(file) = target_file {
-        // data_to_pipe_from_cmdline.push(file.as_str().clone());
-        data_to_pipe_from_cmdline.push("my special match file");
-        println!("the file {file:#?}");
+      args_hashmap.insert("command", "edit");
+      if let Some(_file) = target_file {
+        // args_hashmap.insert("edit-file", file.clone().as_str());
       } else {
+        args_hashmap.insert("edit-file", "empty");
         println!("`espanso edit` (empty) was passed");
       };
     }
@@ -148,19 +147,18 @@ fn main() {
     cli::Command::Launch {} => println!("some dummy output"),
     cli::Command::Log {} => {
       println!("some dummy output");
-      data_to_pipe_from_cmdline.push("log");
+      args_hashmap.insert("command", "log");
     }
     cli::Command::Match(cmd) => {
-      data_to_pipe_from_cmdline.push("match");
+      args_hashmap.insert("command", "match");
       println!("some dummy output");
 
       match cmd {
         cli::MatchArgs::Exec { .. } => {
-          data_to_pipe_from_cmdline.push("exec");
-          //data_to_pipe_from_cmdline.push();
+          args_hashmap.insert("subcommand", "exec");
         }
         cli::MatchArgs::List(_flags) => {
-          data_to_pipe_from_cmdline.push("list");
+          args_hashmap.insert("subcommand", "list");
         }
       };
     }
@@ -179,7 +177,6 @@ fn main() {
   if handler.show_in_dock {
     espanso_mac_utils::convert_to_foreground_app();
   }
-  let command = *data_to_pipe_from_cmdline.first().unwrap();
 
   // just a box to store the exite code
   let exit_code: i32;
@@ -194,34 +191,28 @@ fn main() {
   // Given our input parsed via clap, we can construct the `CliModuleArgs`
   // in tiny steps
   let cli_module_args: CliModuleArgs = CliModuleArgs {
-    cli_args: Some(ArgMatches {
-      args: HashMap::from(["command", *data_to_pipe_from_cmdline.first().unwrap()]),
-    }),
+    // insert the hashmap constructed in the match.command
+    cli_args: Some(ArgMatches { args: args_hashmap }),
+    // and the defaults
     ..Default::default()
   };
 
-  dbg!(&data_to_pipe_from_cmdline);
   dbg!(&cli_module_args.cli_args);
 
   // to compare the list of handlers to the `cli_args`
-  if let Some(ref command) = cli_module_args.cli_args {
-    println!("llego hasta aca!");
-    for bookshelf_handler in cli_handlers {
-      dbg!("{bookshelf_handler:?}");
-      if bookshelf_handler.subcommand.to_owned()
-        == command
-          .value_of(&bookshelf_handler.subcommand.to_owned())
-          .unwrap()
-      {
-        println!("found the handler!");
-        handler = bookshelf_handler;
+  let command = cli_module_args.cli_args.clone().unwrap().args;
 
-        exit_code = (handler.entry)(cli_module_args);
-        info_println!("{}", exit_code);
-        std::process::exit(exit_code);
-      }
+  for bookshelf_handler in cli_handlers {
+    dbg!(&bookshelf_handler);
+    if bookshelf_handler.subcommand.clone() == *command.get("command").unwrap() {
+      println!("found the handler!");
+      handler = bookshelf_handler;
+
+      exit_code = (handler.entry)(cli_module_args);
+      dbg!(exit_code);
+      std::process::exit(exit_code);
     }
-  };
+  }
 
   println!("something should have been catched...");
   std::process::exit(1);
