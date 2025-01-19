@@ -312,22 +312,26 @@ pub struct ArgMatches<'a> {
 }
 
 impl ArgMatches<'_> {
-  pub fn new() -> Self {
-    ArgMatches {
-      args: HashMap::new(),
+  // pub fn new() -> Self {
+  //   ArgMatches {
+  //     args: HashMap::new(),
+  //   }
+  // }
+
+  pub fn subcommand_matches(&self, id: &str) -> Option<&ArgMatches> {
+    if std::convert::AsRef::<str>::as_ref(self.args.get("subcommand").unwrap()) == id {
+      return Some(self);
     }
-  }
-  pub fn subcommand_matches(&self, lookup: &str) -> &Option<ArgMatches> {
-    &None
+    None
   }
 
   pub fn value_of(&self, lookup_key: &str) -> Option<&str> {
-    for (key, value) in self.args.iter() {
+    for (key, value) in &self.args {
       if *key == lookup_key {
         return Some(value);
       }
     }
-    return None;
+    None
   }
   pub fn is_present(&self, lookup: &str) -> bool {
     for key in self.args.keys() {
@@ -350,27 +354,27 @@ pub struct CliModuleArgs<'a> {
   pub cli_args: Option<ArgMatches<'a>>,
 }
 
-impl<'a> CliModuleArgs<'a> {
-  pub fn new(
-    config_store: Option<Box<dyn ConfigStore>>,
-    match_store: Option<Box<dyn MatchStore>>,
-    is_legacy_config: bool,
-    non_fatal_errors: Vec<NonFatalErrorSet>,
-    paths: Option<Paths>,
-    paths_overrides: Option<PathsOverrides>,
-    cli_args: Option<ArgMatches<'a>>,
-  ) -> Self {
-    Self {
-      config_store,
-      match_store,
-      is_legacy_config,
-      non_fatal_errors,
-      paths,
-      paths_overrides,
-      cli_args,
-    }
-  }
-}
+// impl<'a> CliModuleArgs<'a> {
+//   pub fn new(
+//     config_store: Option<Box<dyn ConfigStore>>,
+//     match_store: Option<Box<dyn MatchStore>>,
+//     is_legacy_config: bool,
+//     non_fatal_errors: Vec<NonFatalErrorSet>,
+//     paths: Option<Paths>,
+//     paths_overrides: Option<PathsOverrides>,
+//     cli_args: Option<ArgMatches<'a>>,
+//   ) -> Self {
+//     Self {
+//       config_store,
+//       match_store,
+//       is_legacy_config,
+//       non_fatal_errors,
+//       paths,
+//       paths_overrides,
+//       cli_args,
+//     }
+//   }
+// }
 
 #[derive(Debug)]
 pub struct PathsOverrides {

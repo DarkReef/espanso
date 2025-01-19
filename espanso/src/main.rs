@@ -23,6 +23,7 @@
 use std::{collections::HashMap, path::PathBuf};
 
 mod cli;
+mod config;
 mod gui;
 mod icon;
 mod ipc;
@@ -35,8 +36,9 @@ mod preferences;
 mod util;
 
 use clap::Parser;
-use cli::{ArgMatches, CliModule, CliModuleArgs};
-use espanso_config::config::ConfigStore;
+use cli::{ArgMatches, CliModule, CliModuleArgs, LogMode};
+use config::{load_config, ConfigLoadResult};
+use espanso_path::Paths;
 use log::LevelFilter;
 use logging::FileProxy;
 use simplelog::{
@@ -159,7 +161,12 @@ fn main() {
         }
         cli::MatchArgs::List(_flags) => {
           args_hashmap.insert("subcommand", "list");
-        }
+          // you should match multiple times for all the passed flags
+          // if (_flags.json) {
+          //   args_hashmap.insert("flag", "json");
+          //   ...
+          // }
+        } // args_hashmap.insert("list", _flags);
       };
     }
     cli::Command::Package { .. } => println!("some dummy output"),
@@ -187,10 +194,12 @@ fn main() {
   // is a function that takes `CliModuleArgs` and returns an `i32`
   // (an `exit_code`)
   let handler: CliModule;
+  let config_result: ConfigLoadResult;
+  let paths: Paths;
 
   // Given our input parsed via clap, we can construct the `CliModuleArgs`
   // in tiny steps
-  let cli_module_args: CliModuleArgs = CliModuleArgs {
+  let mut cli_module_args: CliModuleArgs = CliModuleArgs {
     // insert the hashmap constructed in the match.command
     cli_args: Some(ArgMatches { args: args_hashmap }),
     // and the defaults
@@ -200,13 +209,60 @@ fn main() {
   dbg!(&cli_module_args.cli_args);
 
   // to compare the list of handlers to the `cli_args`
-  let command = cli_module_args.cli_args.clone().unwrap().args;
-
   for bookshelf_handler in cli_handlers {
     dbg!(&bookshelf_handler);
-    if bookshelf_handler.subcommand.clone() == *command.get("command").unwrap() {
+    if bookshelf_handler.subcommand.clone()
+      == *cli_module_args
+        .cli_args
+        .clone()
+        .unwrap()
+        .args
+        .get("command")
+        .unwrap()
+    {
       println!("found the handler!");
       handler = bookshelf_handler;
+      if handler.requires_paths || handler.requires_config {
+        let force_config_path = get_path_override(
+          &cli_module_args.cli_args.clone().unwrap(),
+          "config_dir",
+          "ESPANSO_CONFIG_DIR",
+        );
+        let force_package_path = get_path_override(
+          &cli_module_args.cli_args.clone().unwrap(),
+          "package_dir",
+          "ESPANSO_PACKAGE_DIR",
+        );
+        let force_runtime_path = get_path_override(
+          &cli_module_args.cli_args.clone().unwrap(),
+          "runtime_dir",
+          "ESPANSO_RUNTIME_DIR",
+        );
+
+        paths = espanso_path::resolve_paths(
+          force_config_path.as_deref(),
+          force_package_path.as_deref(),
+          force_runtime_path.as_deref(),
+        );
+        cli_module_args.paths = Some(paths.clone());
+
+        if handler.requires_config {
+          config_result = load_config(&paths.config).expect("unable to load config");
+          cli_module_args.config_store = Some(config_result.config_store);
+          cli_module_args.match_store = Some(config_result.match_store);
+          cli_module_args.non_fatal_errors = config_result.non_fatal_errors;
+        }
+
+        if handler.enable_logs {
+          log_proxy
+            .set_output_file(
+              &paths.runtime.join(LOG_FILE_NAME),
+              handler.log_mode == LogMode::Read,
+              handler.log_mode == LogMode::CleanAndAppend,
+            )
+            .expect("unable to set up output log file");
+        }
+      }
 
       exit_code = (handler.entry)(cli_module_args);
       dbg!(exit_code);
@@ -218,11 +274,10 @@ fn main() {
   std::process::exit(1);
 }
 
-/// if you pass `Config`, `Package` or `Runtime` returns you the path
-/// # TODO!
-fn get_path_override(_: u8, argument: &str, env_var: &str) -> Option<PathBuf> {
-  if true {
-    let path = PathBuf::from(argument.trim());
+/// if you pass Config, Package or Runtime returns you the path to that file
+fn get_path_override(matches: &ArgMatches, argument: &str, env_var: &str) -> Option<PathBuf> {
+  if let Some(path) = matches.value_of(argument) {
+    let path = PathBuf::from(path.trim());
     if path.is_dir() {
       Some(path)
     } else {
