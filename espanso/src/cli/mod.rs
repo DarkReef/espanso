@@ -37,7 +37,6 @@ pub mod match_cli;
 //pub mod util;
 //pub mod workaround;
 //pub mod worker;
-
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser)]
@@ -50,8 +49,8 @@ pub struct Arguments {
   #[command(subcommand)]
   pub command: Command,
 
-  // Sets the level of verbosity
   #[arg(short, long, action = clap::ArgAction::Count)]
+  // Sets the level of verbosity
   pub verbose: u8,
 }
 
@@ -135,6 +134,7 @@ pub enum EnvPathSubCommand {
   Unregister,
 }
 
+#[allow(clippy::struct_excessive_bools)] // you need this for the flags
 #[derive(Args, Debug)]
 #[command(args_conflicts_with_subcommands = true)]
 #[command(arg_required_else_help = true)]
@@ -174,16 +174,12 @@ pub struct InstallArgs {
 #[derive(Debug, Subcommand)]
 pub enum MatchArgs {
   /// Triggers the expansion of a match
-  Exec(MatchExecCommand),
+  Exec {
+    /// Trigger you want to activate
+    trigger: String,
+  },
   /// Print matches to standard output
   List(MatchListCommand),
-}
-
-#[derive(Args, Debug)]
-pub struct MatchExecCommand {
-  /// Specify also an argument for the expansion, following the --arg 'name=value' format. You can specify multiple args.
-  #[arg(short, long)]
-  arg: String,
 }
 
 #[derive(Args, Debug)]
@@ -272,6 +268,7 @@ pub enum WorkaroundArgs {
 }
 
 #[allow(dead_code)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct CliModule {
   pub enable_logs: bool,
   pub disable_logs_terminal_output: bool,
@@ -350,6 +347,28 @@ pub struct CliModuleArgs {
   pub paths: Option<Paths>,
   pub paths_overrides: Option<PathsOverrides>,
   pub cli_args: Option<ArgMatches>,
+}
+
+impl CliModuleArgs {
+  pub fn new(
+    config_store: Option<Box<dyn ConfigStore>>,
+    match_store: Option<Box<dyn MatchStore>>,
+    is_legacy_config: bool,
+    non_fatal_errors: Vec<NonFatalErrorSet>,
+    paths: Option<Paths>,
+    paths_overrides: Option<PathsOverrides>,
+    cli_args: Option<ArgMatches>,
+  ) -> Self {
+    Self {
+      config_store,
+      match_store,
+      is_legacy_config,
+      non_fatal_errors,
+      paths,
+      paths_overrides,
+      cli_args,
+    }
+  }
 }
 
 #[derive(Debug)]

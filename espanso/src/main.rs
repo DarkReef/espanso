@@ -20,7 +20,7 @@
 // This is needed to avoid showing a console window when starting espanso on Windows
 #![windows_subsystem = "windows"]
 
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 mod cli;
 mod gui;
@@ -35,7 +35,8 @@ mod preferences;
 mod util;
 
 use clap::Parser;
-use cli::{CliModule, CliModuleArgs};
+use cli::{ArgMatches, CliModule, CliModuleArgs};
+use espanso_config::config::ConfigStore;
 use log::LevelFilter;
 use logging::FileProxy;
 use simplelog::{
@@ -62,14 +63,6 @@ fn main() {
     //cli::package::new(),
     cli::match_cli::new(),
   ];
-  // just a box to store the exite code
-  let mut exit_code: i32;
-
-  // cli module that is called from the terminal (match, package, exec, etc)
-  // let cli_module: CliModule;
-  // do we need this?
-
-  let mut cli_module_args: CliModuleArgs = CliModuleArgs::default();
 
   let args = cli::Arguments::parse();
 
@@ -119,55 +112,55 @@ fn main() {
   log_panics::init();
 
   // declare the data here
-  let mut data_to_pipe_from_cmdline;
+  let mut data_to_pipe_from_cmdline: Vec<&str> = vec![];
+
   match args.command {
-    cli::Command::Cmd { .. } => println!("something anything"),
-    cli::Command::Edit { target_file } => {
-      if target_file.is_some() {
-        println!("the file {:#?}", target_file)
-      } else {
-        println!("`espanso edit` (empty) was passed")
+    cli::Command::Cmd(subcmd) => {
+      println!("something anything");
+      data_to_pipe_from_cmdline.push("cmd");
+      match subcmd {
+        cli::CmdCommand::Disable => {
+          data_to_pipe_from_cmdline.push("disable");
+        }
+        cli::CmdCommand::Enable => {
+          data_to_pipe_from_cmdline.push("enable");
+        }
+        cli::CmdCommand::Search => {
+          data_to_pipe_from_cmdline.push("search");
+        }
+        cli::CmdCommand::Toggle => {
+          data_to_pipe_from_cmdline.push("toggle");
+        }
       }
+    }
+    cli::Command::Edit { target_file } => {
+      data_to_pipe_from_cmdline.push("edit");
+      if let Some(file) = target_file {
+        // data_to_pipe_from_cmdline.push(file.as_str().clone());
+        data_to_pipe_from_cmdline.push("my special match file");
+        println!("the file {file:#?}");
+      } else {
+        println!("`espanso edit` (empty) was passed");
+      };
     }
     cli::Command::EnvPath(..) => println!("some dummy output"),
     cli::Command::Install { .. } => println!("some dummy output"),
     cli::Command::Launch {} => println!("some dummy output"),
     cli::Command::Log {} => {
       println!("some dummy output");
-      // add to the data down here
-      data_to_pipe_from_cmdline = String::from("Log command");
+      data_to_pipe_from_cmdline.push("log");
     }
-
     cli::Command::Match(cmd) => {
+      data_to_pipe_from_cmdline.push("match");
       println!("some dummy output");
 
       match cmd {
-        cli::MatchArgs::Exec(_flags) => {
-          if let Some(args) = cli_module_args.cli_args.as_mut() {
-            args
-              .args
-              .insert("subcommand".to_string(), "Exec".to_string());
-            args.args.insert("Exec".to_string(), "".to_string());
-          }
+        cli::MatchArgs::Exec { .. } => {
+          data_to_pipe_from_cmdline.push("exec");
+          //data_to_pipe_from_cmdline.push();
         }
         cli::MatchArgs::List(_flags) => {
-          //if let Some(args) = cli_module_args.cli_args.as_mut() {
-          // we are sure that it's none because the program just started
-          cli_module_args
-            .cli_args
-            .clone()
-            .args
-            .insert("subcommand".to_string(), "list".to_string());
-          println!("entro en match args list");
-
-          cli_module_args
-            .cli_args
-            .clone()
-            .unwrap()
-            .args
-            .insert("List".to_string(), "".to_string());
-
-          dbg!("options are: {:?}", cli_module_args.cli_args.is_some());
+          data_to_pipe_from_cmdline.push("list");
         }
       };
     }
@@ -186,17 +179,33 @@ fn main() {
   if handler.show_in_dock {
     espanso_mac_utils::convert_to_foreground_app();
   }
+  let command = *data_to_pipe_from_cmdline.first().unwrap();
 
-  // and the add it to the `cli_module`
-  data_to_pipe_from_cmdline = String::from("Log command");
-  // and handle the execution
+  // just a box to store the exite code
+  let exit_code: i32;
 
+  // This is the handler (what effectively runs the cmds)
+  //
+  // inside the handler, it's the `CliModule.entry` field, which
+  // is a function that takes `CliModuleArgs` and returns an `i32`
+  // (an `exit_code`)
   let handler: CliModule;
 
-  dbg!("options are: {:?}", cli_module_args.cli_args.is_some());
-  println!("llego hasta aca!");
+  // Given our input parsed via clap, we can construct the `CliModuleArgs`
+  // in tiny steps
+  let cli_module_args: CliModuleArgs = CliModuleArgs {
+    cli_args: Some(ArgMatches {
+      args: HashMap::from(["command", *data_to_pipe_from_cmdline.first().unwrap()]),
+    }),
+    ..Default::default()
+  };
 
+  dbg!(&data_to_pipe_from_cmdline);
+  dbg!(&cli_module_args.cli_args);
+
+  // to compare the list of handlers to the `cli_args`
   if let Some(ref command) = cli_module_args.cli_args {
+    println!("llego hasta aca!");
     for bookshelf_handler in cli_handlers {
       dbg!("{bookshelf_handler:?}");
       if bookshelf_handler.subcommand.to_owned()
