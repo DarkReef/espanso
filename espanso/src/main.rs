@@ -55,7 +55,7 @@ fn main() {
     //cli::edit::new(),
     //cli::env_path::new(),
     //cli::launcher::new(),
-    //cli::log::new(),
+    cli::log::new(),
     //cli::worker::new(),
     //cli::daemon::new(),
     //cli::modulo::new(),
@@ -115,6 +115,8 @@ fn main() {
 
   // declare the data here
   let mut args_hashmap: HashMap<&str, &str> = HashMap::new();
+  // input typed by the user (arg)
+  let mut user_input = String::new();
 
   match args.command {
     cli::Command::Cmd(subcmd) => {
@@ -156,17 +158,23 @@ fn main() {
       println!("some dummy output");
 
       match cmd {
-        cli::MatchArgs::Exec { .. } => {
+        cli::MatchArgs::Exec { trigger } => {
           args_hashmap.insert("subcommand", "exec");
+          trigger.clone_into(&mut user_input);
+          args_hashmap.insert("trigger", user_input.as_str());
         }
-        cli::MatchArgs::List(_flags) => {
+        cli::MatchArgs::List(flags) => {
           args_hashmap.insert("subcommand", "list");
-          // you should match multiple times for all the passed flags
-          // if (_flags.json) {
-          //   args_hashmap.insert("flag", "json");
-          //   ...
-          // }
-        } // args_hashmap.insert("list", _flags);
+          if flags.json {
+            args_hashmap.insert("json", "true");
+          }
+          if flags.only_triggers {
+            args_hashmap.insert("onlytriggers", "true");
+          }
+          if flags.preserve_newlines {
+            args_hashmap.insert("preservenewlines", "true");
+          }
+        }
       };
     }
     cli::Command::Package { .. } => println!("some dummy output"),
@@ -270,11 +278,10 @@ fn main() {
     }
   }
 
-  println!("something should have been catched...");
   std::process::exit(1);
 }
 
-/// if you pass Config, Package or Runtime returns you the path to that file
+/// if you pass Config, Package or Runtime returns you the path
 fn get_path_override(matches: &ArgMatches, argument: &str, env_var: &str) -> Option<PathBuf> {
   if let Some(path) = matches.value_of(argument) {
     let path = PathBuf::from(path.trim());

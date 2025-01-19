@@ -28,7 +28,7 @@ use espanso_path::Paths;
 //pub mod edit;
 //pub mod env_path;
 //pub mod launcher;
-//pub mod log;
+pub mod log;
 pub mod match_cli;
 //pub mod modulo;
 //pub mod package;
@@ -120,10 +120,10 @@ pub enum CmdCommand {
 #[command(arg_required_else_help = true)]
 pub struct EnvPathArgs {
   #[command(subcommand)]
-  command: Option<EnvPathSubCommand>,
+  pub command: Option<EnvPathSubCommand>,
 
   #[arg(short, long)]
-  prompt: bool,
+  pub prompt: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -140,35 +140,35 @@ pub enum EnvPathSubCommand {
 #[command(arg_required_else_help = true)]
 pub struct InstallArgs {
   /// Package name
-  package_name: String,
+  pub package_name: String,
 
   /// Allow installing packages from non-verified repositories
   #[arg(short, long)]
-  external: bool,
+  pub external: bool,
 
   /// Overwrite the package if already installed
   #[arg(short, long)]
-  force: bool,
+  pub force: bool,
 
   /// Git repository from which espanso should install the package
   #[arg(short, long)]
-  git_repo: Option<String>,
+  pub git_repo: Option<String>,
 
   /// Force espanso to search for the package on a specific git branch
   #[arg(short = 'b', long)]
-  git_branch: Option<String>,
+  pub git_branch: Option<String>,
 
   /// Request a fresh copy of the Espanso Hub package index instead of using the cached version
   #[arg(short, long)]
-  refresh_index: bool,
+  pub refresh_index: bool,
 
   /// If specified, espanso will use the 'git' command instead of trying direct methods
   #[arg(short, long)]
-  use_native_git: bool,
+  pub use_native_git: bool,
 
   /// Force a particular version to be installed instead of the latest available
   #[arg(short, long)]
-  version: Option<String>,
+  pub version: Option<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -187,15 +187,15 @@ pub enum MatchArgs {
 pub struct MatchListCommand {
   /// Output matches to the JSON format
   #[arg(short, long)]
-  json: bool,
+  pub json: bool,
 
-  /// Print only triggers without replacement
+  /// Print only triggers without replacement. Does nothing when using JSON format
   #[arg(short = 't', long)]
-  only_triggers: bool,
+  pub only_triggers: bool,
 
   /// Preserve newlines when printing replacements. Does nothing when using JSON format
   #[arg(short = 'n', long)]
-  preserve_newlines: bool,
+  pub preserve_newlines: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -258,7 +258,7 @@ pub enum ServiceCommand {
 pub struct ServiceCommandUnmanagedFlag {
   /// Run espanso as an unmanaged service (avoid system manager)
   #[arg(long)]
-  unmanaged: bool,
+  pub unmanaged: bool,
 }
 
 #[derive(Subcommand, Debug)]
