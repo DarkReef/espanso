@@ -165,6 +165,19 @@ fn main() {
         }
         cli::MatchArgs::List(flags) => {
           args_hashmap.insert("subcommand", "list");
+          if let Some(class) = flags.class {
+            class.clone_into(&mut user_input);
+            args_hashmap.insert("class", user_input.as_str());
+          }
+          if let Some(exec) = flags.exec {
+            dbg!(&exec);
+            dbg!(&user_input);
+            args_hashmap.insert("exec", exec.as_str());
+          }
+          if let Some(title) = flags.title {
+            title.clone_into(&mut user_input.clone());
+            args_hashmap.insert("title", user_input.as_str());
+          }
           if flags.json {
             args_hashmap.insert("json", "true");
           }

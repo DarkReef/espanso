@@ -185,6 +185,24 @@ pub enum MatchArgs {
 #[derive(Args, Debug)]
 #[command(args_conflicts_with_subcommands = true)]
 pub struct MatchListCommand {
+  #[arg(long)]
+  /// Only return matches that would be active with the given class. This is
+  /// relevant if you want to list matches only active inside an app-specific
+  /// config.
+  pub class: Option<String>,
+
+  #[arg(long)]
+  /// Only return matches that would be active with the given exec. This is
+  /// relevant if you want to list matches only active inside an app-specific
+  /// config.
+  pub exec: Option<String>,
+
+  #[arg(long)]
+  /// Only return matches that would be active with the given title. This
+  /// is relevant if you want to list matches only active inside an app-specific
+  /// config.
+  pub title: Option<String>,
+
   /// Output matches to the JSON format
   #[arg(short, long)]
   pub json: bool,
