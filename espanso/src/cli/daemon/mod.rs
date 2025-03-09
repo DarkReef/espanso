@@ -46,6 +46,8 @@ mod keyboard_layout_watcher;
 mod troubleshoot;
 mod watcher;
 
+include!(concat!(env!("OUT_DIR"), "/git_commit.rs"));
+
 pub fn new() -> CliModule {
   #[allow(clippy::needless_update)]
   CliModule {
@@ -115,7 +117,8 @@ fn daemon_main(args: CliModuleArgs) -> i32 {
       }
     };
 
-  info!("espanso version: {}", VERSION);
+  let commit_hash = GIT_COMMIT_HASH;
+  info!("espanso version: {VERSION}\n  commit hash: {commit_hash}");
   // TODO: print os system and version? (with os_info crate)
 
   terminate_worker_if_already_running(&paths.runtime);
