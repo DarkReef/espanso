@@ -20,19 +20,10 @@
 use std::io::BufRead;
 use std::{fs::File, io::BufReader};
 
-use super::{CliModule, CliModuleArgs};
+use crate::path::Paths;
 
-pub fn new() -> CliModule {
-    CliModule {
-        requires_paths: true,
-        subcommand: "log".to_string(),
-        entry: log_main,
-        ..Default::default()
-    }
-}
-
-fn log_main(args: CliModuleArgs) -> i32 {
-    let paths = args.paths.expect("missing paths argument");
+pub fn log_main(paths: Option<Paths>) -> i32 {
+    let paths = paths.expect("missing paths argument");
     let log_file = paths.runtime.join(crate::LOG_FILE_NAME);
 
     if !log_file.exists() {

@@ -36,35 +36,21 @@ mod preferences;
 mod util;
 
 use clap::Parser;
-use cli::{ArgMatches, CliModule, CliModuleArgs, LogMode};
+use cli::LogMode;
 use config::{load_config, ConfigLoadResult};
-use log::LevelFilter;
+use log::{info, LevelFilter};
 use logging::FileProxy;
 use path::resolve_paths;
 use simplelog::{
     CombinedLogger, ConfigBuilder, SharedLogger, TermLogger, TerminalMode, WriteLogger,
 };
 
+use crate::{cli::log::log_main, path::Paths};
+
 const LOG_FILE_NAME: &str = "espanso.log";
 
 fn main() {
     util::attach_console();
-
-    let cli_handlers: Vec<CliModule> = vec![
-        //cli::cmd::new(),
-        //cli::edit::new(),
-        //cli::env_path::new(),
-        //cli::launcher::new(),
-        cli::log::new(),
-        //cli::worker::new(),
-        //cli::daemon::new(),
-        //cli::modulo::new(),
-        //cli::path::new(),
-        //cli::service::new(),
-        //cli::workaround::new(),
-        //cli::package::new(),
-        cli::match_cli::new(),
-    ];
 
     let args = cli::Arguments::parse();
 
@@ -118,22 +104,52 @@ fn main() {
     // input typed by the user (arg)
     let mut user_input = String::new();
 
-    match args.command {
+    let paths: path::Paths;
+
+    // let force_config_path = get_path_override(
+    //     &cli_module_args.cli_args.clone().unwrap(),
+    //     "config_dir",
+    //     "ESPANSO_CONFIG_DIR",
+    // );
+    // let force_package_path = get_path_override(
+    //     &cli_module_args.cli_args.clone().unwrap(),
+    //     "package_dir",
+    //     "ESPANSO_PACKAGE_DIR",
+    // );
+    // let force_runtime_path = get_path_override(
+    //     &cli_module_args.cli_args.clone().unwrap(),
+    //     "runtime_dir",
+    //     "ESPANSO_RUNTIME_DIR",
+    // );
+
+    // TODO: resolve this
+    paths = resolve_paths(None, None, None);
+
+    let config_result = load_config(&paths.config).expect("unable to load config");
+
+    // just a box to store the exite code
+    let exit_code: i32;
+
+    exit_code = match args.command {
         cli::Command::Cmd(subcmd) => {
             println!("something anything");
             args_hashmap.insert("command", "cmd");
             match subcmd {
                 cli::CmdCommand::Disable => {
                     args_hashmap.insert("subcommand", "disable");
+                    1 // TODO
                 }
                 cli::CmdCommand::Enable => {
                     args_hashmap.insert("subcommand", "enable");
+                    1 // TODO
                 }
                 cli::CmdCommand::Search => {
                     args_hashmap.insert("subcommand", "search");
+                    1 // TODO
                 }
                 cli::CmdCommand::Toggle => {
                     args_hashmap.insert("subcommand", "toggle");
+                    1 // TODO
                 }
             }
         }
@@ -145,13 +161,24 @@ fn main() {
                 args_hashmap.insert("edit-file", "empty");
                 println!("`espanso edit` (empty) was passed");
             };
+            1 // TODO
         }
-        cli::Command::EnvPath(..) => println!("some dummy output"),
-        cli::Command::Install { .. } => println!("some dummy output"),
-        cli::Command::Launch {} => println!("some dummy output"),
+        cli::Command::EnvPath(..) => {
+            println!("some dummy output");
+            1 // TODO
+        }
+        cli::Command::Install { .. } => {
+            println!("some dummy output");
+            1 // TODO
+        }
+        cli::Command::Launch {} => {
+            println!("some dummy output");
+            1 // TODO
+        }
         cli::Command::Log {} => {
             println!("some dummy output");
-            args_hashmap.insert("command", "log");
+            enable_logs(log_proxy, &paths, LogMode::Read);
+            log_main(Some(paths))
         }
         cli::Command::Match(cmd) => {
             args_hashmap.insert("command", "match");
@@ -172,7 +199,6 @@ fn main() {
                     if let Some(exec) = flags.exec {
                         dbg!(&exec);
                         dbg!(&user_input);
-                        args_hashmap.insert("exec", exec.as_str());
                     }
                     if let Some(title) = flags.title {
                         title.clone_into(&mut user_input.clone());
@@ -189,149 +215,121 @@ fn main() {
                     }
                 }
             };
+
+            1 // TODO
         }
-        cli::Command::Package { .. } => println!("some dummy output"),
-        cli::Command::Path { .. } => println!("some dummy output"),
-        cli::Command::Restart {} => println!("some dummy output"),
-        cli::Command::Service(..) => println!("some dummy output"),
-        cli::Command::Start(..) => println!("some dummy output"),
-        cli::Command::Status {} => println!("some dummy output"),
-        cli::Command::Stop(..) => println!("some dummy output"),
-        cli::Command::Uninstall(..) => println!("some dummy output"),
-        cli::Command::Workaround(..) => println!("some dummy output"),
-    }
+        cli::Command::Package { .. } => {
+            println!("some dummy output");
+            1 // TODO
+        }
+        cli::Command::Path { .. } => {
+            // if cli_args.subcommand_matches("config").is_some() {
+            //     println!("{}", paths.config.to_string_lossy());
+            // } else if cli_args.subcommand_matches("packages").is_some() {
+            //     println!("{}", paths.packages.to_string_lossy());
+            // } else if cli_args.subcommand_matches("data").is_some()
+            //     || cli_args.subcommand_matches("runtime").is_some()
+            // {
+            //     println!("{}", paths.runtime.to_string_lossy());
+            // } else if cli_args.subcommand_matches("default").is_some() {
+            //     println!(
+            //         "{}",
+            //         paths
+            //             .config
+            //             .join("config")
+            //             .join("default.yml")
+            //             .to_string_lossy()
+            //     );
+            // } else if cli_args.subcommand_matches("base").is_some() {
+            //     println!(
+            //         "{}",
+            //         paths
+            //             .config
+            //             .join("match")
+            //             .join("base.yml")
+            //             .to_string_lossy()
+            //     );
+            // } else {
+            //     println!("Config: {}", paths.config.to_string_lossy());
+            //     println!("Packages: {}", paths.packages.to_string_lossy());
+            //     println!("Runtime: {}", paths.runtime.to_string_lossy());
+            // }
+
+            // 0
+            1 // TODO
+        }
+        cli::Command::Restart {} => {
+            println!("some dummy output");
+            1 // TODO
+        }
+        cli::Command::Service(..) => {
+            println!("some dummy output");
+            1 // TODO
+        }
+        cli::Command::Start(..) => {
+            println!("some dummy output");
+            1 // TODO
+        }
+        cli::Command::Status {} => {
+            println!("some dummy output");
+            1 // TODO
+        }
+        cli::Command::Stop(..) => {
+            println!("some dummy output");
+            1 // TODO
+        }
+        cli::Command::Uninstall(..) => {
+            println!("some dummy output");
+            1 // TODO
+        }
+        cli::Command::Workaround(..) => {
+            println!("some dummy output");
+            1 // TODO
+        }
+    };
 
     #[cfg(target_os = "macos")]
     if handler.show_in_dock {
         espanso_mac_utils::convert_to_foreground_app();
     }
 
-    // just a box to store the exite code
-    let exit_code: i32;
-
-    // This is the handler (what effectively runs the cmds)
-    //
-    // inside the handler, it's the `CliModule.entry` field, which
-    // is a function that takes `CliModuleArgs` and returns an `i32`
-    // (an `exit_code`)
-    let handler: CliModule;
-    let config_result: ConfigLoadResult;
-    let paths: path::Paths;
-
-    // Given our input parsed via clap, we can construct the `CliModuleArgs`
-    // in tiny steps
-    let mut cli_module_args: CliModuleArgs = CliModuleArgs {
-        // insert the hashmap constructed in the match.command
-        cli_args: Some(ArgMatches { args: args_hashmap }),
-        // and the defaults
-        ..Default::default()
-    };
-
-    dbg!(&cli_module_args.cli_args);
-
     // to compare the list of handlers to the `cli_args`
-    for bookshelf_handler in cli_handlers {
-        dbg!(&bookshelf_handler);
-        if bookshelf_handler.subcommand.clone()
-            == *cli_module_args
-                .cli_args
-                .clone()
-                .unwrap()
-                .args
-                .get("command")
-                .unwrap()
-        {
-            println!("found the handler!");
-            handler = bookshelf_handler;
-            if handler.requires_paths || handler.requires_config {
-                let force_config_path = get_path_override(
-                    &cli_module_args.cli_args.clone().unwrap(),
-                    "config_dir",
-                    "ESPANSO_CONFIG_DIR",
-                );
-                let force_package_path = get_path_override(
-                    &cli_module_args.cli_args.clone().unwrap(),
-                    "package_dir",
-                    "ESPANSO_PACKAGE_DIR",
-                );
-                let force_runtime_path = get_path_override(
-                    &cli_module_args.cli_args.clone().unwrap(),
-                    "runtime_dir",
-                    "ESPANSO_RUNTIME_DIR",
-                );
-
-                paths = resolve_paths(
-                    force_config_path.as_deref(),
-                    force_package_path.as_deref(),
-                    force_runtime_path.as_deref(),
-                );
-                cli_module_args.paths = Some(paths.clone());
-
-                if handler.requires_config {
-                    let config_result = load_config(&paths.config).expect("unable to load config");
-
-                    cli_args.config_store = Some(config_result.config_store);
-                    cli_args.match_store = Some(config_result.match_store);
-                    cli_args.non_fatal_errors = config_result.non_fatal_errors;
-                }
-
-                if handler.enable_logs {
-                    log_proxy
-                        .set_output_file(
-                            &paths.runtime.join(LOG_FILE_NAME),
-                            handler.log_mode == LogMode::Read,
-                            handler.log_mode == LogMode::CleanAndAppend,
-                        )
-                        .expect("unable to set up log output file");
-                }
-
-                cli_args.paths = Some(paths);
-            }
-
-            // try to invoke `kdotool` to see if you have it or not.
-            if Command::new("kdotool")
-                .arg("getactivewindow")
-                .arg("getwindowclassname")
-                .output()
-                .is_ok()
-            {
-            } else {
-                info!("kdotool missing or not available for the current wayland DE.");
-            }
-
-            if let Some(args) = matches.subcommand_matches(&handler.subcommand) {
-                cli_args.cli_args = Some(args.clone());
-            }
-
-            let exit_code = (handler.entry)(cli_args);
-
-            std::process::exit(exit_code);
-        }
+    // try to invoke `kdotool` to see if you have it or not.
+    if Command::new("kdotool")
+        .arg("getactivewindow")
+        .arg("getwindowclassname")
+        .output()
+        .is_ok()
+    {
+    } else {
+        info!("kdotool missing or not available for the current wayland DE.");
     }
+
+    std::process::exit(exit_code);
 }
 
 /// if you pass Config, Package or Runtime returns you the path
-fn get_path_override(matches: &ArgMatches, argument: &str, env_var: &str) -> Option<PathBuf> {
-    if let Some(path) = matches.value_of(argument) {
-        let path = PathBuf::from(path.trim());
-        if path.is_dir() {
-            Some(path)
-        } else {
-            error_eprintln!("{} argument was specified, but it doesn't point to a valid directory. Make sure to create it first.", argument);
-            std::process::exit(1);
-        }
-    } else if let Ok(path) = std::env::var(env_var) {
-        let path = PathBuf::from(path.trim());
-        if path.is_dir() {
-            Some(path)
-        } else {
-            error_eprintln!("{} env variable was specified, but it doesn't point to a valid directory. Make sure to create it first.", env_var);
-            std::process::exit(1);
-        }
-    } else {
-        None
-    }
-}
+// fn get_path_override(matches: &ArgMatches, argument: &str, env_var: &str) -> Option<PathBuf> {
+//     if let Some(path) = matches.value_of(argument) {
+//         let path = PathBuf::from(path.trim());
+//         if path.is_dir() {
+//             Some(path)
+//         } else {
+//             error_eprintln!("{} argument was specified, but it doesn't point to a valid directory. Make sure to create it first.", argument);
+//             std::process::exit(1);
+//         }
+//     } else if let Ok(path) = std::env::var(env_var) {
+//         let path = PathBuf::from(path.trim());
+//         if path.is_dir() {
+//             Some(path)
+//         } else {
+//             error_eprintln!("{} env variable was specified, but it doesn't point to a valid directory. Make sure to create it first.", env_var);
+//             std::process::exit(1);
+//         }
+//     } else {
+//         None
+//     }
+// }
 
 /// # Aliases pre-processing
 ///
@@ -388,6 +386,16 @@ fn preprocess_aliases(mut args: Vec<String>) -> Vec<String> {
         }
     }
     args
+}
+
+fn enable_logs(log_proxy: FileProxy, paths: &Paths, log_mode: LogMode) {
+    log_proxy
+        .set_output_file(
+            &paths.runtime.join(LOG_FILE_NAME),
+            log_mode == LogMode::Read,
+            log_mode == LogMode::CleanAndAppend,
+        )
+        .expect("unable to set up log output file");
 }
 
 #[cfg(test)]

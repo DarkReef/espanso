@@ -17,11 +17,9 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 
-use crate::path::Paths;
 use clap::{Args, Parser, Subcommand};
-use espanso_config::{config::ConfigStore, error::NonFatalErrorSet, matches::store::MatchStore};
 
 //pub mod cmd;
 //pub mod daemon;
@@ -29,10 +27,9 @@ use espanso_config::{config::ConfigStore, error::NonFatalErrorSet, matches::stor
 //pub mod env_path;
 //pub mod launcher;
 pub mod log;
-pub mod match_cli;
+// pub mod match_cli;
 //pub mod modulo;
 //pub mod package;
-pub mod path;
 //pub mod service;
 //pub mod util;
 //pub mod workaround;
@@ -297,7 +294,6 @@ pub struct CliModule {
     pub subcommand: String,
     pub show_in_dock: bool,
     pub requires_linux_capabilities: bool,
-    pub entry: fn(CliModuleArgs) -> i32,
 }
 
 impl Default for CliModule {
@@ -311,7 +307,6 @@ impl Default for CliModule {
             subcommand: String::new(),
             show_in_dock: false,
             requires_linux_capabilities: false,
-            entry: |_| 0,
         }
     }
 }
@@ -325,9 +320,7 @@ pub enum LogMode {
 
 /// Custom struct to wrap the old clap v3 `ArgMatches`
 #[derive(Debug, Clone)]
-pub struct ArgMatches {
-    pub args: HashMap<str, str>,
-}
+pub struct ArgMatches {}
 
 impl ArgMatches {
     // pub fn new() -> Self {
@@ -335,41 +328,17 @@ impl ArgMatches {
     //     args: HashMap::new(),
     //   }
     // }
-
-    pub fn subcommand_matches(&self, id: &str) -> Option<&ArgMatches> {
-        if std::convert::AsRef::<str>::as_ref(self.args.get("subcommand").unwrap()) == id {
-            return Some(self);
-        }
-        None
-    }
-
-    pub fn value_of(&self, lookup_key: &str) -> Option<&str> {
-        for (key, value) in &self.args {
-            if *key == lookup_key {
-                return Some(value);
-            }
-        }
-        None
-    }
-    pub fn is_present(&self, lookup: &str) -> bool {
-        for key in self.args.keys() {
-            if *key == lookup {
-                return true;
-            }
-        }
-        false
-    }
 }
 
-#[derive(Default)]
-pub struct CliModuleArgs {
-    pub config_store: Option<Box<dyn ConfigStore>>,
-    pub match_store: Option<Box<dyn MatchStore>>,
-    pub non_fatal_errors: Vec<NonFatalErrorSet>,
-    pub paths: Option<Paths>,
-    pub paths_overrides: Option<PathsOverrides>,
-    pub cli_args: Option<ArgMatches>,
-}
+// #[derive(Default)]
+// pub struct CliModuleArgs {
+//     pub config_store: Option<Box<dyn ConfigStore>>,
+//     pub match_store: Option<Box<dyn MatchStore>>,
+//     pub non_fatal_errors: Vec<NonFatalErrorSet>,
+//     pub paths: Option<Paths>,
+//     pub paths_overrides: Option<PathsOverrides>,
+//     pub cli_args: Option<ArgMatches>,
+// }
 
 // impl<'a> CliModuleArgs<'a> {
 //   pub fn new(
