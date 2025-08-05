@@ -18,6 +18,7 @@
  */
 
 use crossbeam::channel::unbounded;
+use espanso_config::{config::ConfigStore, matches::store::MatchStore};
 use espanso_engine::event::ExitMode;
 use log::{debug, error, info};
 
@@ -28,11 +29,12 @@ use crate::{
         WORKER_SUCCESS,
     },
     lock::acquire_worker_lock,
+    path::Paths,
 };
 
 use self::ui::util::convert_icon_paths_to_tray_vec;
 
-use super::{CliModule, CliModuleArgs};
+use super::CliModule;
 
 mod builtin;
 mod config;
@@ -58,11 +60,16 @@ pub fn new() -> CliModule {
     }
 }
 
-fn worker_main(args: CliModuleArgs) -> i32 {
+pub fn worker_main<C: ConfigStore, M: MatchStore>(
+    paths: Paths,
+    config_store: C,
+    match_store: M,
+) -> i32 {
     prevent_running_as_root_on_macos();
 
-    let paths = args.paths.expect("missing paths in worker main");
-    let cli_args = args.cli_args.expect("missing cli_args in worker main");
+    // it's missing the flags `start-reason` `monitor-daemon`
+
+    let cli_args = cli_args.expect("missing cli_args in worker main");
 
     // When restarted, the daemon passes the reason why the worker was restarted (config_change, etc)
     let start_reason = cli_args.value_of("start-reason").map(String::from);
@@ -74,13 +81,6 @@ fn worker_main(args: CliModuleArgs) -> i32 {
         error!("worker is already running!");
         return WORKER_ALREADY_RUNNING;
     }
-
-    let config_store = args
-        .config_store
-        .expect("missing config store in worker main");
-    let match_store = args
-        .match_store
-        .expect("missing match store in worker main");
 
     // TODO: show config loading errors in a GUI, if any
 

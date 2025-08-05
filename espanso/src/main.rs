@@ -116,6 +116,10 @@ fn main() {
 
     let config_result = load_config(&paths.config).expect("unable to load config");
 
+    let config_store = Some(config_result.config_store);
+    let match_store = Some(config_result.match_store);
+    let non_fatal_errors = config_result.non_fatal_errors;
+
     // just a box to store the exite code
     let exit_code = match args.command {
         cli::Command::Cmd(subcmd) => {
@@ -276,6 +280,9 @@ fn main() {
         cli::Command::Workaround(..) => {
             println!("some dummy output");
             1 // TODO
+        }
+        cli::Command::Worker => {
+            // ;;;;
         }
     };
 

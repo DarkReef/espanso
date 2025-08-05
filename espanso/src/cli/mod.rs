@@ -33,7 +33,7 @@ pub mod log;
 //pub mod service;
 pub mod util;
 //pub mod workaround;
-//pub mod worker;
+pub mod worker;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser)]
@@ -107,6 +107,8 @@ pub enum Command {
     /// A collection of workarounds to solve some common problems
     #[clap(subcommand)]
     Workaround(WorkaroundArgs),
+    /// Remove a package
+    Worker,
 }
 
 #[derive(Subcommand, Debug)]
