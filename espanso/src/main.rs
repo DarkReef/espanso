@@ -30,6 +30,7 @@ mod ipc;
 mod lock;
 #[macro_use]
 mod logging;
+mod exit_code;
 mod patch;
 mod path;
 mod preferences;
