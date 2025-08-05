@@ -20,7 +20,7 @@
 // This is needed to avoid showing a console window when starting espanso on Windows
 #![windows_subsystem = "windows"]
 
-use std::{collections::HashMap, path::PathBuf, process::Command};
+use std::{collections::HashMap, process::Command};
 
 mod cli;
 mod config;
@@ -37,7 +37,7 @@ mod util;
 
 use clap::Parser;
 use cli::LogMode;
-use config::{load_config, ConfigLoadResult};
+use config::load_config;
 use log::{info, LevelFilter};
 use logging::FileProxy;
 use path::resolve_paths;
@@ -50,7 +50,10 @@ use crate::{cli::log::log_main, path::Paths};
 const LOG_FILE_NAME: &str = "espanso.log";
 
 fn main() {
-    util::attach_console();
+    match util::attach_console() {
+        Ok(()) => info!("Console attached"),
+        Err(e) => panic!("Could not attach console! {e}"),
+    }
 
     let args = cli::Arguments::parse();
 
@@ -331,63 +334,6 @@ fn main() {
 //     }
 // }
 
-/// # Aliases pre-processing
-///
-/// Before clap gets to parse the arguments, we want to work with them. This is
-/// because clap is unable to alias one subcommand to a different (upper) level
-/// of the same command.
-/// I found App::visible_alias("alias") but it only works on the same level,
-/// like:
-/// `espanso service start` for `espanso service st`
-fn preprocess_aliases(mut args: Vec<String>) -> Vec<String> {
-    // make sure the vec is not empty
-    debug_assert!(
-        !args.is_empty(),
-        "Preprocess aliases got an empty vec! {args:#?}"
-    );
-
-    if args.len() >= 2 {
-        // Find the first non-flag argument (the command)
-        let mut command_index = None;
-        for (i, arg) in args.iter().enumerate().skip(1) {
-            if !arg.starts_with('-') {
-                command_index = Some(i);
-                break;
-            }
-        }
-
-        if let Some(index) = command_index {
-            // Clone the command string to avoid borrowing issues
-            let command = args[index].clone();
-
-            // Check if this is already a proper subcommand structure
-            // (e.g., "espanso service start" should not be transformed)
-            let is_already_expanded = if index + 1 < args.len() {
-                matches!(command.as_str(), "service" | "package")
-            } else {
-                false
-            };
-
-            if !is_already_expanded {
-                match command.as_str() {
-                    "start" | "restart" | "stop" | "status" => {
-                        args[index] = "service".to_string();
-                        args.insert(index + 1, command);
-                    }
-                    "install" | "uninstall" => {
-                        args[index] = "package".to_string();
-                        args.insert(index + 1, command);
-                    }
-                    _ => {
-                        // No transformation needed
-                    }
-                }
-            }
-        }
-    }
-    args
-}
-
 fn enable_logs(log_proxy: FileProxy, paths: &Paths, log_mode: LogMode) {
     log_proxy
         .set_output_file(
@@ -399,110 +345,4 @@ fn enable_logs(log_proxy: FileProxy, paths: &Paths, log_mode: LogMode) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::preprocess_aliases;
-
-    #[test]
-    fn test_preprocess_aliases_service_start() {
-        let args = vec!["espanso".to_string(), "start".to_string()];
-        let result = preprocess_aliases(args);
-        assert_eq!(result, vec!["espanso", "service", "start"]);
-    }
-
-    #[test]
-    fn test_preprocess_aliases_service_restart() {
-        let args = vec!["espanso".to_string(), "restart".to_string()];
-        let result = preprocess_aliases(args);
-        assert_eq!(result, vec!["espanso", "service", "restart"]);
-    }
-
-    #[test]
-    fn test_preprocess_aliases_service_stop() {
-        let args = vec!["espanso".to_string(), "stop".to_string()];
-        let result = preprocess_aliases(args);
-        assert_eq!(result, vec!["espanso", "service", "stop"]);
-    }
-
-    #[test]
-    fn test_preprocess_aliases_service_status() {
-        let args = vec!["espanso".to_string(), "status".to_string()];
-        let result = preprocess_aliases(args);
-        assert_eq!(result, vec!["espanso", "service", "status"]);
-    }
-
-    #[test]
-    fn test_preprocess_aliases_package_install() {
-        let args = vec!["espanso".to_string(), "install".to_string()];
-        let result = preprocess_aliases(args);
-        assert_eq!(result, vec!["espanso", "package", "install"]);
-    }
-
-    #[test]
-    fn test_preprocess_aliases_package_uninstall() {
-        let args = vec!["espanso".to_string(), "uninstall".to_string()];
-        let result = preprocess_aliases(args);
-        assert_eq!(result, vec!["espanso", "package", "uninstall"]);
-    }
-
-    #[test]
-    fn test_preprocess_aliases_with_additional_args() {
-        let args = vec![
-            "espanso".to_string(),
-            "start".to_string(),
-            "--unmanaged".to_string(),
-        ];
-        let result = preprocess_aliases(args);
-        assert_eq!(result, vec!["espanso", "service", "start", "--unmanaged"]);
-    }
-
-    #[test]
-    fn test_preprocess_aliases_no_alias_needed() {
-        let args = vec![
-            "espanso".to_string(),
-            "service".to_string(),
-            "start".to_string(),
-        ];
-        let result = preprocess_aliases(args);
-        assert_eq!(result, vec!["espanso", "service", "start"]);
-    }
-
-    #[test]
-    fn test_preprocess_aliases_unknown_command() {
-        let args = vec!["espanso".to_string(), "unknown".to_string()];
-        let result = preprocess_aliases(args);
-        assert_eq!(result, vec!["espanso", "unknown"]);
-    }
-
-    #[test]
-    fn test_preprocess_aliases_only_program_name() {
-        let args = vec!["espanso".to_string()];
-        let result = preprocess_aliases(args);
-        assert_eq!(result, vec!["espanso"]);
-    }
-
-    #[test]
-    fn test_preprocess_aliases_preserves_case() {
-        let args = vec!["espanso".to_string(), "START".to_string()];
-        let result = preprocess_aliases(args);
-        // Should not match since we're checking exact string match
-        assert_eq!(result, vec!["espanso", "START"]);
-    }
-
-    #[test]
-    fn test_preprocess_aliases_install_with_package_name() {
-        let args = vec![
-            "espanso".to_string(),
-            "install".to_string(),
-            "my-package".to_string(),
-        ];
-        let result = preprocess_aliases(args);
-        assert_eq!(result, vec!["espanso", "package", "install", "my-package"]);
-    }
-
-    #[test]
-    fn test_preprocess_aliases_skips_vebose_argument() {
-        let args = vec!["espanso".to_string(), "-v".to_string(), "start".to_string()];
-        let result = preprocess_aliases(args);
-        assert_eq!(result, vec!["espanso", "-v", "service", "start"]);
-    }
-}
+mod tests {}

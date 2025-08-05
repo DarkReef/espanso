@@ -318,18 +318,6 @@ pub enum LogMode {
     CleanAndAppend,
 }
 
-/// Custom struct to wrap the old clap v3 `ArgMatches`
-#[derive(Debug, Clone)]
-pub struct ArgMatches {}
-
-impl ArgMatches {
-    // pub fn new() -> Self {
-    //   ArgMatches {
-    //     args: HashMap::new(),
-    //   }
-    // }
-}
-
 // #[derive(Default)]
 // pub struct CliModuleArgs {
 //     pub config_store: Option<Box<dyn ConfigStore>>,
