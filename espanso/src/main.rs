@@ -20,24 +20,8 @@
 // This is needed to avoid showing a console window when starting espanso on Windows
 #![windows_subsystem = "windows"]
 
-use std::{path::PathBuf, process::Command};
+use std::{collections::HashMap, path::PathBuf, process::Command};
 
-use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
-use cli::{CliModule, CliModuleArgs};
-use log::{error, info};
-use logging::FileProxy;
-use simplelog::{
-    CombinedLogger, ConfigBuilder, LevelFilter, SharedLogger, TermLogger, TerminalMode, WriteLogger,
-};
-use std::sync::LazyLock;
-
-use crate::{
-    cli::{LogMode, PathsOverrides},
-    config::load_config,
-    util::log_system_info,
-};
-
-mod capabilities;
 mod cli;
 mod config;
 mod gui;
@@ -54,32 +38,14 @@ mod util;
 use clap::Parser;
 use cli::{ArgMatches, CliModule, CliModuleArgs, LogMode};
 use config::{load_config, ConfigLoadResult};
-use espanso_path::Paths;
 use log::LevelFilter;
 use logging::FileProxy;
+use path::resolve_paths;
 use simplelog::{
     CombinedLogger, ConfigBuilder, SharedLogger, TermLogger, TerminalMode, WriteLogger,
 };
 
 const LOG_FILE_NAME: &str = "espanso.log";
-
-static CLI_HANDLERS: LazyLock<Vec<CliModule>> = LazyLock::new(|| {
-    vec![
-        cli::path::new(),
-        cli::edit::new(),
-        cli::launcher::new(),
-        cli::log::new(),
-        cli::worker::new(),
-        cli::daemon::new(),
-        cli::modulo::new(),
-        cli::env_path::new(),
-        cli::service::new(),
-        cli::workaround::new(),
-        cli::package::new(),
-        cli::match_cli::new(),
-        cli::cmd::new(),
-    ]
-});
 
 fn main() {
     util::attach_console();
@@ -250,7 +216,7 @@ fn main() {
     // (an `exit_code`)
     let handler: CliModule;
     let config_result: ConfigLoadResult;
-    let paths: Paths;
+    let paths: path::Paths;
 
     // Given our input parsed via clap, we can construct the `CliModuleArgs`
     // in tiny steps
@@ -294,7 +260,7 @@ fn main() {
                     "ESPANSO_RUNTIME_DIR",
                 );
 
-                paths = espanso_path::resolve_paths(
+                paths = resolve_paths(
                     force_config_path.as_deref(),
                     force_package_path.as_deref(),
                     force_runtime_path.as_deref(),

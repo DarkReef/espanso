@@ -20,7 +20,7 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use crate::path::Paths;
-use clap::ArgMatches;
+use clap::{Args, Parser, Subcommand};
 use espanso_config::{config::ConfigStore, error::NonFatalErrorSet, matches::store::MatchStore};
 
 //pub mod cmd;
@@ -32,7 +32,7 @@ pub mod log;
 pub mod match_cli;
 //pub mod modulo;
 //pub mod package;
-//pub mod path;
+pub mod path;
 //pub mod service;
 //pub mod util;
 //pub mod workaround;
@@ -287,6 +287,7 @@ pub enum WorkaroundArgs {
 
 // we really need these bools until we rewrite the CLI in the Derive API of clap
 #[allow(dead_code, clippy::struct_excessive_bools)]
+#[derive(Debug)]
 pub struct CliModule {
     pub enable_logs: bool,
     pub disable_logs_terminal_output: bool,
@@ -324,11 +325,11 @@ pub enum LogMode {
 
 /// Custom struct to wrap the old clap v3 `ArgMatches`
 #[derive(Debug, Clone)]
-pub struct ArgMatches<'a> {
-    pub args: HashMap<&'a str, &'a str>,
+pub struct ArgMatches {
+    pub args: HashMap<str, str>,
 }
 
-impl ArgMatches<'_> {
+impl ArgMatches {
     // pub fn new() -> Self {
     //   ArgMatches {
     //     args: HashMap::new(),
