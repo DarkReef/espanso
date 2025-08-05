@@ -58,7 +58,7 @@ use espanso_path::Paths;
 use log::LevelFilter;
 use logging::FileProxy;
 use simplelog::{
-  CombinedLogger, ConfigBuilder, SharedLogger, TermLogger, TerminalMode, WriteLogger,
+    CombinedLogger, ConfigBuilder, SharedLogger, TermLogger, TerminalMode, WriteLogger,
 };
 
 const LOG_FILE_NAME: &str = "espanso.log";
@@ -82,536 +82,265 @@ static CLI_HANDLERS: LazyLock<Vec<CliModule>> = LazyLock::new(|| {
 });
 
 fn main() {
-    match util::attach_console() {
-        Ok(()) => info!("Console attached"),
-        Err(e) => panic!("Could not attach console! {e}"),
-    }
+    util::attach_console();
 
-    let args: Vec<String> = std::env::args().collect();
-    let processed_args = preprocess_aliases(args);
+    let cli_handlers: Vec<CliModule> = vec![
+        //cli::cmd::new(),
+        //cli::edit::new(),
+        //cli::env_path::new(),
+        //cli::launcher::new(),
+        cli::log::new(),
+        //cli::worker::new(),
+        //cli::daemon::new(),
+        //cli::modulo::new(),
+        //cli::path::new(),
+        //cli::service::new(),
+        //cli::workaround::new(),
+        //cli::package::new(),
+        cli::match_cli::new(),
+    ];
 
-    let mut clap_instance = App::new("espanso")
-    .arg_required_else_help(true)
-    .version(VERSION)
-    .author("Federico Terzi and the espanso contributors")
-    .about("A Privacy-first, Cross-platform Text Expander")
-    .arg(
-      Arg::with_name("v")
-        .short('v')
-        .action(clap::ArgAction::Count)
-        .help("Sets the level of verbosity"),
-    )
-    .arg(
-      Arg::with_name("config_dir")
-        .long("config_dir")
-        .takes_value(true)
-        .hidden(true)
-        .help("Specify a custom path from which espanso should read the configuration"),
-    )
-    .arg(
-      Arg::with_name("package_dir")
-        .long("package_dir")
-        .takes_value(true)
-        .hidden(true)
-        .help("Specify a custom path for the espanso package directory"),
-    )
-    .arg(
-      Arg::with_name("runtime_dir")
-        .long("runtime_dir")
-        .takes_value(true)
-        .hidden(true)
-        .help("Specify a custom path for the espanso runtime directory"),
-    )
-    .subcommand(
-      SubCommand::with_name("env-path")
-        .arg(
-          Arg::with_name("prompt")
-            .long("prompt")
-            .required(false)
-            .takes_value(false)
-            .help("macOS only:Prompt for permissions if the operation requires elevated privileges."),
-        )
-        .subcommand(SubCommand::with_name("register").about("Add 'espanso' command to PATH"))
-        .subcommand(SubCommand::with_name("unregister").about("Remove 'espanso' command from PATH"))
-        .about("Add or remove the 'espanso' command from the PATH"),
-    )
-    .subcommand(SubCommand::with_name("cmd")
-        .about("Send a command to the espanso daemon.")
-        .subcommand(SubCommand::with_name("enable")
-            .about("Enable expansions."))
-        .subcommand(SubCommand::with_name("disable")
-            .about("Disable expansions."))
-        .subcommand(SubCommand::with_name("toggle")
-            .about("Enable/Disable expansions."))
-        .subcommand(SubCommand::with_name("search")
-            .about("Open the Espanso's search bar."))
-    )
-    .subcommand(SubCommand::with_name("edit")
-        .about("Shortcut to open the default text editor to edit config files")
-        .arg(Arg::with_name("target_file")
-            .help(r#"Defaults to "match/base.yml", it contains the relative path of the file you want to edit,
-such as 'config/default.yml' or 'match/base.yml'.
-For convenience, you can also specify the name directly and Espanso will figure out the path.
-For example, specifying 'email' is equivalent to 'match/email.yml'."#))
-    )
-    .subcommand(
-      SubCommand::with_name("daemon")
-        .setting(AppSettings::Hidden)
-        .about("Start the daemon without spawning a new process."),
-    )
-    .subcommand(SubCommand::with_name("launcher").setting(AppSettings::Hidden))
-    .subcommand(SubCommand::with_name("log").about("Print the daemon logs."))
-    .subcommand(
-      SubCommand::with_name("modulo")
-        .setting(AppSettings::Hidden)
-        .subcommand(
-          SubCommand::with_name("form")
-            .about("Display a customizable form")
-            .arg(
-              Arg::with_name("input_file")
-                .short('i')
-                .takes_value(true)
-                .help("Input file or - for stdin"),
-            )
-            .arg(
-              Arg::with_name("json")
-                .short('j')
-                .required(false)
-                .takes_value(false)
-                .help("Interpret the input data as JSON"),
-            ),
-        )
-        .subcommand(
-          SubCommand::with_name("search")
-            .about("Display a search box")
-            .arg(
-              Arg::with_name("input_file")
-                .short('i')
-                .takes_value(true)
-                .help("Input file or - for stdin"),
-            )
-            .arg(
-              Arg::with_name("json")
-                .short('j')
-                .required(false)
-                .takes_value(false)
-                .help("Interpret the input data as JSON"),
-            ),
-        )
-        .subcommand(
-          SubCommand::with_name("textview")
-            .about("Display a Text View")
-            .arg(
-              Arg::with_name("input_file")
-                .short('i')
-                .takes_value(true)
-                .help("Input file or - for stdin"),
-            )
-            .arg(
-              Arg::with_name("title")
-              .long("title")
-                .required(true)
-                .takes_value(true)
-                .help("Window title to display"),
-            ),
-        )
-        .subcommand(SubCommand::with_name("troubleshoot").about("Display the troubleshooting GUI"))
-        .subcommand(
-          SubCommand::with_name("welcome")
-            .about("Display the welcome screen")
-            .arg(
-              Arg::with_name("already-running")
-                .long("already-running")
-                .takes_value(false),
-            ),
-        ),
-    )
-    .subcommand(
-      SubCommand::with_name("path")
-        .about("Prints all the espanso directory paths to easily locate configuration and matches.")
-        .subcommand(SubCommand::with_name("config").about("Print the current config folder path."))
-        .subcommand(
-          SubCommand::with_name("packages").about("Print the current packages folder path."),
-        )
-        .subcommand(
-          SubCommand::with_name("data")
-            .about("Print the current data folder path.")
-            .setting(AppSettings::Hidden),
-        ) // Legacy path
-        .subcommand(
-          SubCommand::with_name("runtime").about("Print the current runtime folder path."),
-        )
-        .subcommand(
-          SubCommand::with_name("default").about("Print the default configuration file path."),
-        )
-        .subcommand(SubCommand::with_name("base").about("Print the default match file path.")),
-    )
-    .subcommand(
-      SubCommand::with_name("service")
-        .subcommand(SubCommand::with_name("register").about("Register espanso as a system service"))
-        .subcommand(
-          SubCommand::with_name("unregister").about("Unregister espanso from system services"),
-        )
-        .subcommand(
-          SubCommand::with_name("check")
-            .about("Check if espanso is registered as a system service"),
-        )
-        .subcommand(SubCommand::with_name("start")
-        .about("Start espanso as a service")
-        .arg(
-            Arg::with_name("unmanaged")
-                .long("unmanaged")
-                .required(false)
-                .takes_value(false)
-                .help("Run espanso as an unmanaged service (avoid system manager)"),
-        ))
-        .subcommand(SubCommand::with_name("restart")
-        .about("Restart the espanso service")
-        .arg(
-            Arg::with_name("unmanaged")
-                .long("unmanaged")
-                .required(false)
-                .takes_value(false)
-        ))
-        .subcommand(SubCommand::with_name("stop").about("Stop espanso service"))
-        .subcommand(
-        SubCommand::with_name("status").about("Check if the espanso daemon is running or not."))
-        .about("A collection of commands to manage the Espanso service (for example, enabling auto-start on system boot)."),
-    )
-    .subcommand(SubCommand::with_name("match")
-        .about("List and execute matches from the CLI")
-        .subcommand(SubCommand::with_name("list")
-            .about("Print matches to standard output")
-            .arg(Arg::with_name("json")
-                .short('j')
-                .long("json")
-                .help("Output matches to the JSON format")
-                .required(false)
-                .takes_value(false)
-            )
-            .arg(Arg::with_name("onlytriggers")
-                .short('t')
-                .long("only-triggers")
-                .help("Print only triggers without replacement")
-                .required(false)
-                .takes_value(false)
-            )
-            .arg(Arg::with_name("preservenewlines")
-                .short('n')
-                .long("preserve-newlines")
-                .help("Preserve newlines when printing replacements. Does nothing when using JSON format.")
-                .required(false)
-                .takes_value(false)
-            )
-            .arg(Arg::with_name("class")
-                .long("class")
-                .help("Only return matches that would be active with the given class. This is relevant if you want to list matches only active inside an app-specific config.")
-                .required(false)
-                .takes_value(true)
-            )
-            .arg(Arg::with_name("title")
-                .long("title")
-                .help("Only return matches that would be active with the given title. This is relevant if you want to list matches only active inside an app-specific config.")
-                .required(false)
-                .takes_value(true)
-            )
-            .arg(Arg::with_name("exec")
-                .long("exec")
-                .help("Only return matches that would be active with the given exec. This is relevant if you want to list matches only active inside an app-specific config.")
-                .required(false)
-                .takes_value(true)
-            )
-        )
-        .subcommand(SubCommand::with_name("exec")
-            .about("Triggers the expansion of a match")
-            .arg(Arg::with_name("trigger")
-                .short('t')
-                .long("trigger")
-                .help("The trigger of the match to be expanded")
-                .required(false)
-                .takes_value(true)
-            )
-            .arg(Arg::with_name("arg")
-                .long("arg")
-                .help("Specify also an argument for the expansion, following the --arg 'name=value' format. You can specify multiple ones.")
-                .required(false)
-                .takes_value(true)
-                .multiple(true)
-                .number_of_values(1)
-            )
-        )
-    )
-    .subcommand(
-      SubCommand::with_name("package")
-        .about("package-management commands")
-        .subcommand(
-SubCommand::with_name("install")
-    .about("Install a package")
-    .arg(
-      Arg::with_name("external")
-        .short('e')
-        .long("external")
-        .required(false)
-        .takes_value(false)
-        .help("Allow installing packages from non-verified repositories."),
-    )
-    .arg(Arg::with_name("package_name").help("Package name"))
-    .arg(
-      Arg::with_name("version")
-        .long("version")
-        .required(false)
-        .takes_value(true)
-        .help("Force a particular version to be installed instead of the latest available."),
-    )
-    .arg(
-      Arg::with_name("git")
-        .long("git")
-        .required(false)
-        .takes_value(true)
-        .help("Git repository from which espanso should install the package."),
-    )
-    .arg(
-      Arg::with_name("git-branch")
-        .long("git-branch")
-        .required(false)
-        .takes_value(true)
-        .help("Force espanso to search for the package on a specific git branch"),
-    )
-    .arg(
-      Arg::with_name("force")
-        .long("force")
-        .required(false)
-        .takes_value(false)
-        .help("Overwrite the package if already installed"),
-    )
-    .arg(
-      Arg::with_name("refresh-index")
-        .long("refresh-index")
-        .required(false)
-        .takes_value(false)
-        .help("Request a fresh copy of the Espanso Hub package index instead of using the cached version.")
-    )
-    .arg(
-      Arg::with_name("use-native-git")
-        .long("use-native-git")
-        .required(false)
-        .takes_value(false)
-        .help("If specified, espanso will use the 'git' command instead of trying direct methods."),
-    ))
-        .subcommand(
-          SubCommand::with_name("uninstall")
-        .about("Remove a package")
-        .arg(Arg::with_name("package_name").help("Package name")))
-        .subcommand(SubCommand::with_name("update").about(
-          "Update a package. If 'all' is passed as package name, attempts to update all packages.",
-        ).arg(Arg::with_name("package_name").help("Package name")))
-        .subcommand(
-          SubCommand::with_name("list").about("List all installed packages"),
-        ),
-    )
-    .subcommand(
-      SubCommand::with_name("workaround")
-        .subcommand(
-          SubCommand::with_name("secure-input")
-            .about("Attempt to disable secure input by automating the common steps."),
-        )
-        .about("A collection of workarounds to solve some common problems."),
-    )
-    .subcommand(
-      SubCommand::with_name("worker")
-        .setting(AppSettings::Hidden)
-        .arg(
-          Arg::with_name("start-reason")
-            .long("start-reason")
-            .required(false)
-            .takes_value(true),
-        )
-        .arg(
-          Arg::with_name("monitor-daemon")
-            .long("monitor-daemon")
-            .required(false)
-            .takes_value(false),
-        ),
-    );
+    let args = cli::Arguments::parse();
 
-    // TODO: explain that the register and unregister commands are only meaningful
-    // when using the system daemon manager on macOS and Linux
-
-    // TODO: set the LSEnvironment variable as described here: https://stackoverflow.com/questions/12203377/combined-gui-and-command-line-os-x-app?rq=1
-    // to detect if the executable was launched inside an AppBundle, and if so, launch the "launcher" handler
-    // This should only apply when on macOS.
-
-    let matches = match clap_instance
-        .clone()
-        .try_get_matches_from(processed_args.clone())
-    {
-        Ok(matches) => matches,
-        Err(_) => {
-            println!("error: Found argument {processed_args:?} which wasn't expected, or isn't valid in this context");
-            clap_instance.print_help().expect("unable to print help");
-            std::process::exit(1);
+    let log_level = match args.verbose {
+        0 | 1 => {
+            // println!("Debug mode is off");
+            LevelFilter::Info
         }
+        2 => {
+            println!("Debug mode is on");
+            LevelFilter::Debug
+        }
+        3 => {
+            // Trace mode is only available in debug mode for security reasons
+            #[cfg(debug_assertions)]
+            println!("Trace mode is on");
+            LevelFilter::Trace
+        }
+        _ => LevelFilter::Warn,
     };
 
-    let log_level = match matches.get_count("v") {
-        0 | 1 => LevelFilter::Info,
+    let log_proxy = FileProxy::new();
 
-        // Trace mode is only available in debug mode for security reasons
-        #[cfg(debug_assertions)]
-        3 => LevelFilter::Trace,
+    let config = ConfigBuilder::new()
+        .set_time_to_local(true)
+        .set_time_format(format!(
+            "%H:%M:%S [{}({})]",
+            // args.command,
+            "some command",
+            std::process::id()
+        ))
+        .set_location_level(LevelFilter::Off)
+        .add_filter_ignore_str("html5ever")
+        .build();
 
-        _ => LevelFilter::Debug,
+    let mut outputs: Vec<Box<dyn SharedLogger>> = vec![WriteLogger::new(
+        LevelFilter::Info,
+        config.clone(),
+        log_proxy.clone(),
+    )];
+
+    outputs.insert(0, TermLogger::new(log_level, config, TerminalMode::Mixed));
+
+    CombinedLogger::init(outputs).expect("unable to initialize logs");
+
+    // Activate logging for panics
+    log_panics::init();
+
+    // declare the data here
+    let mut args_hashmap: HashMap<&str, &str> = HashMap::new();
+    // input typed by the user (arg)
+    let mut user_input = String::new();
+
+    match args.command {
+        cli::Command::Cmd(subcmd) => {
+            println!("something anything");
+            args_hashmap.insert("command", "cmd");
+            match subcmd {
+                cli::CmdCommand::Disable => {
+                    args_hashmap.insert("subcommand", "disable");
+                }
+                cli::CmdCommand::Enable => {
+                    args_hashmap.insert("subcommand", "enable");
+                }
+                cli::CmdCommand::Search => {
+                    args_hashmap.insert("subcommand", "search");
+                }
+                cli::CmdCommand::Toggle => {
+                    args_hashmap.insert("subcommand", "toggle");
+                }
+            }
+        }
+        cli::Command::Edit { target_file } => {
+            args_hashmap.insert("command", "edit");
+            if let Some(_file) = target_file {
+                // args_hashmap.insert("edit-file", file.clone().as_str());
+            } else {
+                args_hashmap.insert("edit-file", "empty");
+                println!("`espanso edit` (empty) was passed");
+            };
+        }
+        cli::Command::EnvPath(..) => println!("some dummy output"),
+        cli::Command::Install { .. } => println!("some dummy output"),
+        cli::Command::Launch {} => println!("some dummy output"),
+        cli::Command::Log {} => {
+            println!("some dummy output");
+            args_hashmap.insert("command", "log");
+        }
+        cli::Command::Match(cmd) => {
+            args_hashmap.insert("command", "match");
+            println!("some dummy output");
+
+            match cmd {
+                cli::MatchArgs::Exec { trigger } => {
+                    args_hashmap.insert("subcommand", "exec");
+                    trigger.clone_into(&mut user_input);
+                    args_hashmap.insert("trigger", user_input.as_str());
+                }
+                cli::MatchArgs::List(flags) => {
+                    args_hashmap.insert("subcommand", "list");
+                    if let Some(class) = flags.class {
+                        class.clone_into(&mut user_input);
+                        args_hashmap.insert("class", user_input.as_str());
+                    }
+                    if let Some(exec) = flags.exec {
+                        dbg!(&exec);
+                        dbg!(&user_input);
+                        args_hashmap.insert("exec", exec.as_str());
+                    }
+                    if let Some(title) = flags.title {
+                        title.clone_into(&mut user_input.clone());
+                        args_hashmap.insert("title", user_input.as_str());
+                    }
+                    if flags.json {
+                        args_hashmap.insert("json", "true");
+                    }
+                    if flags.only_triggers {
+                        args_hashmap.insert("onlytriggers", "true");
+                    }
+                    if flags.preserve_newlines {
+                        args_hashmap.insert("preservenewlines", "true");
+                    }
+                }
+            };
+        }
+        cli::Command::Package { .. } => println!("some dummy output"),
+        cli::Command::Path { .. } => println!("some dummy output"),
+        cli::Command::Restart {} => println!("some dummy output"),
+        cli::Command::Service(..) => println!("some dummy output"),
+        cli::Command::Start(..) => println!("some dummy output"),
+        cli::Command::Status {} => println!("some dummy output"),
+        cli::Command::Stop(..) => println!("some dummy output"),
+        cli::Command::Uninstall(..) => println!("some dummy output"),
+        cli::Command::Workaround(..) => println!("some dummy output"),
+    }
+
+    #[cfg(target_os = "macos")]
+    if handler.show_in_dock {
+        espanso_mac_utils::convert_to_foreground_app();
+    }
+
+    // just a box to store the exite code
+    let exit_code: i32;
+
+    // This is the handler (what effectively runs the cmds)
+    //
+    // inside the handler, it's the `CliModule.entry` field, which
+    // is a function that takes `CliModuleArgs` and returns an `i32`
+    // (an `exit_code`)
+    let handler: CliModule;
+    let config_result: ConfigLoadResult;
+    let paths: Paths;
+
+    // Given our input parsed via clap, we can construct the `CliModuleArgs`
+    // in tiny steps
+    let mut cli_module_args: CliModuleArgs = CliModuleArgs {
+        // insert the hashmap constructed in the match.command
+        cli_args: Some(ArgMatches { args: args_hashmap }),
+        // and the defaults
+        ..Default::default()
     };
 
-    let mut handler = CLI_HANDLERS
-        .iter()
-        .find(|cli| matches.subcommand_matches(&cli.subcommand).is_some());
+    dbg!(&cli_module_args.cli_args);
 
-    if handler.is_none() {
-        // When started from the macOS App Bundle, override the default
-        // handler with "launcher" if not present, otherwise the GUI could not be started.
-        if let Some(context) = std::env::var_os("MAC_LAUNCH_CONTEXT") {
-            if context == "bundle" {
-                handler = CLI_HANDLERS.iter().find(|cli| cli.subcommand == "launcher");
-            }
-        }
-
-        // When started from a Linux app image, override the default handler with the launcher
-        // to start espanso when launching it directly
-        if std::env::var_os("APPIMAGE").is_some() {
-            handler = CLI_HANDLERS.iter().find(|cli| cli.subcommand == "launcher");
-        }
-    }
-    cli::Command::Edit { target_file } => {
-      args_hashmap.insert("command", "edit");
-      if let Some(_file) = target_file {
-        // args_hashmap.insert("edit-file", file.clone().as_str());
-      } else {
-        args_hashmap.insert("edit-file", "empty");
-        println!("`espanso edit` (empty) was passed");
-      };
-    }
-    cli::Command::EnvPath(..) => println!("some dummy output"),
-    cli::Command::Install { .. } => println!("some dummy output"),
-    cli::Command::Launch {} => println!("some dummy output"),
-    cli::Command::Log {} => {
-      println!("some dummy output");
-      args_hashmap.insert("command", "log");
-    }
-    cli::Command::Match(cmd) => {
-      args_hashmap.insert("command", "match");
-      println!("some dummy output");
-
-    if let Some(handler) = handler {
-        let log_proxy = FileProxy::new();
-        if handler.enable_logs {
-            let config = ConfigBuilder::new()
-                .set_time_to_local(true)
-                .set_time_format(format!(
-                    "%H:%M:%S [{}({})]",
-                    handler.subcommand,
-                    std::process::id()
-                ))
-                .set_location_level(LevelFilter::Off)
-                .add_filter_ignore_str("html5ever")
-                .build();
-
-            let mut outputs: Vec<Box<dyn SharedLogger>> = vec![WriteLogger::new(
-                LevelFilter::Info,
-                config.clone(),
-                log_proxy.clone(),
-            )];
-
-            if !handler.disable_logs_terminal_output {
-                outputs.insert(0, TermLogger::new(log_level, config, TerminalMode::Mixed));
-            }
-
-            CombinedLogger::init(outputs).expect("unable to initialize logs");
-
-            // Activate logging for panics
-            log_panics::init();
-        }
-
-        // If the process doesn't require linux capabilities, disable them
-        if !handler.requires_linux_capabilities {
-            if let Err(err) = crate::capabilities::clear_capabilities() {
-                error!("unable to clear linux capabilities: {err}");
-            }
-        }
-
-        // If explicitly requested, we show the Dock icon on macOS
-        // We need to enable this selectively, otherwise we would end up with multiple
-        // dock icons due to the multi-process nature of espanso.
-        #[cfg(target_os = "macos")]
-        if handler.show_in_dock {
-            espanso_mac_utils::convert_to_foreground_app();
-        }
-
-        let mut cli_args: CliModuleArgs = CliModuleArgs::default();
-
-        if handler.requires_paths || handler.requires_config {
-            let force_config_path = get_path_override(&matches, "config_dir", "ESPANSO_CONFIG_DIR");
-            let force_package_path =
-                get_path_override(&matches, "package_dir", "ESPANSO_PACKAGE_DIR");
-            let force_runtime_path =
-                get_path_override(&matches, "runtime_dir", "ESPANSO_RUNTIME_DIR");
-
-            let paths = crate::path::resolve_paths(
-                force_config_path.as_deref(),
-                force_package_path.as_deref(),
-                force_runtime_path.as_deref(),
-            );
-
-            cli_args.paths_overrides = Some(PathsOverrides {
-                config: force_config_path,
-                packages: force_package_path,
-                runtime: force_runtime_path,
-            });
-
-            info!("reading configs from: {:?}", paths.config.display());
-            info!("reading packages from: {:?}", paths.packages.display());
-            info!("using runtime dir: {:?}", paths.runtime.display());
-            log_system_info();
-
-            if handler.requires_config {
-                let config_result = load_config(&paths.config).expect("unable to load config");
-
-                cli_args.config_store = Some(config_result.config_store);
-                cli_args.match_store = Some(config_result.match_store);
-                cli_args.non_fatal_errors = config_result.non_fatal_errors;
-            }
-
-            if handler.enable_logs {
-                log_proxy
-                    .set_output_file(
-                        &paths.runtime.join(LOG_FILE_NAME),
-                        handler.log_mode == LogMode::Read,
-                        handler.log_mode == LogMode::CleanAndAppend,
-                    )
-                    .expect("unable to set up log output file");
-            }
-
-            cli_args.paths = Some(paths);
-        }
-
-        // try to invoke `kdotool` to see if you have it or not.
-        if Command::new("kdotool")
-            .arg("getactivewindow")
-            .arg("getwindowclassname")
-            .output()
-            .is_ok()
+    // to compare the list of handlers to the `cli_args`
+    for bookshelf_handler in cli_handlers {
+        dbg!(&bookshelf_handler);
+        if bookshelf_handler.subcommand.clone()
+            == *cli_module_args
+                .cli_args
+                .clone()
+                .unwrap()
+                .args
+                .get("command")
+                .unwrap()
         {
-        } else {
-            info!("kdotool missing or not available for the current wayland DE.");
+            println!("found the handler!");
+            handler = bookshelf_handler;
+            if handler.requires_paths || handler.requires_config {
+                let force_config_path = get_path_override(
+                    &cli_module_args.cli_args.clone().unwrap(),
+                    "config_dir",
+                    "ESPANSO_CONFIG_DIR",
+                );
+                let force_package_path = get_path_override(
+                    &cli_module_args.cli_args.clone().unwrap(),
+                    "package_dir",
+                    "ESPANSO_PACKAGE_DIR",
+                );
+                let force_runtime_path = get_path_override(
+                    &cli_module_args.cli_args.clone().unwrap(),
+                    "runtime_dir",
+                    "ESPANSO_RUNTIME_DIR",
+                );
+
+                paths = espanso_path::resolve_paths(
+                    force_config_path.as_deref(),
+                    force_package_path.as_deref(),
+                    force_runtime_path.as_deref(),
+                );
+                cli_module_args.paths = Some(paths.clone());
+
+                if handler.requires_config {
+                    let config_result = load_config(&paths.config).expect("unable to load config");
+
+                    cli_args.config_store = Some(config_result.config_store);
+                    cli_args.match_store = Some(config_result.match_store);
+                    cli_args.non_fatal_errors = config_result.non_fatal_errors;
+                }
+
+                if handler.enable_logs {
+                    log_proxy
+                        .set_output_file(
+                            &paths.runtime.join(LOG_FILE_NAME),
+                            handler.log_mode == LogMode::Read,
+                            handler.log_mode == LogMode::CleanAndAppend,
+                        )
+                        .expect("unable to set up log output file");
+                }
+
+                cli_args.paths = Some(paths);
+            }
+
+            // try to invoke `kdotool` to see if you have it or not.
+            if Command::new("kdotool")
+                .arg("getactivewindow")
+                .arg("getwindowclassname")
+                .output()
+                .is_ok()
+            {
+            } else {
+                info!("kdotool missing or not available for the current wayland DE.");
+            }
+
+            if let Some(args) = matches.subcommand_matches(&handler.subcommand) {
+                cli_args.cli_args = Some(args.clone());
+            }
+
+            let exit_code = (handler.entry)(cli_args);
+
+            std::process::exit(exit_code);
         }
-
-        if let Some(args) = matches.subcommand_matches(&handler.subcommand) {
-            cli_args.cli_args = Some(args.clone());
-        }
-
-        let exit_code = (handler.entry)(cli_args);
-
-        std::process::exit(exit_code);
     }
 }
 
