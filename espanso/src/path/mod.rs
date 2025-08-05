@@ -50,6 +50,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::cli::Arguments;
+
 #[derive(Debug, Clone)]
 pub struct Paths {
     pub config: PathBuf,
@@ -57,6 +59,69 @@ pub struct Paths {
     pub packages: PathBuf,
 
     pub is_portable_mode: bool,
+}
+
+/// if you pass Config, Package or Runtime returns you the path
+pub fn get_path_override(
+    matches: &Arguments,
+) -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
+    let config_dir_path = if let Some(config_dir_path) = matches.config_dir.clone() {
+        if config_dir_path.is_dir() {
+            Some(config_dir_path)
+        } else {
+            error_eprintln!("{} argument was specified, but it doesn't point to a valid directory. Make sure to create it first.", config_dir_path.display());
+            std::process::exit(1);
+        }
+    } else if let Ok(path) = std::env::var("ESPANSO_CONFIG_PATH") {
+        let path = PathBuf::from(path.trim());
+        if path.is_dir() {
+            Some(path)
+        } else {
+            error_eprintln!("ESPANSO_CONFIG_PATH env variable was specified, but it doesn't point to a valid directory. Make sure to create it first.");
+            std::process::exit(1);
+        }
+    } else {
+        None
+    };
+
+    let package_dir_path = if let Some(package_dir_path) = matches.package_dir.clone() {
+        if package_dir_path.is_dir() {
+            Some(package_dir_path)
+        } else {
+            error_eprintln!("{} argument was specified, but it doesn't point to a valid directory. Make sure to create it first.", package_dir_path.display());
+            std::process::exit(1);
+        }
+    } else if let Ok(path) = std::env::var("ESPANSO_PACKAGE_DIR") {
+        let path = PathBuf::from(path.trim());
+        if path.is_dir() {
+            Some(path)
+        } else {
+            error_eprintln!("ESPANSO_PACKAGE_DIR env variable was specified, but it doesn't point to a valid directory. Make sure to create it first.");
+            std::process::exit(1);
+        }
+    } else {
+        None
+    };
+    let runtime_dir_path = if let Some(runtime_dir_path) = matches.runtime_dir.clone() {
+        if runtime_dir_path.is_dir() {
+            Some(runtime_dir_path)
+        } else {
+            error_eprintln!("{} argument was specified, but it doesn't point to a valid directory. Make sure to create it first.",runtime_dir_path.display() );
+            std::process::exit(1);
+        }
+    } else if let Ok(path) = std::env::var("ESPANSO_RUNTIME_DIR") {
+        let path = PathBuf::from(path.trim());
+        if path.is_dir() {
+            Some(path)
+        } else {
+            error_eprintln!("ESPANSO_RUNTIME_DIR env variable was specified, but it doesn't point to a valid directory. Make sure to create it first.");
+            std::process::exit(1);
+        }
+    } else {
+        None
+    };
+
+    (config_dir_path, package_dir_path, runtime_dir_path)
 }
 
 pub fn resolve_paths(

@@ -36,17 +36,16 @@ mod path;
 mod preferences;
 mod util;
 
+use crate::{cli::log::log_main, path::get_path_override};
 use clap::Parser;
 use cli::LogMode;
 use config::load_config;
 use log::{info, LevelFilter};
 use logging::FileProxy;
-use path::resolve_paths;
+use path::{resolve_paths, Paths};
 use simplelog::{
     CombinedLogger, ConfigBuilder, SharedLogger, TermLogger, TerminalMode, WriteLogger,
 };
-
-use crate::{cli::log::log_main, path::Paths};
 
 const LOG_FILE_NAME: &str = "espanso.log";
 
@@ -81,9 +80,8 @@ fn main() {
     let config = ConfigBuilder::new()
         .set_time_to_local(true)
         .set_time_format(format!(
-            "%H:%M:%S [{}({})]",
-            // args.command,
-            "some command",
+            "%H:%M:%S [{:?}({})]",
+            args.command,
             std::process::id()
         ))
         .set_location_level(LevelFilter::Off)
@@ -108,33 +106,18 @@ fn main() {
     // input typed by the user (arg)
     let mut user_input = String::new();
 
-    let paths: path::Paths;
+    let (force_config_path, force_package_path, force_runtime_path) = get_path_override(&args);
 
-    // let force_config_path = get_path_override(
-    //     &cli_module_args.cli_args.clone().unwrap(),
-    //     "config_dir",
-    //     "ESPANSO_CONFIG_DIR",
-    // );
-    // let force_package_path = get_path_override(
-    //     &cli_module_args.cli_args.clone().unwrap(),
-    //     "package_dir",
-    //     "ESPANSO_PACKAGE_DIR",
-    // );
-    // let force_runtime_path = get_path_override(
-    //     &cli_module_args.cli_args.clone().unwrap(),
-    //     "runtime_dir",
-    //     "ESPANSO_RUNTIME_DIR",
-    // );
-
-    // TODO: resolve this
-    paths = resolve_paths(None, None, None);
+    let paths: Paths = resolve_paths(
+        force_config_path.as_deref(),
+        force_package_path.as_deref(),
+        force_runtime_path.as_deref(),
+    );
 
     let config_result = load_config(&paths.config).expect("unable to load config");
 
     // just a box to store the exite code
-    let exit_code: i32;
-
-    exit_code = match args.command {
+    let exit_code = match args.command {
         cli::Command::Cmd(subcmd) => {
             println!("something anything");
             args_hashmap.insert("command", "cmd");
@@ -164,7 +147,7 @@ fn main() {
             } else {
                 args_hashmap.insert("edit-file", "empty");
                 println!("`espanso edit` (empty) was passed");
-            };
+            }
             1 // TODO
         }
         cli::Command::EnvPath(..) => {
@@ -175,7 +158,7 @@ fn main() {
             println!("some dummy output");
             1 // TODO
         }
-        cli::Command::Launch {} => {
+        cli::Command::Launch => {
             println!("some dummy output");
 
             #[cfg(target_os = "macos")]
@@ -183,7 +166,7 @@ fn main() {
 
             1 // TODO
         }
-        cli::Command::Log {} => {
+        cli::Command::Log => {
             println!("some dummy output");
             enable_logs(log_proxy, &paths, LogMode::Read);
             log_main(Some(paths))
@@ -222,7 +205,7 @@ fn main() {
                         args_hashmap.insert("preservenewlines", "true");
                     }
                 }
-            };
+            }
 
             1 // TODO
         }
@@ -266,7 +249,7 @@ fn main() {
             // 0
             1 // TODO
         }
-        cli::Command::Restart {} => {
+        cli::Command::Restart => {
             println!("some dummy output");
             1 // TODO
         }
@@ -278,7 +261,7 @@ fn main() {
             println!("some dummy output");
             1 // TODO
         }
-        cli::Command::Status {} => {
+        cli::Command::Status => {
             println!("some dummy output");
             1 // TODO
         }
@@ -310,29 +293,6 @@ fn main() {
 
     std::process::exit(exit_code);
 }
-
-/// if you pass Config, Package or Runtime returns you the path
-// fn get_path_override(matches: &ArgMatches, argument: &str, env_var: &str) -> Option<PathBuf> {
-//     if let Some(path) = matches.value_of(argument) {
-//         let path = PathBuf::from(path.trim());
-//         if path.is_dir() {
-//             Some(path)
-//         } else {
-//             error_eprintln!("{} argument was specified, but it doesn't point to a valid directory. Make sure to create it first.", argument);
-//             std::process::exit(1);
-//         }
-//     } else if let Ok(path) = std::env::var(env_var) {
-//         let path = PathBuf::from(path.trim());
-//         if path.is_dir() {
-//             Some(path)
-//         } else {
-//             error_eprintln!("{} env variable was specified, but it doesn't point to a valid directory. Make sure to create it first.", env_var);
-//             std::process::exit(1);
-//         }
-//     } else {
-//         None
-//     }
-// }
 
 fn enable_logs(log_proxy: FileProxy, paths: &Paths, log_mode: LogMode) {
     log_proxy

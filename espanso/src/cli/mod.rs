@@ -49,6 +49,15 @@ pub struct Arguments {
     #[arg(short, long, action = clap::ArgAction::Count)]
     // Sets the level of verbosity
     pub verbose: u8,
+
+    #[arg(short, long, hide = true)]
+    pub config_dir: Option<PathBuf>,
+
+    #[arg(short, long, hide = true)]
+    pub package_dir: Option<PathBuf>,
+
+    #[arg(short, long, hide = true)]
+    pub runtime_dir: Option<PathBuf>,
 }
 
 #[derive(Subcommand, Debug)]
