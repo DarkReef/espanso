@@ -19,9 +19,9 @@
 
 use std::{collections::HashMap, path::PathBuf};
 
-use clap::{Args, Parser, Subcommand};
+use crate::path::Paths;
+use clap::ArgMatches;
 use espanso_config::{config::ConfigStore, error::NonFatalErrorSet, matches::store::MatchStore};
-use espanso_path::Paths;
 
 //pub mod cmd;
 //pub mod daemon;
@@ -285,42 +285,41 @@ pub enum WorkaroundArgs {
   SecureInput,
 }
 
-#[allow(dead_code)]
-#[allow(clippy::struct_excessive_bools)]
-#[derive(Debug)]
+// we really need these bools until we rewrite the CLI in the Derive API of clap
+#[allow(dead_code, clippy::struct_excessive_bools)]
 pub struct CliModule {
-  pub enable_logs: bool,
-  pub disable_logs_terminal_output: bool,
-  pub log_mode: LogMode,
-  pub requires_paths: bool,
-  pub requires_config: bool,
-  pub subcommand: String,
-  pub show_in_dock: bool,
-  pub requires_linux_capabilities: bool,
-  pub entry: fn(CliModuleArgs) -> i32,
+    pub enable_logs: bool,
+    pub disable_logs_terminal_output: bool,
+    pub log_mode: LogMode,
+    pub requires_paths: bool,
+    pub requires_config: bool,
+    pub subcommand: String,
+    pub show_in_dock: bool,
+    pub requires_linux_capabilities: bool,
+    pub entry: fn(CliModuleArgs) -> i32,
 }
 
 impl Default for CliModule {
-  fn default() -> Self {
-    Self {
-      enable_logs: false,
-      log_mode: LogMode::Read,
-      disable_logs_terminal_output: false,
-      requires_paths: false,
-      requires_config: false,
-      subcommand: String::new(),
-      show_in_dock: false,
-      requires_linux_capabilities: false,
-      entry: |_| 0,
+    fn default() -> Self {
+        Self {
+            enable_logs: false,
+            log_mode: LogMode::Read,
+            disable_logs_terminal_output: false,
+            requires_paths: false,
+            requires_config: false,
+            subcommand: String::new(),
+            show_in_dock: false,
+            requires_linux_capabilities: false,
+            entry: |_| 0,
+        }
     }
-  }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum LogMode {
-  Read,
-  AppendOnly,
-  CleanAndAppend,
+    Read,
+    AppendOnly,
+    CleanAndAppend,
 }
 
 /// Custom struct to wrap the old clap v3 `ArgMatches`
@@ -362,14 +361,13 @@ impl ArgMatches<'_> {
 }
 
 #[derive(Default)]
-pub struct CliModuleArgs<'a> {
-  pub config_store: Option<Box<dyn ConfigStore>>,
-  pub match_store: Option<Box<dyn MatchStore>>,
-  pub is_legacy_config: bool,
-  pub non_fatal_errors: Vec<NonFatalErrorSet>,
-  pub paths: Option<Paths>,
-  pub paths_overrides: Option<PathsOverrides>,
-  pub cli_args: Option<ArgMatches<'a>>,
+pub struct CliModuleArgs {
+    pub config_store: Option<Box<dyn ConfigStore>>,
+    pub match_store: Option<Box<dyn MatchStore>>,
+    pub non_fatal_errors: Vec<NonFatalErrorSet>,
+    pub paths: Option<Paths>,
+    pub paths_overrides: Option<PathsOverrides>,
+    pub cli_args: Option<ArgMatches>,
 }
 
 // impl<'a> CliModuleArgs<'a> {
@@ -396,12 +394,7 @@ pub struct CliModuleArgs<'a> {
 
 #[derive(Debug)]
 pub struct PathsOverrides {
-  pub config: Option<PathBuf>,
-  pub runtime: Option<PathBuf>,
-  pub packages: Option<PathBuf>,
-}
-
-pub struct CliAlias {
-  pub subcommand: String,
-  pub forward_into: String,
+    pub config: Option<PathBuf>,
+    pub runtime: Option<PathBuf>,
+    pub packages: Option<PathBuf>,
 }
