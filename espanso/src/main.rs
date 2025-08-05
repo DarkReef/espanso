@@ -176,6 +176,10 @@ fn main() {
         }
         cli::Command::Launch {} => {
             println!("some dummy output");
+
+            #[cfg(target_os = "macos")]
+            espanso_mac_utils::convert_to_foreground_app();
+
             1 // TODO
         }
         cli::Command::Log {} => {
@@ -290,11 +294,6 @@ fn main() {
             1 // TODO
         }
     };
-
-    #[cfg(target_os = "macos")]
-    if handler.show_in_dock {
-        espanso_mac_utils::convert_to_foreground_app();
-    }
 
     // to compare the list of handlers to the `cli_args`
     // try to invoke `kdotool` to see if you have it or not.
