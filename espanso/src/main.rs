@@ -316,14 +316,7 @@ fn main() {
             };
             exit_code
         }
-        cli::Command::Start(start_args) => {
-            if start_args.unmanaged {
-                // start unmanaged
-            } else {
-                // start normally
-            }
-            1 // TODO
-        }
+        cli::Command::Start(start_args) => service::start_main(&paths, start_args.unmanaged),
         cli::Command::Status => service::status_main(&paths),
         cli::Command::Stop => service::stop_main(&paths),
         cli::Command::Uninstall(uninstall_args) => {
