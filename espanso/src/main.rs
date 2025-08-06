@@ -126,7 +126,9 @@ fn main() {
     // let non_fatal_errors = config_result.non_fatal_errors;
 
     // just a box to store the exite code
-    let exit_code = match args.command {
+    let mut exit_code = 0;
+
+    match args.command {
         cli::Command::Cmd(subcmd) => {
             println!("something anything");
             args_hashmap.insert("command", "cmd");
@@ -228,23 +230,91 @@ fn main() {
             cli::PathArgs::Packages => todo!(),
             cli::PathArgs::Runtime => todo!(),
         },
-        cli::Command::Restart => {
-            println!("some dummy output");
-            1 // TODO
+        cli::Command::Restart(start_args) => {
+            service::stop_main(&paths);
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            service::start_main(&paths, start_args.unmanaged)
         }
         cli::Command::Service(service_command) => {
-            match service_command {
-                cli::ServiceCommand::Check => todo!(),
-                cli::ServiceCommand::Register => todo!(),
-                cli::ServiceCommand::Restart(service_command_unmanaged_flag) => todo!(),
-                cli::ServiceCommand::Start(service_command_unmanaged_flag) => {
-                    service::start_main(&paths, args)
+            exit_code = match service_command {
+                cli::ServiceCommand::Check => {
+                    #[cfg(target_os = "windows")]
+                    if service::win::is_registered() {
+                        info_println!("registered as a service");
+                    } else {
+                        error_eprintln!("not registered as a service");
+                    }
+
+                    #[cfg(target_os = "linux")]
+                    if service::linux::is_registered() {
+                        info_println!("registered as a service");
+                    } else {
+                        error_eprintln!("not registered as a service");
+                    }
+                    #[cfg(target_os = "macos")]
+                    if service::macos::is_registered() {
+                        info_println!("registered as a service");
+                    } else {
+                        error_eprintln!("not registered as a service");
+                    }
+                    0
                 }
-                cli::ServiceCommand::Status => todo!(),
-                cli::ServiceCommand::Stop => todo!(),
-                cli::ServiceCommand::Unregister => todo!(),
-            }
-            1 // TODO
+                cli::ServiceCommand::Register => {
+                    #[cfg(target_os = "windows")]
+                    if let Err(err) = service::win::register() {
+                        error_eprintln!("unable to register service: {}", err);
+                        std::process::exit(1);
+                    }
+
+                    #[cfg(target_os = "linux")]
+                    if let Err(err) = service::linux::register() {
+                        error_eprintln!("unable to register service: {}", err);
+                        std::process::exit(1);
+                    }
+
+                    #[cfg(target_os = "macos")]
+                    if let Err(err) = service::macos::register() {
+                        error_eprintln!("unable to register service: {}", err);
+                        std::process::exit(1);
+                    }
+
+                    info_println!("service registered correctly!");
+                    0
+                }
+                cli::ServiceCommand::Restart(start_args) => {
+                    service::stop_main(&paths);
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    service::start_main(&paths, start_args.unmanaged)
+                }
+                cli::ServiceCommand::Start(start_args) => {
+                    service::start_main(&paths, start_args.unmanaged)
+                }
+                cli::ServiceCommand::Status => service::status_main(&paths),
+                cli::ServiceCommand::Stop => service::stop_main(&paths),
+                cli::ServiceCommand::Unregister => {
+                    #[cfg(target_os = "windows")]
+                    if let Err(err) = service::win::unregister() {
+                        error_eprintln!("unable to unregister service: {}", err);
+                        std::process::exit(1);
+                    }
+
+                    #[cfg(target_os = "linux")]
+                    if let Err(err) = service::linux::unregister() {
+                        error_eprintln!("unable to unregister service: {}", err);
+                        std::process::exit(1);
+                    }
+
+                    #[cfg(target_os = "macos")]
+                    if let Err(err) = service::macos::unregister() {
+                        error_eprintln!("unable to unregister service: {}", err);
+                        std::process::exit(1);
+                    }
+
+                    info_println!("service unregistered correctly!");
+                    0
+                }
+            };
+            exit_code
         }
         cli::Command::Start(start_args) => {
             if start_args.unmanaged {
@@ -254,14 +324,8 @@ fn main() {
             }
             1 // TODO
         }
-        cli::Command::Status => {
-            println!("some dummy output");
-            1 // TODO
-        }
-        cli::Command::Stop => {
-            println!("some dummy output");
-            1 // TODO
-        }
+        cli::Command::Status => service::status_main(&paths),
+        cli::Command::Stop => service::stop_main(&paths),
         cli::Command::Uninstall(uninstall_args) => {
             println!("installing {}", uninstall_args.package_name);
             1 // TODO

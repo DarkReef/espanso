@@ -92,7 +92,7 @@ pub enum Command {
     #[clap(subcommand)]
     Path(PathArgs),
     /// Restart the espanso service
-    Restart,
+    Restart(ServiceCommandUnmanagedFlag),
     /// A collection of commands to manage the Espanso service (for example, enabling auto-start on system boot).
     #[clap(subcommand)]
     Service(ServiceCommand),
@@ -365,9 +365,5 @@ pub enum LogMode {
 //   }
 // }
 
-#[derive(Debug)]
-pub struct PathsOverrides {
-    pub config: Option<PathBuf>,
-    pub runtime: Option<PathBuf>,
-    pub packages: Option<PathBuf>,
-}
+/// Config, Packages and Runtime path
+type MaybeEspansoPaths = (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>);

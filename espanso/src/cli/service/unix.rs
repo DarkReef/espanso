@@ -21,9 +21,9 @@ use crate::cli::util::CommandExt;
 use anyhow::Result;
 use thiserror::Error;
 
-use crate::cli::PathsOverrides;
+use crate::cli::MaybeEspansoPaths;
 
-pub fn fork_daemon(paths_overrides: &PathsOverrides) -> Result<()> {
+pub fn fork_daemon(paths_overrides: MaybeEspansoPaths) -> Result<()> {
     let pid = unsafe { libc::fork() };
     if pid < 0 {
         return Err(ForkError::ForkFailed.into());
@@ -56,7 +56,7 @@ pub fn fork_daemon(paths_overrides: &PathsOverrides) -> Result<()> {
     spawn_launcher(paths_overrides)
 }
 
-pub fn spawn_launcher(paths_overrides: &PathsOverrides) -> Result<()> {
+pub fn spawn_launcher(paths_overrides: MaybeEspansoPaths) -> Result<()> {
     let espanso_exe_path = std::env::current_exe()?;
     let mut command = std::process::Command::new(espanso_exe_path.to_string_lossy().to_string());
     command.args(["launcher"]);

@@ -17,33 +17,33 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use super::PathsOverrides;
+use super::MaybeEspansoPaths;
 use std::process::Command;
 
 pub trait CommandExt {
-    fn with_paths_overrides(&mut self, paths_overrides: &PathsOverrides) -> &mut Self;
+    fn with_paths_overrides(&mut self, paths_overrides: MaybeEspansoPaths) -> &mut Self;
 }
 
 impl CommandExt for Command {
-    fn with_paths_overrides(&mut self, paths_overrides: &PathsOverrides) -> &mut Self {
+    fn with_paths_overrides(&mut self, paths_overrides: MaybeEspansoPaths) -> &mut Self {
         // We only inject the paths that were explicitly overrided because otherwise
         // the migration process might create some incompatibilities.
         // For example, after the migration the "packages" dir could have been
         // moved to a different one, and that might cause the daemon to crash
         // if we inject the old packages dir that was automatically resolved.
-        if let Some(config_override) = &paths_overrides.config {
+        if let Some(config_override) = &paths_overrides.0 {
             self.env(
                 "ESPANSO_CONFIG_DIR",
                 config_override.to_string_lossy().to_string(),
             );
         }
-        if let Some(packages_override) = &paths_overrides.packages {
+        if let Some(packages_override) = &paths_overrides.1 {
             self.env(
                 "ESPANSO_PACKAGE_DIR",
                 packages_override.to_string_lossy().to_string(),
             );
         }
-        if let Some(runtime_override) = &paths_overrides.runtime {
+        if let Some(runtime_override) = &paths_overrides.2 {
             self.env(
                 "ESPANSO_RUNTIME_DIR",
                 runtime_override.to_string_lossy().to_string(),
