@@ -54,17 +54,17 @@ use linux::*;
 
 mod stop;
 
-pub fn new() -> CliModule {
-    CliModule {
-        enable_logs: true,
-        disable_logs_terminal_output: true,
-        requires_paths: true,
-        subcommand: "service".to_string(),
-        log_mode: super::LogMode::AppendOnly,
-        entry: service_main,
-        ..Default::default()
-    }
-}
+// pub fn new() -> CliModule {
+//     CliModule {
+//         enable_logs: true,
+//         disable_logs_terminal_output: true,
+//         requires_paths: true,
+//         subcommand: "service".to_string(),
+//         log_mode: super::LogMode::AppendOnly,
+//         entry: service_main,
+//         ..Default::default()
+//     }
+// }
 
 fn service_main(args: CliModuleArgs) -> i32 {
     let paths = args.paths.expect("missing paths argument");
@@ -92,7 +92,7 @@ fn service_main(args: CliModuleArgs) -> i32 {
             return SERVICE_NOT_REGISTERED;
         }
     } else if let Some(sub_args) = cli_args.subcommand_matches("start") {
-        return start_main(&paths, &paths_overrides, sub_args);
+        return start_main(&paths, sub_args);
     } else if cli_args.subcommand_matches("stop").is_some() {
         return stop_main(&paths);
     } else if cli_args.subcommand_matches("status").is_some() {
@@ -100,7 +100,7 @@ fn service_main(args: CliModuleArgs) -> i32 {
     } else if let Some(sub_args) = cli_args.subcommand_matches("restart") {
         stop_main(&paths);
         std::thread::sleep(std::time::Duration::from_millis(300));
-        return start_main(&paths, &paths_overrides, sub_args);
+        return start_main(&paths, sub_args);
     } else {
         eprintln!("Invalid usage, please run `espanso service --help` for more information.");
     }
@@ -108,7 +108,7 @@ fn service_main(args: CliModuleArgs) -> i32 {
     SERVICE_SUCCESS
 }
 
-fn start_main(paths: &Paths, _paths_overrides: &PathsOverrides, args: &ArgMatches) -> i32 {
+pub fn start_main(paths: &Paths, is_unmanaged: bool) -> i32 {
     let lock_file = acquire_worker_lock(&paths.runtime);
     if lock_file.is_none() {
         error_eprintln!("espanso is already running!");
@@ -116,11 +116,11 @@ fn start_main(paths: &Paths, _paths_overrides: &PathsOverrides, args: &ArgMatche
     }
     drop(lock_file);
 
-    if args.is_present("unmanaged") && !cfg!(target_os = "windows") {
+    if is_unmanaged && !cfg!(target_os = "windows") {
         // Unmanaged service
         #[cfg(unix)]
         {
-            if let Err(err) = fork_daemon(_paths_overrides) {
+            if let Err(err) = fork_daemon(paths) {
                 error_eprintln!("unable to start service (unmanaged): {}", err);
                 return SERVICE_FAILURE;
             }

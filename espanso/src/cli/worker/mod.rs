@@ -46,33 +46,29 @@ mod match_cache;
 mod secure_input;
 mod ui;
 
-pub fn new() -> CliModule {
-    #[allow(clippy::needless_update)]
-    CliModule {
-        requires_paths: true,
-        requires_config: true,
-        requires_linux_capabilities: true,
-        enable_logs: true,
-        log_mode: super::LogMode::AppendOnly,
-        subcommand: "worker".to_string(),
-        entry: worker_main,
-        ..Default::default()
-    }
-}
+// pub fn new() -> CliModule {
+//     #[allow(clippy::needless_update)]
+//     CliModule {
+//         requires_paths: true,
+//         requires_config: true,
+//         requires_linux_capabilities: true,
+//         enable_logs: true,
+//         log_mode: super::LogMode::AppendOnly,
+//         subcommand: "worker".to_string(),
+//         entry: worker_main,
+//         ..Default::default()
+//     }
+// }
 
-pub fn worker_main<C: ConfigStore, M: MatchStore>(
+pub fn worker_main(
     paths: Paths,
-    config_store: C,
-    match_store: M,
+    config_store: Box<dyn ConfigStore>,
+    match_store: Box<dyn MatchStore>,
+    monitor_daemon: bool,
+    start_reason: Option<String>,
 ) -> i32 {
     prevent_running_as_root_on_macos();
 
-    // it's missing the flags `start-reason` `monitor-daemon`
-
-    let cli_args = cli_args.expect("missing cli_args in worker main");
-
-    // When restarted, the daemon passes the reason why the worker was restarted (config_change, etc)
-    let start_reason = cli_args.value_of("start-reason").map(String::from);
     debug!("starting with start-reason = {start_reason:?}");
 
     // Avoid running multiple worker instances
@@ -135,7 +131,7 @@ pub fn worker_main<C: ConfigStore, M: MatchStore>(
     // terminate the worker if the daemon terminates
     // This is needed to avoid "dangling" worker processes
     // if the daemon crashes or is forcefully terminated.
-    if cli_args.is_present("monitor-daemon") {
+    if monitor_daemon {
         daemon_monitor::initialize_and_spawn(&paths.runtime, engine_exit_notify)
             .expect("unable to initialize daemon monitor thread");
     }

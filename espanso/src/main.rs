@@ -30,13 +30,18 @@ mod ipc;
 mod lock;
 #[macro_use]
 mod logging;
+mod capabilities;
+mod common_flags;
 mod exit_code;
 mod patch;
 mod path;
 mod preferences;
 mod util;
 
-use crate::{cli::log::log_main, path::get_path_override};
+use crate::{
+    cli::{log::log_main, service, worker::worker_main},
+    path::get_path_override,
+};
 use clap::Parser;
 use cli::LogMode;
 use config::load_config;
@@ -116,9 +121,9 @@ fn main() {
 
     let config_result = load_config(&paths.config).expect("unable to load config");
 
-    let config_store = Some(config_result.config_store);
-    let match_store = Some(config_result.match_store);
-    let non_fatal_errors = config_result.non_fatal_errors;
+    let config_store = config_result.config_store;
+    let match_store = config_result.match_store;
+    // let non_fatal_errors = config_result.non_fatal_errors;
 
     // just a box to store the exite code
     let exit_code = match args.command {
@@ -171,7 +176,6 @@ fn main() {
             1 // TODO
         }
         cli::Command::Log => {
-            println!("some dummy output");
             enable_logs(log_proxy, &paths, LogMode::Read);
             log_main(Some(paths))
         }
@@ -217,72 +221,67 @@ fn main() {
             println!("some dummy output");
             1 // TODO
         }
-        cli::Command::Path { .. } => {
-            // if cli_args.subcommand_matches("config").is_some() {
-            //     println!("{}", paths.config.to_string_lossy());
-            // } else if cli_args.subcommand_matches("packages").is_some() {
-            //     println!("{}", paths.packages.to_string_lossy());
-            // } else if cli_args.subcommand_matches("data").is_some()
-            //     || cli_args.subcommand_matches("runtime").is_some()
-            // {
-            //     println!("{}", paths.runtime.to_string_lossy());
-            // } else if cli_args.subcommand_matches("default").is_some() {
-            //     println!(
-            //         "{}",
-            //         paths
-            //             .config
-            //             .join("config")
-            //             .join("default.yml")
-            //             .to_string_lossy()
-            //     );
-            // } else if cli_args.subcommand_matches("base").is_some() {
-            //     println!(
-            //         "{}",
-            //         paths
-            //             .config
-            //             .join("match")
-            //             .join("base.yml")
-            //             .to_string_lossy()
-            //     );
-            // } else {
-            //     println!("Config: {}", paths.config.to_string_lossy());
-            //     println!("Packages: {}", paths.packages.to_string_lossy());
-            //     println!("Runtime: {}", paths.runtime.to_string_lossy());
-            // }
-
-            // 0
-            1 // TODO
-        }
+        cli::Command::Path(path_args) => match path_args {
+            cli::PathArgs::Base => todo!(),
+            cli::PathArgs::Config => todo!(),
+            cli::PathArgs::Default => todo!(),
+            cli::PathArgs::Packages => todo!(),
+            cli::PathArgs::Runtime => todo!(),
+        },
         cli::Command::Restart => {
             println!("some dummy output");
             1 // TODO
         }
-        cli::Command::Service(..) => {
-            println!("some dummy output");
+        cli::Command::Service(service_command) => {
+            match service_command {
+                cli::ServiceCommand::Check => todo!(),
+                cli::ServiceCommand::Register => todo!(),
+                cli::ServiceCommand::Restart(service_command_unmanaged_flag) => todo!(),
+                cli::ServiceCommand::Start(service_command_unmanaged_flag) => {
+                    service::start_main(&paths, args)
+                }
+                cli::ServiceCommand::Status => todo!(),
+                cli::ServiceCommand::Stop => todo!(),
+                cli::ServiceCommand::Unregister => todo!(),
+            }
             1 // TODO
         }
-        cli::Command::Start(..) => {
-            println!("some dummy output");
+        cli::Command::Start(start_args) => {
+            if start_args.unmanaged {
+                // start unmanaged
+            } else {
+                // start normally
+            }
             1 // TODO
         }
         cli::Command::Status => {
             println!("some dummy output");
             1 // TODO
         }
-        cli::Command::Stop(..) => {
+        cli::Command::Stop => {
             println!("some dummy output");
             1 // TODO
         }
-        cli::Command::Uninstall(..) => {
+        cli::Command::Uninstall(uninstall_args) => {
+            println!("installing {}", uninstall_args.package_name);
+            1 // TODO
+        }
+        cli::Command::Workaround(workaround_args) => {
             println!("some dummy output");
             1 // TODO
         }
-        cli::Command::Workaround(..) => {
-            println!("some dummy output");
+        cli::Command::Worker {
+            monitor_daemon,
+            start_reason,
+        } => {
+            worker_main(
+                paths,
+                config_store,
+                match_store,
+                monitor_daemon,
+                start_reason,
+            );
             1 // TODO
-        }
-        cli::Command::Worker => {
-            // ;;;;
         }
     };
 

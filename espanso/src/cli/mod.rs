@@ -30,7 +30,7 @@ pub mod log;
 // pub mod match_cli;
 //pub mod modulo;
 //pub mod package;
-//pub mod service;
+pub mod service;
 pub mod util;
 //pub mod workaround;
 pub mod worker;
@@ -101,14 +101,18 @@ pub enum Command {
     /// Check if the espanso daemon is running or not
     Status,
     /// Stop espanso service
-    Stop(ServiceCommandUnmanagedFlag),
+    Stop,
     /// Remove a package
     Uninstall(UninstallArgs),
     /// A collection of workarounds to solve some common problems
     #[clap(subcommand)]
     Workaround(WorkaroundArgs),
     /// Remove a package
-    Worker,
+    Worker {
+        monitor_daemon: bool,
+        // When restarted, the daemon passes the reason why the worker was restarted (config_change, etc)
+        start_reason: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -245,7 +249,7 @@ pub enum PackageArgs {
 #[command(arg_required_else_help = true)]
 pub struct UninstallArgs {
     /// Package name
-    package_name: String,
+    pub package_name: String,
 }
 
 #[derive(Debug, Subcommand)]
