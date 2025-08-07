@@ -32,7 +32,7 @@ pub mod log;
 //pub mod package;
 pub mod service;
 pub mod util;
-//pub mod workaround;
+pub mod workaround;
 pub mod worker;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 

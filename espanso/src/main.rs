@@ -39,7 +39,7 @@ mod preferences;
 mod util;
 
 use crate::{
-    cli::{log::log_main, service, worker::worker_main},
+    cli::{log::log_main, service, workaround, worker},
     path::get_path_override,
 };
 use clap::Parser;
@@ -323,23 +323,19 @@ fn main() {
             println!("installing {}", uninstall_args.package_name);
             1 // TODO
         }
-        cli::Command::Workaround(workaround_args) => {
-            println!("some dummy output");
-            1 // TODO
+        cli::Command::Workaround(_unused_workaround_args) => {
+            workaround::workaround_main(_unused_workaround_args)
         }
         cli::Command::Worker {
             monitor_daemon,
             start_reason,
-        } => {
-            worker_main(
-                paths,
-                config_store,
-                match_store,
-                monitor_daemon,
-                start_reason,
-            );
-            1 // TODO
-        }
+        } => worker::worker_main(
+            paths,
+            config_store,
+            match_store,
+            monitor_daemon,
+            start_reason,
+        ),
     };
 
     // to compare the list of handlers to the `cli_args`
