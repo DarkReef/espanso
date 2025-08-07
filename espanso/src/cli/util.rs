@@ -21,11 +21,11 @@ use super::MaybeEspansoPaths;
 use std::process::Command;
 
 pub trait CommandExt {
-    fn with_paths_overrides(&mut self, paths_overrides: MaybeEspansoPaths) -> &mut Self;
+    fn with_paths_overrides(&mut self, paths_overrides: &MaybeEspansoPaths) -> &mut Self;
 }
 
 impl CommandExt for Command {
-    fn with_paths_overrides(&mut self, paths_overrides: MaybeEspansoPaths) -> &mut Self {
+    fn with_paths_overrides(&mut self, paths_overrides: &MaybeEspansoPaths) -> &mut Self {
         // We only inject the paths that were explicitly overrided because otherwise
         // the migration process might create some incompatibilities.
         // For example, after the migration the "packages" dir could have been

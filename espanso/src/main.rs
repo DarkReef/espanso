@@ -39,7 +39,7 @@ mod preferences;
 mod util;
 
 use crate::{
-    cli::{cmd, edit::edit_main, log::log_main, service, workaround, worker},
+    cli::{cmd, daemon, edit::edit_main, log::log_main, service, workaround, worker},
     path::get_path_override,
 };
 use clap::Parser;
@@ -52,6 +52,7 @@ use simplelog::{
     CombinedLogger, ConfigBuilder, SharedLogger, TermLogger, TerminalMode, WriteLogger,
 };
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LOG_FILE_NAME: &str = "espanso.log";
 
 fn main() {
@@ -130,6 +131,7 @@ fn main() {
 
     match args.command {
         cli::Command::Cmd(subcmd) => cmd::cmd_main(subcmd, paths),
+        cli::Command::Daemon => daemon::daemon_main(paths),
         cli::Command::Edit { target_file } => edit_main(target_file, paths),
         cli::Command::EnvPath(..) => {
             println!("some dummy output");
@@ -296,15 +298,12 @@ fn main() {
         cli::Command::Workaround(_unused_workaround_args) => {
             workaround::workaround_main(_unused_workaround_args)
         }
-        cli::Command::Worker {
-            monitor_daemon,
-            start_reason,
-        } => worker::worker_main(
+        cli::Command::Worker(worker_args) => worker::worker_main(
             paths,
             config_store,
             match_store,
-            monitor_daemon,
-            start_reason,
+            worker_args.monitor_daemon,
+            worker_args.start_reason,
         ),
     };
 

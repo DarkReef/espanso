@@ -19,7 +19,7 @@
 
 use std::{path::Path, process::Command, time::Instant};
 
-use crate::path::Paths;
+use crate::{cli::MaybeEspansoPaths, path::Paths};
 use crossbeam::{
     channel::{unbounded, Sender},
     select,
@@ -39,35 +39,24 @@ use crate::{
     VERSION,
 };
 
-use super::{CliModule, CliModuleArgs, PathsOverrides};
-
 mod ipc;
 mod keyboard_layout_watcher;
 mod troubleshoot;
 mod watcher;
 
-pub fn new() -> CliModule {
-    #[allow(clippy::needless_update)]
-    CliModule {
-        requires_paths: true,
-        enable_logs: true,
-        log_mode: super::LogMode::CleanAndAppend,
-        subcommand: "daemon".to_string(),
-        entry: daemon_main,
-        ..Default::default()
-    }
-}
-
-fn daemon_main(args: CliModuleArgs) -> i32 {
+pub fn daemon_main(paths: Paths) -> i32 {
     prevent_running_as_root_on_macos();
 
-    let paths = args.paths.expect("missing paths in daemon main");
-    let paths_overrides = args
-        .paths_overrides
-        .expect("missing paths_overrides in daemon main");
+    // I'm not sure why we have two paths overrides. It's called directly on the
+    // main.rs anyway. So for the time being I'll make a copy
+    let paths_overrides = (
+        Some(paths.config.clone()),
+        Some(paths.packages.clone()),
+        Some(paths.runtime.clone()),
+    );
 
     // Make sure only one instance of the daemon is running
-    let lock_file = acquire_daemon_lock(&paths.runtime);
+    let lock_file = acquire_daemon_lock(&paths.runtime.clone());
     if lock_file.is_none() {
         error!("daemon is already running!");
         return DAEMON_ALREADY_RUNNING;
@@ -86,7 +75,7 @@ fn daemon_main(args: CliModuleArgs) -> i32 {
 
     let (watcher_notify, watcher_signal) = unbounded::<()>();
 
-    watcher::initialize_and_spawn(&paths.config, watcher_notify)
+    watcher::initialize_and_spawn(&paths.config.clone(), watcher_notify)
         .expect("unable to initialize config watcher thread");
 
     let (keyboard_layout_watcher_notify, keyboard_layout_watcher_signal) = unbounded::<()>();
@@ -229,7 +218,7 @@ fn terminate_worker_if_already_running(runtime_dir: &Path) {
 }
 
 fn spawn_worker(
-    paths_overrides: &PathsOverrides,
+    paths_overrides: &MaybeEspansoPaths,
     exit_notify: Sender<i32>,
     start_reason: Option<String>,
 ) {
@@ -275,7 +264,7 @@ fn spawn_worker(
 
 fn restart_worker(
     paths: &Paths,
-    paths_overrides: &PathsOverrides,
+    paths_overrides: &MaybeEspansoPaths,
     exit_notify: Sender<i32>,
     start_reason: Option<String>,
 ) {

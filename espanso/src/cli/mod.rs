@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand};
 
 pub mod cmd;
-//pub mod daemon;
+pub mod daemon;
 pub mod edit;
 //pub mod env_path;
 //pub mod launcher;
@@ -65,6 +65,8 @@ pub enum Command {
     /// Send a command to the espanso daemon
     #[clap(subcommand)]
     Cmd(CmdCommand),
+    /// Start the daemon without spawning a new process.
+    Daemon,
     /// Shortcut to open the default text editor to edit config files
     Edit {
         /// Defaults to "match/base.yml". It contains the relative path of the file you
@@ -108,11 +110,7 @@ pub enum Command {
     #[clap(subcommand)]
     Workaround(WorkaroundArgs),
     /// Remove a package
-    Worker {
-        monitor_daemon: bool,
-        // When restarted, the daemon passes the reason why the worker was restarted (config_change, etc)
-        start_reason: Option<String>,
-    },
+    Worker(WorkerArgs),
 }
 
 #[derive(Subcommand, Debug)]
@@ -295,6 +293,15 @@ pub struct ServiceCommandUnmanagedFlag {
 pub enum WorkaroundArgs {
     /// Attempt to disable secure input by automating the common steps.
     SecureInput,
+}
+
+#[derive(Args, Debug)]
+pub struct WorkerArgs {
+    #[arg(long)]
+    pub monitor_daemon: bool,
+    // When restarted, the daemon passes the reason why the worker was restarted (config_change, etc)
+    #[arg(long)]
+    pub start_reason: Option<String>,
 }
 
 // we really need these bools until we rewrite the CLI in the Derive API of clap

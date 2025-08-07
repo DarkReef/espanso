@@ -26,13 +26,13 @@ use crossbeam::select;
 use log::info;
 
 use crate::cli::util::CommandExt;
-use crate::cli::PathsOverrides;
+use crate::cli::MaybeEspansoPaths;
 use crate::config::ConfigLoadResult;
 use crate::error_eprintln;
 use crate::path::Paths;
 use crate::preferences::Preferences;
 
-pub fn launch_troubleshoot(paths_overrides: &PathsOverrides) -> Result<TroubleshootGuard> {
+pub fn launch_troubleshoot(paths_overrides: &MaybeEspansoPaths) -> Result<TroubleshootGuard> {
     let espanso_exe_path = std::env::current_exe()?;
     let mut command = Command::new(espanso_exe_path.to_string_lossy().to_string());
     command.args(["modulo", "troubleshoot"]);
@@ -74,7 +74,10 @@ pub enum LoadResult {
     Fatal(TroubleshootGuard),
 }
 
-pub fn load_config_or_troubleshoot(paths: &Paths, paths_overrides: &PathsOverrides) -> LoadResult {
+pub fn load_config_or_troubleshoot(
+    paths: &Paths,
+    paths_overrides: &MaybeEspansoPaths,
+) -> LoadResult {
     match crate::load_config(&paths.config) {
         Ok(load_result) => {
             if load_result.non_fatal_errors.is_empty() {
@@ -107,7 +110,7 @@ pub fn load_config_or_troubleshoot(paths: &Paths, paths_overrides: &PathsOverrid
 
 pub fn load_config_or_troubleshoot_until_config_is_correct_or_abort(
     paths: &Paths,
-    paths_overrides: &PathsOverrides,
+    paths_overrides: &MaybeEspansoPaths,
     watcher_receiver: Receiver<()>,
 ) -> Result<(ConfigLoadResult, Option<TroubleshootGuard>)> {
     let mut _troubleshoot_guard = None;
