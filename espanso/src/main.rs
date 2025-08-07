@@ -39,7 +39,7 @@ mod preferences;
 mod util;
 
 use crate::{
-    cli::{cmd, daemon, edit::edit_main, log::log_main, service, workaround, worker},
+    cli::{cmd, daemon, edit::edit_main, env_path, log::log_main, service, workaround, worker},
     path::get_path_override,
 };
 use clap::Parser;
@@ -133,10 +133,7 @@ fn main() {
         cli::Command::Cmd(subcmd) => cmd::cmd_main(subcmd, paths),
         cli::Command::Daemon => daemon::daemon_main(paths),
         cli::Command::Edit { target_file } => edit_main(target_file, paths),
-        cli::Command::EnvPath(..) => {
-            println!("some dummy output");
-            1 // TODO
-        }
+        cli::Command::EnvPath(env_path_args) => env_path::env_path_main(env_path_args),
         cli::Command::Install { .. } => {
             println!("some dummy output");
             1 // TODO

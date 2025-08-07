@@ -17,47 +17,40 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::exit_code::{ADD_TO_PATH_FAILURE, ADD_TO_PATH_SUCCESS};
+use crate::{cli::EnvPathArgs, cli::EnvPathSubCommand};
 
-use super::{CliModule, CliModuleArgs};
 use log::error;
 
-pub fn new() -> CliModule {
-    CliModule {
-        enable_logs: true,
-        disable_logs_terminal_output: true,
-        log_mode: super::LogMode::AppendOnly,
-        subcommand: "env-path".to_string(),
-        entry: env_path_main,
-        ..Default::default()
-    }
-}
+pub fn env_path_main(args: EnvPathArgs) -> i32 {
+    let elevated_priviledge_prompt = args.prompt;
 
-fn env_path_main(args: CliModuleArgs) -> i32 {
-    let cli_args = args.cli_args.expect("missing cli_args");
-
-    let elevated_priviledge_prompt = cli_args.is_present("prompt");
-
-    if cli_args.subcommand_matches("register").is_some() {
-        if let Err(error) = crate::path::add_espanso_to_path(elevated_priviledge_prompt) {
-            error_print_and_log(&format!(
-                "Unable to add 'espanso' command to PATH: {error:?}"
-            ));
-            return ADD_TO_PATH_FAILURE;
-        }
-    } else if cli_args.subcommand_matches("unregister").is_some() {
-        if let Err(error) = crate::path::remove_espanso_from_path(elevated_priviledge_prompt) {
-            error_print_and_log(&format!(
-                "Unable to remove 'espanso' command from PATH: {error:?}"
-            ));
-            return ADD_TO_PATH_FAILURE;
+    if let Some(command) = args.command {
+        match command {
+            EnvPathSubCommand::Register => {
+                if let Err(error) = crate::path::add_espanso_to_path(elevated_priviledge_prompt) {
+                    error_print_and_log(&format!(
+                        "Unable to add 'espanso' command to PATH: {error:?}"
+                    ));
+                    return 1;
+                }
+            }
+            EnvPathSubCommand::Unregister => {
+                if let Err(error) =
+                    crate::path::remove_espanso_from_path(elevated_priviledge_prompt)
+                {
+                    error_print_and_log(&format!(
+                        "Unable to remove 'espanso' command from PATH: {error:?}"
+                    ));
+                    return 1;
+                }
+            }
         }
     } else {
         eprintln!("Please specify a subcommand, either `espanso env-path register` to add the 'espanso' command or `espanso env-path unregister` to remove it");
-        return ADD_TO_PATH_FAILURE;
+        return 1;
     }
 
-    ADD_TO_PATH_SUCCESS
+    0
 }
 
 fn error_print_and_log(msg: &str) {
