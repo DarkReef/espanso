@@ -39,7 +39,9 @@ mod preferences;
 mod util;
 
 use crate::{
-    cli::{cmd, daemon, edit::edit_main, env_path, log::log_main, service, workaround, worker},
+    cli::{
+        cmd, daemon, edit::edit_main, env_path, log::log_main, package, service, workaround, worker,
+    },
     path::get_path_override,
 };
 use clap::Parser;
@@ -188,10 +190,7 @@ fn main() {
 
             1 // TODO
         }
-        cli::Command::Package { .. } => {
-            println!("some dummy output");
-            1 // TODO
-        }
+        cli::Command::Package(package_args) => package::package_main(package_args, paths),
         cli::Command::Path(path_args) => match path_args {
             cli::PathArgs::Base => todo!(),
             cli::PathArgs::Config => todo!(),
@@ -319,6 +318,7 @@ fn main() {
     std::process::exit(exit_code);
 }
 
+// TODO: check if the logs for daemon+worker works fine
 fn enable_logs(log_proxy: FileProxy, paths: &Paths, log_mode: LogMode) {
     log_proxy
         .set_output_file(

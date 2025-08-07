@@ -17,37 +17,34 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::path::Paths;
-use anyhow::{anyhow, bail, Context, Result};
-use clap::ArgMatches;
+use crate::{cli::InstallArgs, path::Paths};
+use anyhow::{bail, Context, Result};
 use espanso_package::{PackageSpecifier, ProviderOptions, SaveOptions};
 
 use crate::{error_eprintln, info_println};
 
-pub fn install_package(paths: &Paths, matches: &ArgMatches) -> Result<()> {
-    let package_name = matches
-        .value_of("package_name")
-        .ok_or_else(|| anyhow!("missing package name"))?;
-    let version = matches.value_of("version");
-    let force = matches.is_present("force");
-    let refresh_index = matches.is_present("refresh-index");
-    let external = matches.is_present("external");
+pub fn install_package(paths: &Paths, install_args: InstallArgs) -> Result<()> {
+    let package_name = install_args.package_name;
+    let version = match install_args.version {
+        Some(version) => version,
+        None => String::from("latest"),
+    };
 
-    info_println!(
-        "installing package: {} - version: {}",
-        package_name,
-        version.unwrap_or("latest")
-    );
+    let force = install_args.force;
+    let refresh_index = install_args.refresh_index;
+    let external = install_args.external;
 
-    let (package_specifier, requires_external) = if let Some(git_repo) = matches.value_of("git") {
-        let git_branch = matches.value_of("git-branch");
-        let use_native_git = matches.is_present("use-native-git");
+    info_println!("installing package: {package_name} - version: {}", version);
 
+    let git_repo = install_args.git_repo;
+    let (package_specifier, requires_external) = if git_repo.is_some() {
+        let git_branch = install_args.git_branch;
+        let use_native_git = install_args.use_native_git;
         (
             PackageSpecifier {
                 name: package_name.to_string(),
-                version: version.map(String::from),
-                git_repo_url: Some(git_repo.to_string()),
+                version: Some(version),
+                git_repo_url: git_repo,
                 git_branch: git_branch.map(String::from),
                 use_native_git,
             },
@@ -55,11 +52,10 @@ pub fn install_package(paths: &Paths, matches: &ArgMatches) -> Result<()> {
         )
     } else {
         // Install from the hub
-
         (
             PackageSpecifier {
                 name: package_name.to_string(),
-                version: version.map(String::from),
+                version: Some(version),
                 ..Default::default()
             },
             false,

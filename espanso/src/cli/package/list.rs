@@ -19,12 +19,11 @@
 
 use crate::path::Paths;
 use anyhow::{Context, Result};
-use clap::ArgMatches;
 use espanso_package::StoredPackage;
 
 use crate::info_println;
 
-pub fn list_packages(paths: &Paths, _: &ArgMatches) -> Result<()> {
+pub fn list_packages(paths: &Paths) -> Result<()> {
     let archiver =
         espanso_package::get_archiver(&paths.packages).context("unable to get package archiver")?;
 
