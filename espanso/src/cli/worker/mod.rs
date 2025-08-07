@@ -34,8 +34,6 @@ use crate::{
 
 use self::ui::util::convert_icon_paths_to_tray_vec;
 
-use super::CliModule;
-
 mod builtin;
 mod config;
 mod context;

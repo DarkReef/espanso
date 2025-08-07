@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 
-//pub mod cmd;
+pub mod cmd;
 //pub mod daemon;
 //pub mod edit;
 //pub mod env_path;

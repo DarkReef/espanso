@@ -20,41 +20,22 @@
 use std::path::Path;
 
 use crate::{
+    cli::CmdCommand,
     ipc::{create_ipc_client_to_worker, IPCEvent},
     lock::acquire_worker_lock,
+    path::Paths,
 };
 
-use super::{CliModule, CliModuleArgs};
 use anyhow::{bail, Result};
 use espanso_ipc::IPCClient;
 
-pub fn new() -> CliModule {
-    CliModule {
-        requires_paths: true,
-        subcommand: "cmd".to_string(),
-        entry: cmd_main,
-        ..Default::default()
-    }
-}
-
-fn cmd_main(args: CliModuleArgs) -> i32 {
-    let cli_args = args.cli_args.expect("missing cli_args");
-    let paths = args.paths.expect("missing paths");
-
-    #[allow(unused_variables)]
-    let event = if cli_args.subcommand_matches("enable").is_some() {
-        IPCEvent::EnableRequest
-    } else if cli_args.subcommand_matches("disable").is_some() {
-        IPCEvent::DisableRequest
-    } else if cli_args.subcommand_matches("toggle").is_some() {
-        IPCEvent::ToggleRequest
-    } else if cli_args.subcommand_matches("search").is_some() {
-        IPCEvent::OpenSearchBar
-    } else if let Some(subcommand_matches) = cli_args.subcommand_matches("search") {
-        IPCEvent::OpenConfigFolder
-    } else {
-        eprintln!("unknown command, please run `espanso cmd --help` to see a list of valid ones.");
-        return 1;
+pub fn cmd_main(cmd_args: CmdCommand, paths: Paths) -> i32 {
+    let event = match cmd_args {
+        CmdCommand::Disable => IPCEvent::DisableRequest,
+        CmdCommand::Enable => IPCEvent::EnableRequest,
+        CmdCommand::Search => IPCEvent::OpenSearchBar,
+        CmdCommand::Toggle => IPCEvent::ToggleRequest,
+        // missing `IPCEvent::OpenSearchBar` and `IPCEvent::OpenConfigFolder`
     };
 
     if let Err(error) = send_event_to_worker(&paths.runtime, event) {

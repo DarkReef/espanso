@@ -39,7 +39,7 @@ mod preferences;
 mod util;
 
 use crate::{
-    cli::{log::log_main, service, workaround, worker},
+    cli::{cmd, log::log_main, service, workaround, worker},
     path::get_path_override,
 };
 use clap::Parser;
@@ -129,28 +129,7 @@ fn main() {
     let mut exit_code = 0;
 
     match args.command {
-        cli::Command::Cmd(subcmd) => {
-            println!("something anything");
-            args_hashmap.insert("command", "cmd");
-            match subcmd {
-                cli::CmdCommand::Disable => {
-                    args_hashmap.insert("subcommand", "disable");
-                    1 // TODO
-                }
-                cli::CmdCommand::Enable => {
-                    args_hashmap.insert("subcommand", "enable");
-                    1 // TODO
-                }
-                cli::CmdCommand::Search => {
-                    args_hashmap.insert("subcommand", "search");
-                    1 // TODO
-                }
-                cli::CmdCommand::Toggle => {
-                    args_hashmap.insert("subcommand", "toggle");
-                    1 // TODO
-                }
-            }
-        }
+        cli::Command::Cmd(subcmd) => cmd::cmd_main(subcmd, paths),
         cli::Command::Edit { target_file } => {
             args_hashmap.insert("command", "edit");
             if let Some(_file) = target_file {
