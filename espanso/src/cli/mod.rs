@@ -23,7 +23,7 @@ use clap::{Args, Parser, Subcommand};
 
 pub mod cmd;
 //pub mod daemon;
-//pub mod edit;
+pub mod edit;
 //pub mod env_path;
 //pub mod launcher;
 pub mod log;

@@ -39,7 +39,7 @@ mod preferences;
 mod util;
 
 use crate::{
-    cli::{cmd, log::log_main, service, workaround, worker},
+    cli::{cmd, edit::edit_main, log::log_main, service, workaround, worker},
     path::get_path_override,
 };
 use clap::Parser;
@@ -130,16 +130,7 @@ fn main() {
 
     match args.command {
         cli::Command::Cmd(subcmd) => cmd::cmd_main(subcmd, paths),
-        cli::Command::Edit { target_file } => {
-            args_hashmap.insert("command", "edit");
-            if let Some(_file) = target_file {
-                // args_hashmap.insert("edit-file", file.clone().as_str());
-            } else {
-                args_hashmap.insert("edit-file", "empty");
-                println!("`espanso edit` (empty) was passed");
-            }
-            1 // TODO
-        }
+        cli::Command::Edit { target_file } => edit_main(target_file, paths),
         cli::Command::EnvPath(..) => {
             println!("some dummy output");
             1 // TODO
