@@ -234,7 +234,7 @@ pub struct MatchListCommand {
 #[command(arg_required_else_help = true)]
 pub enum ModuloArgs {
     /// Display a customizable form
-    Form,
+    Form(FormArgs),
     /// Display a search box
     Search,
     /// Display a Text View
@@ -242,7 +242,34 @@ pub enum ModuloArgs {
     /// Display the troubleshooting GUI
     Troubleshoot,
     /// Display the welcome screen
-    Welcome,
+    Welcome(WelcomeArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct FormArgs {
+    /// Interpret the input data as JSON
+    #[arg(short, long)]
+    pub json: bool,
+
+    /// Input file: it can be a `PathBuf` or stdin
+    #[arg(short, long)]
+    pub input_file: PathBuf,
+}
+
+#[derive(Args, Debug)]
+pub struct WelcomeArgs {
+    /// Interpret the input data as JSON
+    #[arg(short, long)]
+    pub json: bool,
+
+    /// Input file: it can be a `PathBuf` or stdin
+    #[arg(short, long)]
+    pub input_file: PathBuf,
+}
+#[derive(Clone, Debug)]
+pub enum InputFileArg {
+    Path(PathBuf),
+    String,
 }
 
 #[derive(Debug, Subcommand)]

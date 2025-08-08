@@ -191,7 +191,10 @@ fn main() {
 
             1 // TODO
         }
-        cli::Command::Modulo(modulo_args) => modulo::modulo_main(modulo_args, paths),
+        cli::Command::Modulo(modulo_args) => {
+            todo!("Need to pass stdin to `FormArgs`");
+            modulo::modulo_main(modulo_args, paths)
+        }
         cli::Command::Package(package_args) => package::package_main(package_args, paths),
         cli::Command::Path(path_args) => {
             if let Some(default_config_path) = if is_portable_mode() {
