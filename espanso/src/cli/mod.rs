@@ -50,13 +50,13 @@ pub struct Arguments {
     // Sets the level of verbosity
     pub verbose: u8,
 
-    #[arg(short, long, hide = true)]
+    #[arg(short, long)]
     pub config_dir: Option<PathBuf>,
 
-    #[arg(short, long, hide = true)]
+    #[arg(short, long)]
     pub package_dir: Option<PathBuf>,
 
-    #[arg(short, long, hide = true)]
+    #[arg(short, long)]
     pub runtime_dir: Option<PathBuf>,
 }
 

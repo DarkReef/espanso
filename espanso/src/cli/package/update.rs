@@ -18,8 +18,7 @@
  */
 
 use crate::path::Paths;
-use anyhow::{anyhow, Context, Result};
-use clap::ArgMatches;
+use anyhow::{Context, Result};
 use espanso_package::{Archiver, PackageSpecifier, ProviderOptions, SaveOptions, StoredPackage};
 
 use crate::{error_eprintln, info_println, warn_eprintln};
@@ -29,11 +28,7 @@ pub enum UpdateResults {
     PartialFailure,
 }
 
-pub fn update_package(paths: &Paths, matches: &ArgMatches) -> Result<UpdateResults> {
-    let package_name = matches
-        .value_of("package_name")
-        .ok_or_else(|| anyhow!("missing package name"))?;
-
+pub fn update_package(package_name: &str, paths: &Paths) -> Result<UpdateResults> {
     let archiver =
         espanso_package::get_archiver(&paths.packages).context("unable to get package archiver")?;
 

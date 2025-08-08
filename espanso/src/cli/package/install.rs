@@ -45,7 +45,7 @@ pub fn install_package(paths: &Paths, install_args: InstallArgs) -> Result<()> {
                 name: package_name.to_string(),
                 version: Some(version),
                 git_repo_url: git_repo,
-                git_branch: git_branch.map(String::from),
+                git_branch,
                 use_native_git,
             },
             true,

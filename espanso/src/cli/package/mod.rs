@@ -21,7 +21,7 @@ use crate::{
     cli::PackageArgs,
     error_eprintln,
     exit_code::{
-        configure_custom_panic_hook, PACKAGE_INSTALL_FAILED, PACKAGE_LIST_FAILED, PACKAGE_SUCCESS,
+        configure_custom_panic_hook, PACKAGE_INSTALL_FAILED, PACKAGE_LIST_FAILED,
         PACKAGE_UNEXPECTED_FAILURE, PACKAGE_UNINSTALL_FAILED, PACKAGE_UPDATE_FAILED,
         PACKAGE_UPDATE_PARTIAL_FAILURE,
     },
@@ -44,7 +44,7 @@ pub fn package_main(cli_args: PackageArgs, paths: Paths) -> i32 {
             }
         }
         PackageArgs::Uninstall(uninstall_args) => {
-            if let Err(err) = uninstall::uninstall_package(&paths, uninstall_args) {
+            if let Err(err) = uninstall::uninstall_package(uninstall_args, &paths) {
                 error_eprintln!("unable to uninstall package: {:?}", err);
                 return PACKAGE_UNINSTALL_FAILED;
             }
@@ -57,7 +57,7 @@ pub fn package_main(cli_args: PackageArgs, paths: Paths) -> i32 {
         }
         PackageArgs::Update {
             package_name_or_all,
-        } => match update::update_package(&paths, package_name_or_all) {
+        } => match update::update_package(&package_name_or_all, &paths) {
             Ok(update::UpdateResults::PartialFailure) => {
                 error_eprintln!("some packages were updated, but not all of them. Check the previous log for more information");
                 return PACKAGE_UPDATE_PARTIAL_FAILURE;

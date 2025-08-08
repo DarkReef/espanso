@@ -17,22 +17,19 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::path::Paths;
-use anyhow::{anyhow, Context, Result};
-use clap::ArgMatches;
+use crate::{cli::UninstallArgs, path::Paths};
+use anyhow::{Context, Result};
 
 use crate::info_println;
 
-pub fn uninstall_package(paths: &Paths, matches: &ArgMatches) -> Result<()> {
-    let package_name = matches
-        .value_of("package_name")
-        .ok_or_else(|| anyhow!("missing package name"))?;
+pub fn uninstall_package(args: UninstallArgs, paths: &Paths) -> Result<()> {
+    let package_name = args.package_name;
 
     let archiver =
         espanso_package::get_archiver(&paths.packages).context("unable to get package archiver")?;
 
     archiver
-        .delete(package_name)
+        .delete(&package_name)
         .context("unable to delete package")?;
 
     info_println!("package '{}' uninstalled!", package_name);

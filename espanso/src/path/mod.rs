@@ -214,7 +214,7 @@ fn get_config_dir() -> Option<PathBuf> {
     }
 }
 
-fn get_portable_config_dir() -> Option<PathBuf> {
+pub fn get_portable_config_dir() -> Option<PathBuf> {
     let espanso_exe_path = std::env::current_exe().expect("unable to obtain executable path");
     let exe_dir = espanso_exe_path.parent();
     if let Some(parent) = exe_dir {
@@ -254,7 +254,7 @@ fn get_default_config_dir() -> Option<PathBuf> {
     None
 }
 
-fn get_default_config_path() -> PathBuf {
+pub fn get_default_config_path() -> PathBuf {
     let config_dir = dirs::config_dir().expect("unable to obtain dirs::config_dir()");
     config_dir.join("espanso")
 }
@@ -290,7 +290,7 @@ fn get_runtime_dir() -> Option<PathBuf> {
     }
 }
 
-fn get_portable_runtime_dir() -> Option<PathBuf> {
+pub fn get_portable_runtime_dir() -> Option<PathBuf> {
     if let Some(runtime_dir) = get_portable_runtime_path() {
         if runtime_dir.is_dir() {
             return Some(runtime_dir);
@@ -319,7 +319,7 @@ fn get_legacy_runtime_dir() -> Option<PathBuf> {
     }
 }
 
-fn get_default_runtime_dir() -> Option<PathBuf> {
+pub fn get_default_runtime_dir() -> Option<PathBuf> {
     let default_dir = get_default_runtime_path();
     if default_dir.is_dir() {
         Some(default_dir)
@@ -375,11 +375,11 @@ fn get_default_packages_dir(config_dir: &Path) -> Option<PathBuf> {
     }
 }
 
-fn get_default_packages_path(config_dir: &Path) -> PathBuf {
+pub fn get_default_packages_path(config_dir: &Path) -> PathBuf {
     config_dir.join("match").join("packages")
 }
 
-fn is_portable_mode() -> bool {
+pub fn is_portable_mode() -> bool {
     let espanso_exe_path = std::env::current_exe().expect("unable to obtain executable path");
     let exe_dir = espanso_exe_path.parent();
     if let Some(parent) = exe_dir {

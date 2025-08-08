@@ -42,7 +42,10 @@ use crate::{
     cli::{
         cmd, daemon, edit::edit_main, env_path, log::log_main, package, service, workaround, worker,
     },
-    path::get_path_override,
+    path::{
+        get_default_config_path, get_default_runtime_dir, get_path_override,
+        get_portable_config_dir, get_portable_runtime_dir, is_portable_mode,
+    },
 };
 use clap::Parser;
 use cli::LogMode;
@@ -136,9 +139,8 @@ fn main() {
         cli::Command::Daemon => daemon::daemon_main(paths),
         cli::Command::Edit { target_file } => edit_main(target_file, paths),
         cli::Command::EnvPath(env_path_args) => env_path::env_path_main(env_path_args),
-        cli::Command::Install { .. } => {
-            println!("some dummy output");
-            1 // TODO
+        cli::Command::Install(install_args) => {
+            package::package_main(cli::PackageArgs::Install(install_args), paths)
         }
         cli::Command::Launch => {
             println!("some dummy output");
@@ -191,13 +193,39 @@ fn main() {
             1 // TODO
         }
         cli::Command::Package(package_args) => package::package_main(package_args, paths),
-        cli::Command::Path(path_args) => match path_args {
-            cli::PathArgs::Base => todo!(),
-            cli::PathArgs::Config => todo!(),
-            cli::PathArgs::Default => todo!(),
-            cli::PathArgs::Packages => todo!(),
-            cli::PathArgs::Runtime => todo!(),
-        },
+        cli::Command::Path(path_args) => {
+            if let Some(default_config_path) = if is_portable_mode() {
+                get_portable_config_dir()
+            } else {
+                Some(get_default_config_path())
+            } {
+                match path_args {
+                    cli::PathArgs::Base => {
+                        println!(
+                            "{}",
+                            &default_config_path.join("match").join("base.yml").display()
+                        );
+                    }
+                    cli::PathArgs::Config => {
+                        println!("{}", &paths.config.display());
+                    }
+                    cli::PathArgs::Default => println!("{}", &default_config_path.display()),
+                    cli::PathArgs::Packages => {
+                        println!("{}", &paths.packages.display());
+                    }
+                    cli::PathArgs::Runtime => {
+                        if let Some(runtime_dir) = if is_portable_mode() {
+                            get_portable_runtime_dir()
+                        } else {
+                            get_default_runtime_dir()
+                        } {
+                            println!("{}", runtime_dir.display());
+                        }
+                    }
+                }
+            }
+            0
+        }
         cli::Command::Restart(start_args) => {
             service::stop_main(&paths);
             std::thread::sleep(std::time::Duration::from_millis(300));
@@ -288,8 +316,7 @@ fn main() {
         cli::Command::Status => service::status_main(&paths),
         cli::Command::Stop => service::stop_main(&paths),
         cli::Command::Uninstall(uninstall_args) => {
-            println!("installing {}", uninstall_args.package_name);
-            1 // TODO
+            package::package_main(cli::PackageArgs::Uninstall(uninstall_args), paths)
         }
         cli::Command::Workaround(_unused_workaround_args) => {
             workaround::workaround_main(_unused_workaround_args)
