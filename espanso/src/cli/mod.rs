@@ -27,7 +27,7 @@ pub mod edit;
 pub mod env_path;
 pub mod launcher;
 pub mod log;
-// pub mod match_cli;
+pub mod match_cli;
 pub mod modulo;
 pub mod package;
 pub mod service;

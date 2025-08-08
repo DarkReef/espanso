@@ -29,9 +29,8 @@ use crate::{
     lock::acquire_worker_lock,
 };
 
-pub fn exec_main(cli_args: &ArgMatches, paths: &Paths) -> Result<()> {
-    let trigger = cli_args.value_of("trigger");
-    let args = cli_args.values_of("arg");
+pub fn exec_main(trigger: String, paths: &Paths) -> Result<()> {
+    let args = trigger.values_of("arg");
 
     if trigger.is_none() || trigger.is_some_and(str::is_empty) {
         bail!("You need to specify the --trigger 'trigger' option. Run `espanso match exec --help` for more information.");

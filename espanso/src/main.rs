@@ -40,8 +40,8 @@ mod util;
 
 use crate::{
     cli::{
-        cmd, daemon, edit::edit_main, env_path, launcher, log::log_main, modulo, package, service,
-        workaround, worker,
+        cmd, daemon, edit::edit_main, env_path, launcher, log::log_main, match_cli, modulo,
+        package, service, workaround, worker,
     },
     path::{
         get_default_config_path, get_default_runtime_dir, get_path_override,
@@ -128,8 +128,8 @@ fn main() {
 
     let config_result = load_config(&paths.config).expect("unable to load config");
 
-    let config_store = config_result.config_store;
-    let match_store = config_result.match_store;
+    // let config_store = config_result.config_store;
+    // let match_store = config_result.match_store;
     // let non_fatal_errors = config_result.non_fatal_errors;
 
     // just a box to store the exite code
@@ -152,45 +152,7 @@ fn main() {
             enable_logs(log_proxy, &paths, LogMode::Read);
             log_main(Some(paths))
         }
-        cli::Command::Match(cmd) => {
-            todo!();
-            args_hashmap.insert("command", "match");
-            println!("some dummy output");
-
-            match cmd {
-                cli::MatchArgs::Exec { trigger } => {
-                    args_hashmap.insert("subcommand", "exec");
-                    trigger.clone_into(&mut user_input);
-                    args_hashmap.insert("trigger", user_input.as_str());
-                }
-                cli::MatchArgs::List(flags) => {
-                    args_hashmap.insert("subcommand", "list");
-                    if let Some(class) = flags.class {
-                        class.clone_into(&mut user_input);
-                        args_hashmap.insert("class", user_input.as_str());
-                    }
-                    if let Some(exec) = flags.exec {
-                        dbg!(&exec);
-                        dbg!(&user_input);
-                    }
-                    if let Some(title) = flags.title {
-                        title.clone_into(&mut user_input.clone());
-                        args_hashmap.insert("title", user_input.as_str());
-                    }
-                    if flags.json {
-                        args_hashmap.insert("json", "true");
-                    }
-                    if flags.only_triggers {
-                        args_hashmap.insert("onlytriggers", "true");
-                    }
-                    if flags.preserve_newlines {
-                        args_hashmap.insert("preservenewlines", "true");
-                    }
-                }
-            }
-
-            1 // TODO
-        }
+        cli::Command::Match(cmd) => match_cli::match_main(cmd, paths, config_result),
         cli::Command::Modulo(modulo_args) => {
             // todo!("Need to pass stdin to `FormArgs`");
             modulo::modulo_main(modulo_args, paths)
@@ -326,8 +288,8 @@ fn main() {
         }
         cli::Command::Worker(worker_args) => worker::worker_main(
             paths,
-            config_store,
-            match_store,
+            config_result.config_store,
+            config_result.match_store,
             worker_args.monitor_daemon,
             worker_args.start_reason,
         ),

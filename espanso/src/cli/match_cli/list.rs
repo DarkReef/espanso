@@ -24,27 +24,28 @@ use espanso_config::{
 };
 use serde::Serialize;
 
-use crate::cli::ArgMatches;
+use crate::cli::MatchListCommand;
 
 pub fn list_main(
-    cli_args: &ArgMatches,
+    cli_args: &MatchListCommand,
     config_store: Box<dyn ConfigStore>,
     match_store: Box<dyn MatchStore>,
 ) -> Result<()> {
-    let only_triggers = cli_args.is_present("onlytriggers");
-    let preserve_newlines = cli_args.is_present("preservenewlines");
-
-    let class = cli_args.value_of("class");
-    let title = cli_args.value_of("title");
-    let exec = cli_args.value_of("exec");
-
-    let config = config_store.active(&AppProperties { title, class, exec });
+    let config = config_store.active(&AppProperties {
+        title: cli_args.title.as_deref(),
+        class: cli_args.class.as_deref(),
+        exec: cli_args.exec.as_deref(),
+    });
     let match_set = match_store.query(config.match_paths());
 
-    if cli_args.is_present("json") {
+    if cli_args.json {
         print_matches_as_json(&match_set.matches)?;
     } else {
-        print_matches_as_plain(&match_set.matches, only_triggers, preserve_newlines)?;
+        print_matches_as_plain(
+            &match_set.matches,
+            cli_args.only_triggers,
+            cli_args.preserve_newlines,
+        )?;
     }
 
     Ok(())
