@@ -17,14 +17,13 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::icon::IconPaths;
-use clap::ArgMatches;
+use crate::{cli::ModuloArgs, icon::IconPaths};
 use espanso_modulo::form::*;
 
-pub fn form_main(matches: &ArgMatches, _icon_paths: &IconPaths) -> i32 {
-    let as_json: bool = matches.is_present("json");
+pub fn form_main(cli_args: &ModuloArgs, _icon_paths: &IconPaths) -> i32 {
+    let as_json: bool = cli_args.is_present("json");
 
-    let input_file = matches
+    let input_file = cli_args
         .value_of("input_file")
         .expect("missing input, please specify the -i option");
     let data = if input_file == "-" {

@@ -40,7 +40,7 @@ mod util;
 
 use crate::{
     cli::{
-        cmd, daemon, edit::edit_main, env_path, launcher, log::log_main, package, service,
+        cmd, daemon, edit::edit_main, env_path, launcher, log::log_main, modulo, package, service,
         workaround, worker,
     },
     path::{
@@ -153,6 +153,7 @@ fn main() {
             log_main(Some(paths))
         }
         cli::Command::Match(cmd) => {
+            todo!();
             args_hashmap.insert("command", "match");
             println!("some dummy output");
 
@@ -190,6 +191,7 @@ fn main() {
 
             1 // TODO
         }
+        cli::Command::Modulo(modulo_args) => modulo::modulo_main(modulo_args, paths),
         cli::Command::Package(package_args) => package::package_main(package_args, paths),
         cli::Command::Path(path_args) => {
             if let Some(default_config_path) = if is_portable_mode() {

@@ -17,7 +17,8 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use super::{CliModule, CliModuleArgs};
+#[cfg(feature = "modulo")]
+use crate::{cli::ModuloArgs, path::Paths};
 
 #[cfg(feature = "modulo")]
 mod form;
@@ -30,27 +31,19 @@ mod troubleshoot;
 #[cfg(feature = "modulo")]
 mod welcome;
 
-pub fn new() -> CliModule {
-    #[allow(clippy::needless_update)]
-    CliModule {
-        requires_paths: true,
-        enable_logs: false,
-        subcommand: "modulo".to_string(),
-        entry: modulo_main,
-        ..Default::default()
-    }
-}
-
 #[cfg(feature = "modulo")]
-fn modulo_main(args: CliModuleArgs) -> i32 {
-    let paths = args.paths.expect("missing paths in modulo main");
-    let cli_args = args.cli_args.expect("missing cli_args in modulo main");
+pub fn modulo_main(cli_args: ModuloArgs, paths: Paths) -> i32 {
     let icon_paths =
         crate::icon::load_icon_paths(&paths.runtime).expect("unable to load icon paths");
 
-    if let Some(matches) = cli_args.subcommand_matches("form") {
-        return form::form_main(matches, &icon_paths);
+    match cli_args {
+        ModuloArgs::Form => form::form_main(ModuloArgs, &icon_paths)
+        ModuloArgs::Search => todo!(),
+        ModuloArgs::TextView => todo!(),
+        ModuloArgs::Troubleshoot => todo!(),
+        ModuloArgs::Welcome => todo!(),
     }
+
 
     if let Some(matches) = cli_args.subcommand_matches("search") {
         return search::search_main(matches, &icon_paths);
@@ -72,6 +65,6 @@ fn modulo_main(args: CliModuleArgs) -> i32 {
 }
 
 #[cfg(not(feature = "modulo"))]
-fn modulo_main(_: CliModuleArgs) -> i32 {
+pub fn modulo_main(_: ModuloArgs, _: Paths) -> i32 {
     panic!("this version of espanso was not compiled with 'modulo' support, please obtain a version that does or recompile it with the 'modulo' feature flag");
 }

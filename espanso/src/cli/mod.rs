@@ -28,7 +28,7 @@ pub mod env_path;
 pub mod launcher;
 pub mod log;
 // pub mod match_cli;
-//pub mod modulo;
+pub mod modulo;
 pub mod package;
 pub mod service;
 pub mod util;
@@ -88,6 +88,8 @@ pub enum Command {
     /// List and execute matches from the CLI
     #[clap(subcommand)]
     Match(MatchArgs),
+    #[clap(subcommand, hide = true)]
+    Modulo(ModuloArgs),
     /// Package-management commands
     #[clap(subcommand)]
     Package(PackageArgs),
@@ -226,6 +228,21 @@ pub struct MatchListCommand {
     /// Preserve newlines when printing replacements. Does nothing when using JSON format
     #[arg(short = 'n', long)]
     pub preserve_newlines: bool,
+}
+
+#[derive(Debug, Subcommand)]
+#[command(arg_required_else_help = true)]
+pub enum ModuloArgs {
+    /// Display a customizable form
+    Form,
+    /// Display a search box
+    Search,
+    /// Display a Text View
+    TextView,
+    /// Display the troubleshooting GUI
+    Troubleshoot,
+    /// Display the welcome screen
+    Welcome,
 }
 
 #[derive(Debug, Subcommand)]
