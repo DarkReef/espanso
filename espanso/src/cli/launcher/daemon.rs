@@ -24,9 +24,9 @@ use std::process::ExitStatus;
 use thiserror::Error;
 
 use crate::cli::util::CommandExt;
-use crate::cli::PathsOverrides;
+use crate::cli::MaybeEspansoPaths;
 
-pub fn launch_daemon(paths_overrides: &PathsOverrides) -> Result<()> {
+pub fn launch_daemon(paths_overrides: &MaybeEspansoPaths) -> Result<()> {
     let espanso_exe_path = std::env::current_exe()?;
     let mut command = Command::new(espanso_exe_path.to_string_lossy().to_string());
     command.args(["daemon"]);

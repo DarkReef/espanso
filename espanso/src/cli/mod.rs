@@ -25,7 +25,7 @@ pub mod cmd;
 pub mod daemon;
 pub mod edit;
 pub mod env_path;
-//pub mod launcher;
+pub mod launcher;
 pub mod log;
 // pub mod match_cli;
 //pub mod modulo;
@@ -66,6 +66,7 @@ pub enum Command {
     #[clap(subcommand)]
     Cmd(CmdCommand),
     /// Start the daemon without spawning a new process.
+    #[clap(hide = true)]
     Daemon,
     /// Shortcut to open the default text editor to edit config files
     Edit {
@@ -79,9 +80,9 @@ pub enum Command {
     EnvPath(EnvPathArgs),
     /// Install a package
     Install(InstallArgs),
-    /// should not appear in the CLI menu...
+    /// TODO: espanso launcher
     #[clap(subcommand, hide = true)]
-    Launch,
+    Launcher,
     /// Print the daemon logs
     Log,
     /// List and execute matches from the CLI
@@ -109,7 +110,8 @@ pub enum Command {
     /// A collection of workarounds to solve some common problems
     #[clap(subcommand)]
     Workaround(WorkaroundArgs),
-    /// Remove a package
+    /// Start the worker
+    #[clap(hide = true)]
     Worker(WorkerArgs),
 }
 

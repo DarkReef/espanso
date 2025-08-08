@@ -17,6 +17,8 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#[cfg(feature = "modulo")]
+use crate::path::Paths;
 use crate::preferences::Preferences;
 use crate::{
     exit_code::{
@@ -26,30 +28,15 @@ use crate::{
 };
 use log::error;
 
-use super::{CliModule, CliModuleArgs};
-
 mod accessibility;
 mod daemon;
 #[cfg(feature = "modulo")]
 mod edition_check;
 mod util;
 
-pub fn new() -> CliModule {
-    #[allow(clippy::needless_update)]
-    CliModule {
-        requires_paths: true,
-        enable_logs: false,
-        subcommand: "launcher".to_string(),
-        show_in_dock: true,
-        entry: launcher_main,
-        ..Default::default()
-    }
-}
-
 #[cfg(feature = "modulo")]
-fn launcher_main(args: CliModuleArgs) -> i32 {
+pub fn launcher_main(paths: Paths) -> i32 {
     use espanso_modulo::wizard::{MigrationResult, WizardHandlers, WizardOptions};
-    let paths = args.paths.expect("missing paths in launcher main");
 
     // If espanso is already running, show a warning
     let lock_file = acquire_daemon_lock(&paths.runtime);
@@ -59,9 +46,14 @@ fn launcher_main(args: CliModuleArgs) -> i32 {
     }
     drop(lock_file);
 
-    let paths_overrides = args
-        .paths_overrides
-        .expect("missing paths overrides in launcher main");
+    // I'm not sure why we have two paths overrides. It's called directly on the
+    // main.rs anyway. So for the time being I'll make a copy
+    let paths_overrides = (
+        Some(paths.config.clone()),
+        Some(paths.packages.clone()),
+        Some(paths.runtime.clone()),
+    );
+
     let icon_paths =
         crate::icon::load_icon_paths(&paths.runtime).expect("unable to load icon paths");
 

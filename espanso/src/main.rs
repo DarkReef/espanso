@@ -40,7 +40,8 @@ mod util;
 
 use crate::{
     cli::{
-        cmd, daemon, edit::edit_main, env_path, log::log_main, package, service, workaround, worker,
+        cmd, daemon, edit::edit_main, env_path, launcher, log::log_main, package, service,
+        workaround, worker,
     },
     path::{
         get_default_config_path, get_default_runtime_dir, get_path_override,
@@ -142,13 +143,10 @@ fn main() {
         cli::Command::Install(install_args) => {
             package::package_main(cli::PackageArgs::Install(install_args), paths)
         }
-        cli::Command::Launch => {
-            println!("some dummy output");
-
+        cli::Command::Launcher => {
             #[cfg(target_os = "macos")]
             espanso_mac_utils::convert_to_foreground_app();
-
-            1 // TODO
+            launcher::launcher_main(paths)
         }
         cli::Command::Log => {
             enable_logs(log_proxy, &paths, LogMode::Read);
