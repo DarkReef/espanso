@@ -236,13 +236,16 @@ pub enum ModuloArgs {
     /// Display a customizable form
     Form(FormArgs),
     /// Display a search box
-    Search,
+    Search(SearchArgs),
     /// Display a Text View
-    TextView,
+    TextView(TextViewArgs),
     /// Display the troubleshooting GUI
     Troubleshoot,
     /// Display the welcome screen
-    Welcome(WelcomeArgs),
+    Welcome {
+        /// Use the already running
+        already_running: bool,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -251,25 +254,31 @@ pub struct FormArgs {
     #[arg(short, long)]
     pub json: bool,
 
-    /// Input file: it can be a `PathBuf` or stdin
+    /// Input file: it can be a `PathBuf` or stdin // TODO
     #[arg(short, long)]
-    pub input_file: PathBuf,
+    pub input_file: String,
 }
 
 #[derive(Args, Debug)]
-pub struct WelcomeArgs {
+pub struct SearchArgs {
     /// Interpret the input data as JSON
     #[arg(short, long)]
     pub json: bool,
 
-    /// Input file: it can be a `PathBuf` or stdin
+    /// Input file: it can be a `PathBuf` or stdin // TODO
     #[arg(short, long)]
-    pub input_file: PathBuf,
+    pub input_file: String,
 }
-#[derive(Clone, Debug)]
-pub enum InputFileArg {
-    Path(PathBuf),
-    String,
+
+#[derive(Args, Debug)]
+pub struct TextViewArgs {
+    /// Input file: it can be a `PathBuf` or stdin // TODO
+    #[arg(short, long)]
+    pub input_file: String,
+
+    /// Window title to display
+    #[arg(short, long)]
+    pub title: String,
 }
 
 #[derive(Debug, Subcommand)]

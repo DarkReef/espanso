@@ -192,7 +192,7 @@ fn main() {
             1 // TODO
         }
         cli::Command::Modulo(modulo_args) => {
-            todo!("Need to pass stdin to `FormArgs`");
+            // todo!("Need to pass stdin to `FormArgs`");
             modulo::modulo_main(modulo_args, paths)
         }
         cli::Command::Package(package_args) => package::package_main(package_args, paths),

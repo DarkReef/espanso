@@ -17,16 +17,13 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{cli::ModuloArgs, icon::IconPaths};
+use crate::{cli::FormArgs, icon::IconPaths};
 use espanso_modulo::form::*;
 
-pub fn form_main(cli_args: &ModuloArgs, _icon_paths: &IconPaths) -> i32 {
-    let as_json: bool = cli_args.is_present("json");
+pub fn form_main(cli_args: &FormArgs, icon_paths: &IconPaths) -> i32 {
+    let as_json: bool = cli_args.json;
 
-    let input_file = cli_args
-        .value_of("input_file")
-        .expect("missing input, please specify the -i option");
-    let data = if input_file == "-" {
+    let data = if cli_args.input_file == "-" {
         use std::io::Read;
         let mut buffer = String::new();
         std::io::stdin()
@@ -34,7 +31,8 @@ pub fn form_main(cli_args: &ModuloArgs, _icon_paths: &IconPaths) -> i32 {
             .expect("unable to obtain input from stdin");
         buffer
     } else {
-        std::fs::read_to_string(input_file).expect("unable to read input file")
+        unimplemented!("you passed me a String that is not '-'.");
+        // std::fs::read_to_string(cli_args.input_file).expect("unable to read input file")
     };
 
     let mut config: config::FormConfig = if as_json {
@@ -44,7 +42,7 @@ pub fn form_main(cli_args: &ModuloArgs, _icon_paths: &IconPaths) -> i32 {
     };
 
     // Overwrite the icon
-    config.icon = _icon_paths
+    config.icon = icon_paths
         .form_icon
         .as_deref()
         .map(|path| path.to_string_lossy().to_string());

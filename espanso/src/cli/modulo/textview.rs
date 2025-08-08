@@ -17,17 +17,11 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::icon::IconPaths;
-use clap::ArgMatches;
+use crate::{cli::TextViewArgs, icon::IconPaths};
 use espanso_modulo::textview::TextViewOptions;
 
-pub fn textview_main(matches: &ArgMatches, icon_paths: &IconPaths) -> i32 {
-    let title = matches.value_of("title").unwrap_or("Espanso");
-
-    let input_file = matches
-        .value_of("input_file")
-        .expect("missing input, please specify the -i option");
-    let data = if input_file == "-" {
+pub fn textview_main(textview_args: TextViewArgs, icon_paths: &IconPaths) -> i32 {
+    let data = if textview_args.input_file == "-" {
         use std::io::Read;
         let mut buffer = String::new();
         std::io::stdin()
@@ -35,7 +29,7 @@ pub fn textview_main(matches: &ArgMatches, icon_paths: &IconPaths) -> i32 {
             .expect("unable to obtain input from stdin");
         buffer
     } else {
-        std::fs::read_to_string(input_file).expect("unable to read input file")
+        std::fs::read_to_string(textview_args.input_file).expect("unable to read input file")
     };
 
     espanso_modulo::textview::show(TextViewOptions {
@@ -43,7 +37,7 @@ pub fn textview_main(matches: &ArgMatches, icon_paths: &IconPaths) -> i32 {
             .wizard_icon
             .as_ref()
             .map(|path| path.to_string_lossy().to_string()),
-        title: title.to_string(),
+        title: textview_args.title.to_string(),
         content: data,
     });
 

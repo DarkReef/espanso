@@ -37,29 +37,14 @@ pub fn modulo_main(cli_args: ModuloArgs, paths: Paths) -> i32 {
         crate::icon::load_icon_paths(&paths.runtime).expect("unable to load icon paths");
 
     match cli_args {
-        ModuloArgs::Form => form::form_main(ModuloArgs, &icon_paths)
-        ModuloArgs::Search => todo!(),
-        ModuloArgs::TextView => todo!(),
-        ModuloArgs::Troubleshoot => todo!(),
-        ModuloArgs::Welcome => todo!(),
-    }
-
-
-    if let Some(matches) = cli_args.subcommand_matches("search") {
-        return search::search_main(matches, &icon_paths);
-    }
-
-    if let Some(matches) = cli_args.subcommand_matches("welcome") {
-        return welcome::welcome_main(matches, &paths, &icon_paths);
-    }
-
-    if let Some(matches) = cli_args.subcommand_matches("textview") {
-        return textview::textview_main(matches, &icon_paths);
-    }
-
-    if cli_args.subcommand_matches("troubleshoot").is_some() {
-        return troubleshoot::troubleshoot_main(&paths, &icon_paths);
-    }
+        ModuloArgs::Form(form_args) => form::form_main(&form_args, &icon_paths),
+        ModuloArgs::Search(search_args) => search::search_main(search_args, &icon_paths),
+        ModuloArgs::TextView(textview_args) => textview::textview_main(textview_args, &icon_paths),
+        ModuloArgs::Troubleshoot => troubleshoot::troubleshoot_main(&paths, &icon_paths),
+        ModuloArgs::Welcome { already_running } => {
+            welcome::welcome_main(already_running, &icon_paths)
+        }
+    };
 
     0
 }
