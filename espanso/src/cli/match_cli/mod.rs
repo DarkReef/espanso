@@ -24,8 +24,8 @@ mod list;
 
 pub fn match_main(match_args: MatchArgs, paths: Paths, config_result: ConfigLoadResult) -> i32 {
     match match_args {
-        MatchArgs::Exec { trigger } => {
-            if let Err(err) = exec::exec_main(trigger, &paths) {
+        MatchArgs::Exec(exec_args) => {
+            if let Err(err) = exec::exec_main(exec_args.trigger, exec_args.args, &paths) {
                 eprintln!("unable to exec match: {err:?}");
                 return 1;
             }

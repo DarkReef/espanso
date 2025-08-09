@@ -29,13 +29,7 @@ use crate::{
     lock::acquire_worker_lock,
 };
 
-pub fn exec_main(trigger: String, paths: &Paths) -> Result<()> {
-    let args = trigger.values_of("arg");
-
-    if trigger.is_none() || trigger.is_some_and(str::is_empty) {
-        bail!("You need to specify the --trigger 'trigger' option. Run `espanso match exec --help` for more information.");
-    }
-
+pub fn exec_main(trigger: String, args: Option<String>, paths: &Paths) -> Result<()> {
     if acquire_worker_lock(&paths.runtime).is_some() {
         bail!("Worker process is not running, please start Espanso first.")
     }
@@ -44,7 +38,7 @@ pub fn exec_main(trigger: String, paths: &Paths) -> Result<()> {
 
     let mut match_args = HashMap::new();
     if let Some(args) = args {
-        args.for_each(|arg| {
+        args.split_ascii_whitespace().for_each(|arg| {
       let tokens = arg.split_once('=');
       if let Some((key, value)) = tokens {
         match_args.insert(key.to_string(), value.to_string());
@@ -57,7 +51,7 @@ pub fn exec_main(trigger: String, paths: &Paths) -> Result<()> {
     client
         .send_async(IPCEvent::RequestMatchExpansion(
             RequestMatchExpansionPayload {
-                trigger: trigger.map(String::from),
+                trigger,
                 args: match_args,
             },
         ))

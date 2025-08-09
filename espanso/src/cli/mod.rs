@@ -188,12 +188,20 @@ pub struct InstallArgs {
 #[derive(Debug, Subcommand)]
 pub enum MatchArgs {
     /// Triggers the expansion of a match
-    Exec {
-        /// Trigger you want to activate
-        trigger: String,
-    },
+    Exec(ExecArgs),
     /// Print matches to standard output
     List(MatchListCommand),
+}
+
+#[derive(Args, Debug)]
+pub struct ExecArgs {
+    #[arg(long)]
+    /// Trigger you want to activate
+    pub trigger: String,
+    #[arg(long)]
+    /// Specify also an argument for the expansion, following the 'name=value'
+    /// format. You can specify multiple ones
+    pub args: Option<String>,
 }
 
 #[derive(Args, Debug)]

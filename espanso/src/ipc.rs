@@ -38,7 +38,7 @@ pub enum IPCEvent {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RequestMatchExpansionPayload {
-    pub trigger: Option<String>,
+    pub trigger: String,
     pub args: HashMap<String, String>,
 }
 

@@ -69,7 +69,7 @@ pub fn initialize_and_spawn(
                     IPCEvent::RequestMatchExpansion(payload) => send_event(
                         &event_notify,
                         EventType::MatchExecRequest(MatchExecRequestEvent {
-                            trigger: payload.trigger,
+                            trigger: Some(payload.trigger),
                             args: payload.args,
                         }),
                     ),
