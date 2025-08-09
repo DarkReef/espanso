@@ -17,7 +17,6 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#[cfg(feature = "modulo")]
 use crate::path::Paths;
 use crate::preferences::Preferences;
 use crate::{
@@ -192,7 +191,7 @@ pub fn launcher_main(paths: Paths) -> i32 {
 }
 
 #[cfg(not(feature = "modulo"))]
-fn launcher_main(_: CliModuleArgs) -> i32 {
+pub fn launcher_main(_: Paths) -> i32 {
     // TODO: handle what happens here
-    unimplemented!();
+    unimplemented!("espanso launcher is not available witout the `modulo` feature flag");
 }

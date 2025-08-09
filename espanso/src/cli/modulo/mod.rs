@@ -17,7 +17,6 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#[cfg(feature = "modulo")]
 use crate::{cli::ModuloArgs, path::Paths};
 
 #[cfg(feature = "modulo")]
