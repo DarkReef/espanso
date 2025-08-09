@@ -57,7 +57,7 @@ impl SearchUI for ModuloSearchUI<'_> {
         let json_config = serde_json::to_string(&modulo_config)?;
         let output = self
             .manager
-            .invoke(&["search", "-j", "-i", "-"], &json_config)?;
+            .invoke(&["search", "--json", "--stdin"], &json_config)?;
         let json: Result<HashMap<String, Value>, _> = serde_json::from_str(&output);
         let result = match json {
             Ok(json) => {

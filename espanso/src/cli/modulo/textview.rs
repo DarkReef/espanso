@@ -17,19 +17,25 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::process::exit;
+
 use crate::{cli::TextViewArgs, icon::IconPaths};
 use espanso_modulo::textview::TextViewOptions;
 
 pub fn textview_main(textview_args: TextViewArgs, icon_paths: &IconPaths) -> i32 {
-    let data = if textview_args.input_file == "-" {
+    let data = if textview_args.stdin {
         use std::io::Read;
         let mut buffer = String::new();
         std::io::stdin()
             .read_to_string(&mut buffer)
             .expect("unable to obtain input from stdin");
         buffer
+    } else if textview_args.input_file.is_some() {
+        std::fs::read_to_string(textview_args.input_file.unwrap())
+            .expect("unable to read input file")
     } else {
-        std::fs::read_to_string(textview_args.input_file).expect("unable to read input file")
+        println!("Nor --stdin nor `input_file` was passed.");
+        exit(1)
     };
 
     espanso_modulo::textview::show(TextViewOptions {

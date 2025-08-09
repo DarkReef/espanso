@@ -23,7 +23,7 @@ use espanso_modulo::form::*;
 pub fn form_main(cli_args: &FormArgs, icon_paths: &IconPaths) -> i32 {
     let as_json: bool = cli_args.json;
 
-    let data = if cli_args.input_file == "-" {
+    let data = if cli_args.stdin {
         use std::io::Read;
         let mut buffer = String::new();
         std::io::stdin()
@@ -31,7 +31,7 @@ pub fn form_main(cli_args: &FormArgs, icon_paths: &IconPaths) -> i32 {
             .expect("unable to obtain input from stdin");
         buffer
     } else {
-        unimplemented!("you passed me a String that is not '-'.");
+        unimplemented!("reading from files is unimplemented. Please pass '-' to read from stdin.");
         // std::fs::read_to_string(cli_args.input_file).expect("unable to read input file")
     };
 

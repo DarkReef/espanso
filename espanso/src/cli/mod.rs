@@ -262,9 +262,9 @@ pub struct FormArgs {
     #[arg(short, long)]
     pub json: bool,
 
-    /// Input file: it can be a `PathBuf` or stdin // TODO
+    /// Take the input from stdin. If false, from the filepath (unimplemented)
     #[arg(short, long)]
-    pub input_file: String,
+    pub stdin: bool,
 }
 
 #[derive(Args, Debug)]
@@ -273,20 +273,24 @@ pub struct SearchArgs {
     #[arg(short, long)]
     pub json: bool,
 
-    /// Input file: it can be a `PathBuf` or stdin // TODO
+    /// Take the input from stdin. If false, from the filepath (unimplemented)
     #[arg(short, long)]
-    pub input_file: String,
+    pub stdin: bool,
 }
 
 #[derive(Args, Debug)]
 pub struct TextViewArgs {
-    /// Input file: it can be a `PathBuf` or stdin // TODO
+    /// Take the input from stdin
     #[arg(short, long)]
-    pub input_file: String,
+    pub stdin: bool,
 
     /// Window title to display
     #[arg(short, long)]
     pub title: String,
+
+    /// Take the input a file
+    #[arg(short, long)]
+    pub input_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Subcommand)]

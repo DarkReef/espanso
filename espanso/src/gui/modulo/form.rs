@@ -66,8 +66,7 @@ impl FormUI for ModuloFormUI<'_> {
         let json_config = serde_json::to_string(&modulo_form_config)?;
         let output = self
             .manager
-            .invoke(&["form", "-j", "-i", "-"], &json_config)?;
-        todo!();
+            .invoke(&["form", "--json", "--stdin"], &json_config)?;
         let json: Result<HashMap<String, String>, _> = serde_json::from_str(&output);
         let result = match json {
             Ok(json) => {

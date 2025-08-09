@@ -26,7 +26,7 @@ use std::collections::HashMap;
 pub fn search_main(search_args: SearchArgs, icon_paths: &IconPaths) -> i32 {
     let as_json: bool = search_args.json;
 
-    let data = if search_args.input_file == "-" {
+    let data = if search_args.stdin {
         use std::io::Read;
         let mut buffer = String::new();
         std::io::stdin()
@@ -34,7 +34,8 @@ pub fn search_main(search_args: SearchArgs, icon_paths: &IconPaths) -> i32 {
             .expect("unable to obtain input from stdin");
         buffer
     } else {
-        std::fs::read_to_string(search_args.input_file).expect("unable to read input file")
+        unimplemented!("reading from files is unimplemented. Please pass '-' to read from stdin.");
+        // std::fs::read_to_string(search_args.input_file).expect("unable to read input file")
     };
 
     let mut config: config::SearchConfig = if as_json {

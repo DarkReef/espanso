@@ -34,15 +34,17 @@ impl<'a> ModuloTextUI<'a> {
 impl TextUI for ModuloTextUI<'_> {
     fn show_text(&self, title: &str, text: &str) -> anyhow::Result<()> {
         self.manager
-            .spawn(&["textview", "--title", title, "-i", "-"], text)?;
+            .spawn(&["textview", "--title", title, "--stdin"], text)?;
 
         Ok(())
     }
 
     fn show_file(&self, title: &str, path: &std::path::Path) -> anyhow::Result<()> {
         let path_str = path.to_string_lossy().to_string();
-        self.manager
-            .spawn(&["textview", "--title", title, "-i", &path_str], "")?;
+        self.manager.spawn(
+            &["textview", "--title", title, " --input-file", &path_str],
+            "",
+        )?;
 
         Ok(())
     }
