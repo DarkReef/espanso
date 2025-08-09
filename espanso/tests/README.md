@@ -10,7 +10,7 @@ but to have a quick recap:
 - commands must be inside triple backticks and have the `console` syntax
 - commands sent start with `$` (like user commands in a linux shell)
 - after the command, you can specify the exit code with `? <exit_code>`
-- if the command ends with a new line (next prompt) it must have a new line 
+- if the command ends with a new line (next prompt) it must have a new line
 here
 
 ## `espanso`
@@ -75,7 +75,6 @@ $ espanso cmd disable
 something anything
 
 ```
-
 
 ### `espanso cmd enable`
 
@@ -196,7 +195,6 @@ Options:
 
 ```
 
-
 ### `espanso env-path --prompt`
 
 ```console
@@ -308,6 +306,7 @@ $ espanso install --force a
 some dummy output
 
 ```
+
 ### `espanso install -f a`
 
 ```console
@@ -423,6 +422,7 @@ Usage: espanso install --version <VERSION> <PACKAGE_NAME>
 For more information, try '--help'.
 
 ```
+
 ## `espanso install some_package`
 
 ```console
@@ -504,7 +504,6 @@ some dummy output
 
 ```
 
-
 ### `espanso match list --only-triggers`
 
 ```console
@@ -558,7 +557,6 @@ Options:
 
 ```
 
-
 ### `espanso package install`
 
 ```console
@@ -582,7 +580,6 @@ Options:
   -h, --help                     Print help
 
 ```
-
 
 ### `espanso package list`
 
@@ -646,7 +643,6 @@ some dummy output
 
 ```
 
-
 ### `espanso package update a`
 
 ```console
@@ -668,6 +664,7 @@ Usage: espanso package update <PACKAGE_NAME_OR_ALL>
 For more information, try '--help'.
 
 ```
+
 ### `espanso package update --help`
 
 ```console
@@ -692,8 +689,6 @@ some dummy output
 
 ```
 
-
-
 ## `espanso path`
 
 ```console
@@ -715,7 +710,6 @@ Options:
   -h, --help  Print help
 
 ```
-
 
 ## `espanso path base`
 
@@ -820,6 +814,7 @@ $ espanso service restart --unmanaged
 some dummy output
 
 ```
+
 ### `espanso service start`
 
 ```console
@@ -843,6 +838,7 @@ $ espanso service status
 some dummy output
 
 ```
+
 ### `espanso service stop`
 
 ```console
