@@ -40,8 +40,8 @@ pub fn modulo_main(cli_args: ModuloArgs, paths: Paths) -> i32 {
         ModuloArgs::Search(search_args) => search::search_main(search_args, &icon_paths),
         ModuloArgs::TextView(textview_args) => textview::textview_main(textview_args, &icon_paths),
         ModuloArgs::Troubleshoot => troubleshoot::troubleshoot_main(&paths, &icon_paths),
-        ModuloArgs::Welcome { already_running } => {
-            welcome::welcome_main(already_running, &icon_paths)
+        ModuloArgs::Welcome(welcome_args) => {
+            welcome::welcome_main(welcome_args.already_running, &icon_paths)
         }
     };
 

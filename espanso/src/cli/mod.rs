@@ -37,12 +37,12 @@ pub mod worker;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser)]
-#[command(name = "espanso")]
-#[command(about = "A Privacy-first, Cross-platform Text Expander")]
-#[command(author = "Federico Terzi and the espanso contributors")]
-#[command(version = VERSION)]
-#[command(long_about=None)]
-#[command(arg_required_else_help = true)]
+#[command(
+    name = "espanso",
+    about = "A Privacy-first, Cross-platform Text Expander",
+    author = "Federico Terzi and the espanso contributors",
+    version = VERSION,
+    arg_required_else_help = true)]
 pub struct Arguments {
     #[command(subcommand)]
     pub command: Command,
@@ -251,10 +251,7 @@ pub enum ModuloArgs {
     /// Display the troubleshooting GUI
     Troubleshoot,
     /// Display the welcome screen
-    Welcome {
-        /// Use the already running
-        already_running: bool,
-    },
+    Welcome(WelcomeArgs),
 }
 
 #[derive(Args, Debug)]
@@ -292,6 +289,13 @@ pub struct TextViewArgs {
     /// Take the input a file
     #[arg(short, long)]
     pub input_file: Option<PathBuf>,
+}
+
+#[derive(Args, Debug)]
+pub struct WelcomeArgs {
+    /// Use the already running
+    #[arg(short, long)]
+    already_running: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -380,3 +384,14 @@ pub enum LogMode {
 
 /// Config, Packages and Runtime path
 type MaybeEspansoPaths = (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>);
+
+#[cfg(test)]
+mod tests {
+    use crate::cli::Arguments;
+    use clap::CommandFactory;
+
+    #[test]
+    fn verify_cli() {
+        Arguments::command().debug_assert();
+    }
+}
