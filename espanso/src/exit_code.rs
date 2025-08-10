@@ -46,7 +46,6 @@ pub const PACKAGE_LIST_FAILED: i32 = 4;
 pub const PACKAGE_UPDATE_FAILED: i32 = 5;
 pub const PACKAGE_UPDATE_PARTIAL_FAILURE: i32 = 6;
 
-#[cfg(target_os = "macos")]
 pub const UNEXPECTED_RUN_AS_ROOT: i32 = 42;
 
 use crate::error_eprintln;
