@@ -41,17 +41,20 @@ Commands:
   help        Print this message or the help of the given subcommand(s)
 
 Options:
-  -v, --verbose...  
-  -h, --help        Print help
-  -V, --version     Print version
+  -v, --verbose...                 
+  -c, --config-dir <CONFIG_DIR>    
+  -p, --package-dir <PACKAGE_DIR>  
+  -r, --runtime-dir <RUNTIME_DIR>  
+  -h, --help                       Print help
+  -V, --version                    Print version
 
 ```
 
-## `espanso cmd`
+## `espanso cmd --help`
 
 ```console
-$ espanso cmd
-? 2
+$ espanso cmd --help
+? 0
 Send a command to the espanso daemon
 
 Usage: espanso cmd <COMMAND>
@@ -68,202 +71,144 @@ Options:
 
 ```
 
-### `espanso cmd disable`
+### `espanso cmd disable --help`
 
 ```console
-$ espanso cmd disable
-something anything
+$ espanso cmd disable --help
+? 0
+Disable expansions
 
-```
-
-### `espanso cmd enable`
-
-```console
-$ espanso cmd enable
-something anything
-
-```
-
-### `espanso cmd search`
-
-```console
-$ espanso cmd search
-something anything
-
-```
-
-### `espanso cmd toggle`
-
-```console
-$ espanso cmd toggle
-something anything
-
-```
-
-### `espanso cmd help`
-
-```console
-$ espanso cmd help
-Send a command to the espanso daemon
-
-Usage: espanso cmd <COMMAND>
-
-Commands:
-  disable  Disable expansions
-  enable   Enable expansions
-  search   Open the Espanso's search bar
-  toggle   Enable/Disable expansions
-  help     Print this message or the help of the given subcommand(s)
+Usage: espanso cmd disable
 
 Options:
   -h, --help  Print help
 
 ```
 
-## `espanso edit`
+### `espanso cmd enable --help`
+
+It doesn't catch the help menu. It just enables espanso
+
+### `espanso cmd search --help`
 
 ```console
-$ espanso edit
-`espanso edit` (empty) was passed
+$ espanso cmd search --help
+? 0
+Open the Espanso's search bar
 
-```
-
-## `espanso edit some_file`
-
-```console
-$ espanso edit some_file
-the file Some(
-    "some_file",
-)
-
-```
-
-## `espanso env-path`
-
-```console
-$ espanso env-path
-? 2
-Add or remove the 'espanso' command from the PATH
-
-Usage: espanso env-path [OPTIONS]
-       espanso env-path <COMMAND>
-
-Commands:
-  register    Add 'espanso' command to PATH
-  unregister  Remove 'espanso' command from PATH
-  help        Print this message or the help of the given subcommand(s)
+Usage: espanso cmd search
 
 Options:
-  -p, --prompt  
-  -h, --help    Print help
+  -h, --help  Print help
 
 ```
 
-### `espanso env-path register`
+### `espanso cmd toggle --help`
 
 ```console
-$ espanso env-path register
-some dummy output
+$ espanso cmd toggle --help
+? 0
+Enable/Disable expansions
 
-```
-
-### `espanso env-path unregister`
-
-```console
-$ espanso env-path unregister
-some dummy output
-
-```
-
-### `espanso env-path help`
-
-```console
-$ espanso env-path help
-Add or remove the 'espanso' command from the PATH
-
-Usage: espanso env-path [OPTIONS]
-       espanso env-path <COMMAND>
-
-Commands:
-  register    Add 'espanso' command to PATH
-  unregister  Remove 'espanso' command from PATH
-  help        Print this message or the help of the given subcommand(s)
+Usage: espanso cmd toggle
 
 Options:
-  -p, --prompt  
-  -h, --help    Print help
+  -h, --help  Print help
 
 ```
 
-### `espanso env-path --prompt`
+## `espanso edit --help`
 
 ```console
-$ espanso env-path --prompt
-some dummy output
+$ espanso edit --help
+? 0
+Shortcut to open the default text editor to edit config files
 
-```
-
-## `espanso help`
-
-```console
-$ espanso help
-A Privacy-first, Cross-platform Text Expander
-
-Usage: espanso [OPTIONS] <COMMAND>
-
-Commands:
-  cmd         Send a command to the espanso daemon
-  edit        Shortcut to open the default text editor to edit config files
-  env-path    Add or remove the 'espanso' command from the PATH
-  install     Install a package
-  log         Print the daemon logs
-  match       List and execute matches from the CLI
-  package     Package-management commands
-  path        Prints all the espanso directory paths to easily locate configuration and matches
-  restart     Restart the espanso service
-  service     A collection of commands to manage the Espanso service (for example, enabling auto-start on system boot)
-  start       Start espanso as a service
-  status      Check if the espanso daemon is running or not
-  stop        Stop espanso service
-  uninstall   Remove a package
-  workaround  A collection of workarounds to solve some common problems
-  help        Print this message or the help of the given subcommand(s)
-
-Options:
-  -v, --verbose...  
-  -h, --help        Print help
-  -V, --version     Print version
-
-```
-
-## `espanso install`
-
-```console
-$ espanso install
-? 2
-Install a package
-
-Usage: espanso install [OPTIONS] <PACKAGE_NAME>
+Usage: espanso edit [TARGET_FILE]
 
 Arguments:
-  <PACKAGE_NAME>  Package name
+  [TARGET_FILE]  Defaults to "match/base.yml". It contains the relative path of the file you want to edit, such as 'config/default.yml' or 'match/base.yml'. For convenience, you can also specify the name directly and espanso will figure out the path. For example, specifying 'email' is equivalent to 'match/email.yml'
 
 Options:
-  -e, --external                 Allow installing packages from non-verified repositories
-  -f, --force                    Overwrite the package if already installed
-  -g, --git-repo <GIT_REPO>      Git repository from which espanso should install the package
-  -b, --git-branch <GIT_BRANCH>  Force espanso to search for the package on a specific git branch
-  -r, --refresh-index            Request a fresh copy of the Espanso Hub package index instead of using the cached version
-  -u, --use-native-git           If specified, espanso will use the 'git' command instead of trying direct methods
-  -v, --version <VERSION>        Force a particular version to be installed instead of the latest available
-  -h, --help                     Print help
+  -h, --help  Print help
 
 ```
 
-### `espanso install --help`
+## `espanso env-path --help`
+
+```console
+$ espanso env-path --help
+? 0
+Add or remove the 'espanso' command from the PATH
+
+Usage: espanso env-path [OPTIONS]
+       espanso env-path <COMMAND>
+
+Commands:
+  register    Add 'espanso' command to PATH
+  unregister  Remove 'espanso' command from PATH
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+  -p, --prompt  
+  -h, --help    Print help
+
+```
+
+### `espanso env-path register --help`
+
+```console
+$ espanso env-path register --help
+? 0
+Add 'espanso' command to PATH
+
+Usage: espanso env-path register
+
+Options:
+  -h, --help  Print help
+
+```
+
+### `espanso env-path unregister --help`
+
+```console
+$ espanso env-path unregister --help
+? 0
+Remove 'espanso' command from PATH
+
+Usage: espanso env-path unregister
+
+Options:
+  -h, --help  Print help
+
+```
+
+### `espanso env-path --prompt --help`
+
+```console
+$ espanso env-path --prompt --help
+? 0
+Add or remove the 'espanso' command from the PATH
+
+Usage: espanso env-path [OPTIONS]
+       espanso env-path <COMMAND>
+
+Commands:
+  register    Add 'espanso' command to PATH
+  unregister  Remove 'espanso' command from PATH
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+  -p, --prompt  
+  -h, --help    Print help
+
+```
+
+## `espanso install --help`
 
 ```console
 $ espanso install --help
+? 0
 Install a package
 
 Usage: espanso install [OPTIONS] <PACKAGE_NAME>
@@ -283,175 +228,25 @@ Options:
 
 ```
 
-### `espanso install --external a`
+## `espanso log --help`
 
 ```console
-$ espanso install --external a
-some dummy output
+$ espanso log --help
+? 0
+Print the daemon logs
+
+Usage: espanso log
+
+Options:
+  -h, --help  Print help
 
 ```
 
-### `espanso install -e a`
+## `espanso match --help`
 
 ```console
-$ espanso install -e a
-some dummy output
-
-```
-
-### `espanso install --force a`
-
-```console
-$ espanso install --force a
-some dummy output
-
-```
-
-### `espanso install -f a`
-
-```console
-$ espanso install -f a
-some dummy output
-
-```
-
-### `espanso install --git-repo something a`
-
-```console
-$ espanso install --git-repo something a
-some dummy output
-
-```
-
-### `espanso install -g something a`
-
-```console
-$ espanso install -g something a
-some dummy output
-
-```
-
-### `espanso install --git-branch something a`
-
-```console
-$ espanso install --git-branch something a
-some dummy output
-
-```
-
-### `espanso install -b something a`
-
-```console
-$ espanso install -b something a
-some dummy output
-
-```
-
-### `espanso install --refresh-index a`
-
-```console
-$ espanso install --refresh-index a
-some dummy output
-
-```
-
-### `espanso install -r a`
-
-```console
-$ espanso install -r a
-some dummy output
-
-```
-
-### `espanso install --use-native-git a`
-
-```console
-$ espanso install --use-native-git a
-some dummy output
-
-```
-
-### `espanso install -u a`
-
-```console
-$ espanso install -u a
-some dummy output
-
-```
-
-### `espanso install --version 1 a`
-
-```console
-$ espanso install --version 1 a
-some dummy output
-
-```
-
-### `espanso install -v 1 a`
-
-```console
-$ espanso install -v 1 a
-some dummy output
-
-```
-
-### `espanso install --version 1`
-
-```console
-$ espanso install --version 1
-? 2
-error: the following required arguments were not provided:
-  <PACKAGE_NAME>
-
-Usage: espanso install --version <VERSION> <PACKAGE_NAME>
-
-For more information, try '--help'.
-
-```
-
-### `espanso install -v 1`
-
-```console
-$ espanso install -v 1
-? 2
-error: the following required arguments were not provided:
-  <PACKAGE_NAME>
-
-Usage: espanso install --version <VERSION> <PACKAGE_NAME>
-
-For more information, try '--help'.
-
-```
-
-## `espanso install some_package`
-
-```console
-$ espanso install some_package
-some dummy output
-
-```
-
-### `espanso install dummy_package`
-
-```console
-$ espanso install dummy_package
-some dummy output
-
-```
-
-## `espanso log`
-
-```console
-$ espanso log
-some dummy output
-
-```
-
-## `espanso match`
-
-```console
-$ espanso match
-? 2
+$ espanso match --help
+? 0
 List and execute matches from the CLI
 
 Usage: espanso match <COMMAND>
@@ -466,81 +261,47 @@ Options:
 
 ```
 
-## `espanso match exec`
+## `espanso match exec --help`
 
 ```console
-$ espanso match exec
-? 2
-error: the following required arguments were not provided:
-  --arg <ARG>
+$ espanso match exec --help
+? 0
+Triggers the expansion of a match
 
-Usage: espanso match exec --arg <ARG>
+Usage: espanso match exec [OPTIONS] --trigger <TRIGGER>
 
-For more information, try '--help'.
+Options:
+      --trigger <TRIGGER>  Trigger you want to activate
+      --args <ARGS>        Specify also an argument for the expansion, following the 'name=value' format. You can specify multiple ones
+  -h, --help               Print help
 
 ```
 
-### `espanso match exec --arg a`
-
-```console
-$ espanso match exec --arg a
-some dummy output
-
-```
-
-## `espanso match list`
-
-```console
-$ espanso match list
-some dummy output
-
-```
-
-### `espanso match list --json`
-
-```console
-$ espanso match list --json
-some dummy output
-
-```
-
-### `espanso match list --only-triggers`
-
-```console
-$ espanso match list --only-triggers
-some dummy output
-
-```
-
-### `espanso match list --preserve-newlines`
-
-```console
-$ espanso match list --preserve-newlines
-some dummy output
-
-```
-
-### `espanso match list --help`
+## `espanso match list --help`
 
 ```console
 $ espanso match list --help
+? 0
 Print matches to standard output
 
 Usage: espanso match list [OPTIONS]
 
 Options:
+      --class <CLASS>      Only return matches that would be active with the given class. This is relevant if you want to list matches only active inside an app-specific config
+      --exec <EXEC>        Only return matches that would be active with the given exec. This is relevant if you want to list matches only active inside an app-specific config
+      --title <TITLE>      Only return matches that would be active with the given title. This is relevant if you want to list matches only active inside an app-specific config
   -j, --json               Output matches to the JSON format
-  -t, --only-triggers      Print only triggers without replacement
+  -t, --only-triggers      Print only triggers without replacement. Does nothing when using JSON format
   -n, --preserve-newlines  Preserve newlines when printing replacements. Does nothing when using JSON format
   -h, --help               Print help
 
 ```
 
-## `espanso package`
+## `espanso package --help`
 
 ```console
-$ espanso package
-? 2
+$ espanso package --help
+? 0
 Package-management commands
 
 Usage: espanso package <COMMAND>
@@ -581,38 +342,14 @@ Options:
 
 ```
 
-### `espanso package list`
-
-```console
-$ espanso package list
-some dummy output
-
-```
-
 ### `espanso package list --help`
 
 ```console
 $ espanso package list --help
+? 0
 List all installed packages
 
 Usage: espanso package list
-
-Options:
-  -h, --help  Print help
-
-```
-
-### `espanso package uninstall`
-
-```console
-$ espanso package uninstall
-? 2
-Remove a package
-
-Usage: espanso package uninstall <PACKAGE_NAME>
-
-Arguments:
-  <PACKAGE_NAME>  Package name
 
 Options:
   -h, --help  Print help
@@ -623,6 +360,7 @@ Options:
 
 ```console
 $ espanso package uninstall --help
+? 0
 Remove a package
 
 Usage: espanso package uninstall <PACKAGE_NAME>
@@ -632,22 +370,6 @@ Arguments:
 
 Options:
   -h, --help  Print help
-
-```
-
-### `espanso package uninstall a`
-
-```console
-$ espanso package uninstall a
-some dummy output
-
-```
-
-### `espanso package update a`
-
-```console
-$ espanso package update a
-some dummy output
 
 ```
 
@@ -669,6 +391,7 @@ For more information, try '--help'.
 
 ```console
 $ espanso package update --help
+? 0
 Update a package. If 'all' is passed as package name, attempts to update all packages
 
 Usage: espanso package update <PACKAGE_NAME_OR_ALL>
@@ -678,14 +401,6 @@ Arguments:
 
 Options:
   -h, --help  Print help
-
-```
-
-### `espanso package update all`
-
-```console
-$ espanso package update all
-some dummy output
 
 ```
 
@@ -711,59 +426,26 @@ Options:
 
 ```
 
-## `espanso path base`
+## `espanso restart --help`
 
 ```console
-$ espanso path base
-some dummy output
+$ espanso restart --help
+? 0
+Restart the espanso service
+
+Usage: espanso restart [OPTIONS]
+
+Options:
+      --unmanaged  Run espanso as an unmanaged service (avoid system manager)
+  -h, --help       Print help
 
 ```
 
-## `espanso path config`
+## `espanso service --help`
 
 ```console
-$ espanso path config
-some dummy output
-
-```
-
-## `espanso path default`
-
-```console
-$ espanso path default
-some dummy output
-
-```
-
-## `espanso path packages`
-
-```console
-$ espanso path packages
-some dummy output
-
-```
-
-## `espanso path runtime`
-
-```console
-$ espanso path runtime
-some dummy output
-
-```
-
-## `espanso restart`
-
-```console
-$ espanso restart
-some dummy output
-
-```
-
-## `espanso service`
-
-```console
-$ espanso service
-? 2
+$ espanso service --help
+? 0
 A collection of commands to manage the Espanso service (for example, enabling auto-start on system boot)
 
 Usage: espanso service <COMMAND>
@@ -783,113 +465,143 @@ Options:
 
 ```
 
-### `espanso service check`
+### `espanso service check --help`
 
 ```console
-$ espanso service check
-some dummy output
+$ espanso service check --help
+? 0
+Check if espanso is registered as a system service
+
+Usage: espanso service check
+
+Options:
+  -h, --help  Print help
 
 ```
 
-### `espanso service register`
+### `espanso service register --help`
 
 ```console
-$ espanso service register
-some dummy output
+$ espanso service register --help
+? 0
+Register espanso as a system service
+
+Usage: espanso service register
+
+Options:
+  -h, --help  Print help
 
 ```
 
-### `espanso service restart`
+### `espanso service restart --help`
 
 ```console
-$ espanso service restart
-some dummy output
+$ espanso service restart --help
+? 0
+Restart the espanso service
+
+Usage: espanso service restart [OPTIONS]
+
+Options:
+      --unmanaged  Run espanso as an unmanaged service (avoid system manager)
+  -h, --help       Print help
 
 ```
 
-### `espanso service restart --unmanaged`
+### `espanso service start --help`
 
 ```console
-$ espanso service restart --unmanaged
-some dummy output
+$ espanso service start --help
+? 0
+Start espanso as a service
+
+Usage: espanso service start [OPTIONS]
+
+Options:
+      --unmanaged  Run espanso as an unmanaged service (avoid system manager)
+  -h, --help       Print help
 
 ```
 
-### `espanso service start`
+### `espanso service status --help`
 
 ```console
-$ espanso service start
-some dummy output
+$ espanso service status --help
+? 0
+Check if the espanso daemon is running or not
+
+Usage: espanso service status
+
+Options:
+  -h, --help  Print help
 
 ```
 
-### `espanso service start --unmanaged`
+### `espanso service stop --help`
 
 ```console
-$ espanso service start --unmanaged
-some dummy output
+$ espanso service stop --help
+? 0
+Stop espanso service
+
+Usage: espanso service stop
+
+Options:
+  -h, --help  Print help
 
 ```
 
-### `espanso service status`
+### `espanso service unregister --help`
 
 ```console
-$ espanso service status
-some dummy output
+$ espanso service unregister --help
+? 0
+Unregister espanso from system services
+
+Usage: espanso service unregister
+
+Options:
+  -h, --help  Print help
 
 ```
 
-### `espanso service stop`
+## `espanso start --help`
 
 ```console
-$ espanso service stop
-some dummy output
+$ espanso start --help
+? 0
+Start espanso as a service
+
+Usage: espanso start [OPTIONS]
+
+Options:
+      --unmanaged  Run espanso as an unmanaged service (avoid system manager)
+  -h, --help       Print help
 
 ```
 
-### `espanso service unregister`
+## `espanso status --help`
 
 ```console
-$ espanso service unregister
-some dummy output
+$ espanso status --help
+? 0
+Check if the espanso daemon is running or not
+
+Usage: espanso status
+
+Options:
+  -h, --help  Print help
 
 ```
 
-## `espanso start`
+## `espanso stop --help`
 
 ```console
-$ espanso start
-some dummy output
+$ espanso stop --help
+? 0
+Stop espanso service
 
-```
-
-## `espanso status`
-
-```console
-$ espanso status
-some dummy output
-
-```
-
-## `espanso stop`
-
-```console
-$ espanso stop
-some dummy output
-
-```
-
-## `espanso uninstall`
-
-```console
-$ espanso uninstall
-? 2
-Remove a package
-
-Usage: espanso uninstall <PACKAGE_NAME>
-
-Arguments:
-  <PACKAGE_NAME>  Package name
+Usage: espanso stop
 
 Options:
   -h, --help  Print help
@@ -900,6 +612,7 @@ Options:
 
 ```console
 $ espanso uninstall --help
+? 0
 Remove a package
 
 Usage: espanso uninstall <PACKAGE_NAME>
@@ -912,11 +625,11 @@ Options:
 
 ```
 
-## `espanso workaround`
+## `espanso workaround --help`
 
 ```console
-$ espanso workaround
-? 2
+$ espanso workaround --help
+? 0
 A collection of workarounds to solve some common problems
 
 Usage: espanso workaround <COMMAND>
@@ -930,10 +643,16 @@ Options:
 
 ```
 
-## `espanso workaround secure-input`
+## `espanso workaround secure-input --help`
 
 ```console
-$ espanso workaround secure-input
-some dummy output
+$ espanso workaround secure-input --help
+? 0
+Attempt to disable secure input by automating the common steps
+
+Usage: espanso workaround secure-input
+
+Options:
+  -h, --help  Print help
 
 ```
