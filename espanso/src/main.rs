@@ -22,6 +22,22 @@
 
 use std::process::Command;
 
+use clap::{App, AppSettings, Arg, ArgMatches, ErrorKind, SubCommand};
+use cli::{CliModule, CliModuleArgs};
+use log::{error, info};
+use logging::FileProxy;
+use simplelog::{
+    CombinedLogger, ConfigBuilder, LevelFilter, SharedLogger, TermLogger, TerminalMode, WriteLogger,
+};
+use std::sync::LazyLock;
+
+use crate::{
+    cli::{LogMode, PathsOverrides},
+    config::load_config,
+    util::log_system_info,
+};
+
+mod capabilities;
 mod cli;
 mod config;
 mod gui;
