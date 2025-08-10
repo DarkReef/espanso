@@ -22,38 +22,6 @@
 
 use std::process::Command;
 
-use clap::{App, AppSettings, Arg, ArgMatches, ErrorKind, SubCommand};
-use cli::{CliModule, CliModuleArgs};
-use log::{error, info};
-use logging::FileProxy;
-use simplelog::{
-    CombinedLogger, ConfigBuilder, LevelFilter, SharedLogger, TermLogger, TerminalMode, WriteLogger,
-};
-use std::sync::LazyLock;
-
-use crate::{
-    cli::{LogMode, PathsOverrides},
-    config::load_config,
-    util::log_system_info,
-};
-
-mod capabilities;
-mod cli;
-mod config;
-mod gui;
-mod icon;
-mod ipc;
-mod lock;
-#[macro_use]
-mod logging;
-mod capabilities;
-mod common_flags;
-mod exit_code;
-mod patch;
-mod path;
-mod preferences;
-mod util;
-
 use crate::{
     cli::{
         cmd, daemon, edit::edit_main, env_path, launcher, log::log_main, match_cli, modulo,
@@ -74,6 +42,22 @@ use path::{resolve_paths, Paths};
 use simplelog::{
     CombinedLogger, ConfigBuilder, SharedLogger, TermLogger, TerminalMode, WriteLogger,
 };
+
+mod capabilities;
+mod cli;
+mod common_flags;
+mod config;
+mod exit_code;
+mod gui;
+mod icon;
+mod ipc;
+mod lock;
+#[macro_use]
+mod logging;
+mod patch;
+mod path;
+mod preferences;
+mod util;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LOG_FILE_NAME: &str = "espanso.log";
