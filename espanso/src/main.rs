@@ -306,6 +306,3 @@ fn enable_logs(log_proxy: FileProxy, paths: &Paths, log_mode: LogMode) {
         .expect("unable to set up log output file");
     todo!("check if the logs for daemon+worker works fine")
 }
-
-#[cfg(test)]
-mod tests {}
