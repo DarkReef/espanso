@@ -18,9 +18,11 @@ here
 ```console
 $ espanso
 ? 2
+espanso 2.2.4
+
 A Privacy-first, Cross-platform Text Expander
 
-Usage: espanso [OPTIONS] <COMMAND>
+espanso [OPTIONS] <COMMAND>
 
 Commands:
   cmd         Send a command to the espanso daemon
@@ -47,6 +49,8 @@ Options:
   -r, --runtime-dir <RUNTIME_DIR>  
   -h, --help                       Print help
   -V, --version                    Print version
+
+Federico Terzi and the espanso contributors
 
 ```
 

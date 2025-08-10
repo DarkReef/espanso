@@ -38,10 +38,17 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser)]
 #[command(
-    name = "espanso",
-    about = "A Privacy-first, Cross-platform Text Expander",
-    author = "Federico Terzi and the espanso contributors",
+    // name = "espanso",
     version = VERSION,
+    author = "Federico Terzi and the espanso contributors",
+    about = "A Privacy-first, Cross-platform Text Expander",
+    help_template =  "espanso {version}
+{about-section}
+{usage}
+
+{all-args}
+{author-section}",
+    long_about= None,
     arg_required_else_help = true)]
 pub struct Arguments {
     #[command(subcommand)]
