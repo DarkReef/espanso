@@ -71,10 +71,7 @@ fn main() {
     let args = cli::Arguments::parse();
 
     let log_level = match args.verbose {
-        0 | 1 => {
-            // println!("Debug mode is off");
-            LevelFilter::Info
-        }
+        0 | 1 => LevelFilter::Info,
         2 => {
             println!("Debug mode is on");
             LevelFilter::Debug
@@ -146,10 +143,7 @@ fn main() {
             log_main(Some(paths))
         }
         cli::Command::Match(cmd) => match_cli::match_main(cmd, paths, config_result),
-        cli::Command::Modulo(modulo_args) => {
-            // todo!("Need to pass stdin to `FormArgs`");
-            modulo::modulo_main(modulo_args, paths)
-        }
+        cli::Command::Modulo(modulo_args) => modulo::modulo_main(modulo_args, paths),
         cli::Command::Package(package_args) => package::package_main(package_args, paths),
         cli::Command::Path(path_args) => {
             if let Some(default_config_path) = if is_portable_mode() {
@@ -287,20 +281,21 @@ fn main() {
 
     // to compare the list of handlers to the `cli_args`
     // try to invoke `kdotool` to see if you have it or not.
-    if Command::new("kdotool")
-        .arg("getactivewindow")
-        .arg("getwindowclassname")
-        .output()
-        .is_ok()
-    {
-    } else {
-        info!("kdotool missing or not available for the current wayland DE.");
+    if cfg!(target_os = "linux") {
+        if Command::new("kdotool")
+            .arg("getactivewindow")
+            .arg("getwindowclassname")
+            .output()
+            .is_ok()
+        {
+        } else {
+            info!("kdotool missing or not available for the current wayland DE.");
+        }
     }
 
     std::process::exit(exit_code);
 }
 
-// TODO: check if the logs for daemon+worker works fine
 fn enable_logs(log_proxy: FileProxy, paths: &Paths, log_mode: LogMode) {
     log_proxy
         .set_output_file(
@@ -309,6 +304,7 @@ fn enable_logs(log_proxy: FileProxy, paths: &Paths, log_mode: LogMode) {
             log_mode == LogMode::CleanAndAppend,
         )
         .expect("unable to set up log output file");
+    todo!("check if the logs for daemon+worker works fine")
 }
 
 #[cfg(test)]

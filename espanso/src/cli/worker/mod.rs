@@ -44,20 +44,6 @@ mod match_cache;
 mod secure_input;
 mod ui;
 
-// pub fn new() -> CliModule {
-//     #[allow(clippy::needless_update)]
-//     CliModule {
-//         requires_paths: true,
-//         requires_config: true,
-//         requires_linux_capabilities: true,
-//         enable_logs: true,
-//         log_mode: super::LogMode::AppendOnly,
-//         subcommand: "worker".to_string(),
-//         entry: worker_main,
-//         ..Default::default()
-//     }
-// }
-
 pub fn worker_main(
     paths: Paths,
     config_store: Box<dyn ConfigStore>,
@@ -75,8 +61,6 @@ pub fn worker_main(
         error!("worker is already running!");
         return WORKER_ALREADY_RUNNING;
     }
-
-    // TODO: show config loading errors in a GUI, if any
 
     let use_evdev_backend = if cfg!(feature = "wayland") {
         true

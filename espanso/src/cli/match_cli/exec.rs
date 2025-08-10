@@ -17,17 +17,14 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::collections::HashMap;
-
 use crate::path::Paths;
-use anyhow::{bail, Context, Result};
-
-use espanso_ipc::IPCClient;
-
 use crate::{
     ipc::{create_ipc_client_to_worker, IPCEvent, RequestMatchExpansionPayload},
     lock::acquire_worker_lock,
 };
+use anyhow::{bail, Context, Result};
+use espanso_ipc::IPCClient;
+use std::collections::HashMap;
 
 pub fn exec_main(trigger: String, args: Option<String>, paths: &Paths) -> Result<()> {
     if acquire_worker_lock(&paths.runtime).is_some() {

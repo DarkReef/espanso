@@ -52,18 +52,6 @@ use linux::*;
 
 mod stop;
 
-// pub fn new() -> CliModule {
-//     CliModule {
-//         enable_logs: true,
-//         disable_logs_terminal_output: true,
-//         requires_paths: true,
-//         subcommand: "service".to_string(),
-//         log_mode: super::LogMode::AppendOnly,
-//         entry: service_main,
-//         ..Default::default()
-//     }
-// }
-
 pub fn start_main(paths: &Paths, is_unmanaged: bool) -> i32 {
     let lock_file = acquire_worker_lock(&paths.runtime);
     if lock_file.is_none() {

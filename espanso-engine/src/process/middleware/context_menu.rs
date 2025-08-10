@@ -60,8 +60,6 @@ impl Middleware for ContextMenuMiddleware {
 
         match &event.etype {
             EventType::TrayIconClicked => {
-                // TODO: fetch top matches for the active config to be added
-
                 let mut items = vec![
                     MenuItem::Simple(if *is_enabled {
                         SimpleMenuItem {
@@ -122,10 +120,7 @@ impl Middleware for ContextMenuMiddleware {
                 // a mapping structure match_id <-> context-menu-id
                 Event::caused_by(
                     event.source_id,
-                    EventType::ShowContextMenu(ShowContextMenuEvent {
-                        // TODO: add actual entries
-                        items,
-                    }),
+                    EventType::ShowContextMenu(ShowContextMenuEvent { items }),
                 )
             }
             EventType::ContextMenuClicked(context_click_event) => {

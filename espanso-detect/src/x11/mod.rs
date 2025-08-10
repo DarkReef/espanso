@@ -359,7 +359,7 @@ fn convert_raw_input_event_to_input_event(
 }
 
 // Mappings from: https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key/Key_Values
-// TODO: might need to add also the variants
+// might need to add also the variants
 fn key_sym_to_key(key_sym: i32) -> (Key, Option<Variant>) {
     match key_sym {
         // Modifiers

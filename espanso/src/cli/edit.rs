@@ -113,19 +113,3 @@ pub fn open_editor(file_path: &Path) -> bool {
         false
     }
 }
-
-// fn restart_espanso(paths_overrides: &PathsOverrides) -> Result<()> {
-//   let espanso_exe_path = std::env::current_exe()?;
-
-//   let mut command = Command::new(&espanso_exe_path.to_string_lossy().to_string());
-//   command.args(&["restart"]);
-//   command.with_paths_overrides(paths_overrides);
-
-//   let output = command.output()?;
-
-//   if output.status.success() {
-//     Ok(())
-//   } else {
-//     bail!("restart command returned a non-zero exit code");
-//   }
-// }

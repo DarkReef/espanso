@@ -105,13 +105,10 @@ pub fn daemon_main(paths: Paths) -> i32 {
         };
 
     info!("espanso version: {VERSION}");
-    // TODO: print os system and version? (with os_info crate)
 
     terminate_worker_if_already_running(&paths.runtime);
 
     let (exit_notify, exit_signal) = unbounded::<i32>();
-
-    // TODO: register signals to terminate the worker if the daemon terminates
 
     spawn_worker(&paths_overrides, exit_notify.clone(), None);
 

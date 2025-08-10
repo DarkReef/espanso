@@ -20,7 +20,6 @@ members = [
 ]
 
 [workspace.lints.clippy]
-unused = "allow"                       # TODO: delete
 enum_glob_use = "deny"
 semicolon_if_nothing_returned = "deny"
 wildcard_imports = "deny"

@@ -173,7 +173,6 @@ pub fn launcher_main(paths: Paths) -> i32 {
     if let Err(err) = crate::config::populate_default_config(&paths.config) {
         error!("Error populating the config directory: {err:?}");
 
-        // TODO: show an error message with GUI
         return LAUNCHER_CONFIG_DIR_POPULATION_FAILURE;
     }
 
@@ -192,6 +191,5 @@ pub fn launcher_main(paths: Paths) -> i32 {
 
 #[cfg(not(feature = "modulo"))]
 pub fn launcher_main(_: Paths) -> i32 {
-    // TODO: handle what happens here
     unimplemented!("espanso launcher is not available witout the `modulo` feature flag");
 }
