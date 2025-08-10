@@ -39,6 +39,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 #[derive(Parser)]
 #[command(name = "espanso")]
 #[command(about = "A Privacy-first, Cross-platform Text Expander")]
+#[command(author = "Federico Terzi and the espanso contributors")]
 #[command(version = VERSION)]
 #[command(long_about=None)]
 #[command(arg_required_else_help = true)]
