@@ -64,13 +64,14 @@ We would like the Rust code:
 
 And C / C++ code:
 
-- we would like to use a formatter, like `clang-format` (we can use [run-clang-format](https://github.com/lmapii/run-clang-format)
-to format folders recursively)
-- and we would like to use `clang-tidy`, but we need a Compilation database in
-order to use `clang-tidy` (also, we can use [run-clang-tidy](https://github.com/lmapii/run-clang-tidy)
-to help too!)
+- we use `clang-format` as formatter with this script:
 
-Today our submitted code is yet untidy. Work in progress!
+```bash
+bash -c './scripts/format_clang.sh'
+```
+
+Only works for macOS and Linux. Formats all the `c h cc hh cpp` files
+recursively.
 
 ### `git`
 
