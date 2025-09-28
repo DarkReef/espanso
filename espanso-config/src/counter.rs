@@ -20,7 +20,6 @@
 use std::sync::atomic::{AtomicI32, Ordering};
 
 thread_local! {
-  // TODO: if thread local, we probably don't need an atomic
   static STRUCT_COUNTER: AtomicI32 = const { AtomicI32::new(0) };
 }
 
