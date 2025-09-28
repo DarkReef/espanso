@@ -54,7 +54,7 @@ impl Clipboard for XClipClipboard {
                 }
             }
             Err(error) => {
-                error!("xclip reported an error: {}", error);
+                error!("xclip reported an error: {error}");
             }
         }
 
