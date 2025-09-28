@@ -36,6 +36,7 @@ needed!
 
 ### Tier 3: unsupported
 
+- RISC-V ([tracking issue](https://github.com/espanso/espanso/issues/2474))
 - FreeBSD and the BSD family ([tracking issue](https://github.com/espanso/espanso/issues/2304))
 - ChromeOS ([tracking issue](https://github.com/espanso/espanso/issues/2305))
 - Windows ARM architectures ([tracking issue](https://github.com/espanso/espanso/issues/2306)).
