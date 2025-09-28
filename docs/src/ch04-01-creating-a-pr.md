@@ -59,9 +59,6 @@ We would like the Rust code:
 - to be compiled with `stable`, not `nightly`
 - prefer not to use macros, if possible. Try to use functions or generics.
 
-// TODO: update this with the new bash scripts
-// unavailable in windows
-
 And C / C++ code:
 
 - we use `clang-format` as formatter with this script:
