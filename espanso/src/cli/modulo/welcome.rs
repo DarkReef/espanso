@@ -23,10 +23,7 @@ use clap::ArgMatches;
 use espanso_modulo::welcome::*;
 
 pub fn welcome_main(matches: &ArgMatches, _: &Paths, icon_paths: &IconPaths) -> i32 {
-    let dont_show_again_handler = Box::new(move |_dont_show: bool| {
-        //preferences.set_should_display_welcome(!dont_show);
-        // TODO: this should probably be deleted if not used?
-    });
+    let dont_show_again_handler = Box::new(move |_dont_show: bool| {});
 
     let is_already_running = matches.is_present("already-running");
 
