@@ -107,12 +107,12 @@ impl Clipboard for WaylandFallbackClipboard {
                     }
                 }
                 Err(err) => {
-                    error!("error while executing 'wl-paste': {}", err);
+                    error!("error while executing 'wl-paste': {err}");
                     None
                 }
             },
             Err(err) => {
-                error!("could not invoke 'wl-paste': {}", err);
+                error!("could not invoke 'wl-paste': {err}");
                 None
             }
         }
@@ -178,11 +178,11 @@ impl WaylandFallbackClipboard {
                             if status.success() {
                                 Ok(())
                             } else {
-                                error!("error, {} exited with non-zero exit code", name);
+                                error!("error, {name} exited with non-zero exit code");
                                 Err(WaylandFallbackClipboardError::SetOperationFailed().into())
                             }
                         } else {
-                            error!("error, {} has timed-out, killing the process", name);
+                            error!("error, {name} has timed-out, killing the process");
                             if child.kill().is_err() {
                                 error!("unable to kill {}", name);
                             }
@@ -190,13 +190,13 @@ impl WaylandFallbackClipboard {
                         }
                     }
                     Err(err) => {
-                        error!("error while executing '{}': {}", name, err);
+                        error!("error while executing '{name}': {err}");
                         Err(WaylandFallbackClipboardError::SetOperationFailed().into())
                     }
                 }
             }
             Err(err) => {
-                error!("could not invoke '{}': {}", name, err);
+                error!("could not invoke '{name}': {err}");
                 Err(WaylandFallbackClipboardError::SetOperationFailed().into())
             }
         }
