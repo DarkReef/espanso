@@ -149,7 +149,7 @@ impl Source for EVDEVSource {
         if let Some(modifiers_state) =
             sync::get_modifiers_state().context("EVDEV modifier context state synchronization")?
         {
-            debug!("Updating device modifier state: {:?}", modifiers_state);
+            debug!("Updating device modifier state: {modifiers_state:?}");
 
             for device in &mut self.devices {
                 device.update_modifier_state(modifiers_state, &self._modifiers_map);

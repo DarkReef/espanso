@@ -184,7 +184,7 @@ impl WaylandFallbackClipboard {
                         } else {
                             error!("error, {name} has timed-out, killing the process");
                             if child.kill().is_err() {
-                                error!("unable to kill {}", name);
+                                error!("unable to kill {name}");
                             }
                             Err(WaylandFallbackClipboardError::SetOperationFailed().into())
                         }

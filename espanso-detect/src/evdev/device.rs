@@ -298,12 +298,12 @@ pub fn get_devices(keymap: &Keymap) -> Result<Vec<Device>> {
                         keyboards.push(keyboard);
                     }
                     Err(error) => {
-                        trace!("error opening keyboard: {}", error);
+                        trace!("error opening keyboard: {error}");
                     }
                 }
             }
             Err(error) => {
-                trace!("could not read keyboard device: {}", error);
+                trace!("could not read keyboard device: {error}");
             }
         }
     }

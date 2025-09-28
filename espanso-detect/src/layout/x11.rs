@@ -30,10 +30,7 @@ pub fn get_active_layout() -> Option<String> {
             Some(layout_raw.get(1)?.trim().to_string())
         }
         Err(err) => {
-            error!(
-                "unable to retrieve current keyboard layout with 'setxkbmap': {}",
-                err
-            );
+            error!("unable to retrieve current keyboard layout with 'setxkbmap': {err}");
             None
         }
     }

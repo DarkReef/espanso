@@ -188,13 +188,13 @@ impl Source for X11Source {
             if let Some(raw_hk) = raw {
                 let result = unsafe { detect_register_hotkey(handle, raw_hk, mod_indexes) };
                 if result.success == 0 {
-                    error!("unable to register hotkey: {}", hk);
+                    error!("unable to register hotkey: {hk}");
                 } else {
                     raw_hotkey_mapping.insert((result.key_code, result.state), hk.id);
-                    debug!("registered hotkey: {}", hk);
+                    debug!("registered hotkey: {hk}");
                 }
             } else {
-                error!("unable to generate raw hotkey mapping: {}", hk);
+                error!("unable to generate raw hotkey mapping: {hk}");
             }
         });
 
@@ -312,13 +312,13 @@ fn convert_raw_input_event_to_input_event(
                         match string_result {
                             Ok(value) => Some(value.to_string()),
                             Err(err) => {
-                                warn!("char conversion error: {}", err);
+                                warn!("char conversion error: {err}");
                                 None
                             }
                         }
                     }
                     Err(err) => {
-                        warn!("Received malformed char: {}", err);
+                        warn!("Received malformed char: {err}");
                         None
                     }
                 }

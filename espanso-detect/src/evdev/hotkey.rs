@@ -65,7 +65,7 @@ impl HotKeyFilter {
             .filter_map(|hk| {
                 let codes = Self::convert_hotkey_to_codes(self, hk);
                 if codes.is_none() {
-                    error!("unable to register hotkey {:?}", hk);
+                    error!("unable to register hotkey {hk:?}");
                 }
                 Some((hk.id, codes?))
             })
