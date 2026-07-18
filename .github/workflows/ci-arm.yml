@@ -1,7 +1,7 @@
 name: ARM CI
 
 on:
-    workflow_dispatch:
+  workflow_dispatch:
 
 defaults:
   run:
@@ -50,7 +50,7 @@ jobs:
             --no-default-features \
             --features vendored-tls
       - name: Clippy
-        run: cargo clippy --all-targets --features=modulo,vendored-tls -- --deny warnings
+        run: cargo clippy --all-targets --features=modulo,vendored-tls -- --deny warnings --no-deps
       # - uses: cachix/install-nix-action@v31
       #   - name: nix fmt
       #     run: nix fmt -- --check **/*.nix
@@ -75,4 +75,3 @@ jobs:
           cargo build
       - name: Clippy
         run: cargo clippy -- --deny warnings
-
