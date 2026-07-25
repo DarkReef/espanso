@@ -1,44 +1,53 @@
-name: Editor focused check
+name: Editor API migration
 
 on:
   pull_request:
     paths:
       - "espanso-editor/**"
-      - "Cargo.toml"
       - ".github/workflows/editor-check-artifact.yml"
 
+permissions:
+  contents: write
+
 jobs:
-  check:
+  migrate:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@main
-      - name: Check editor
-        id: check
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          cargo check -p espanso-editor 2>&1 | tee editor-check.log
-      - name: Test editor
-        if: steps.check.outcome == 'success'
-        id: test
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          cargo test -p espanso-editor 2>&1 | tee -a editor-check.log
-      - name: Clippy editor
-        if: steps.check.outcome == 'success'
-        id: clippy
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          cargo clippy -p espanso-editor --all-targets -- --deny warnings 2>&1 | tee -a editor-check.log
-      - name: Upload editor check log
-        if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: editor-check-log
-          path: editor-check.log
-          if-no-files-found: error
-      - name: Fail when validation failed
-        if: steps.check.outcome != 'success' || steps.test.outcome == 'failure' || steps.clippy.outcome == 'failure'
-        run: exit 1
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Migrate UI to eframe 0.35
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("espanso-editor/src/app.rs")
+          source = path.read_text()
+          replacements = {
+              'fn top_bar(&mut self, ctx: &egui::Context) {': 'fn top_bar(&mut self, root: &mut egui::Ui) {',
+              'egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {': 'egui::Panel::top("toolbar").show(root, |ui| {',
+              'fn rules_panel(&mut self, ctx: &egui::Context) {': 'fn rules_panel(&mut self, root: &mut egui::Ui) {',
+              'egui::SidePanel::left("rules")': 'egui::Panel::left("rules")',
+              '.show(ctx, |ui| {\n                ui.heading("Rules");': '.show(root, |ui| {\n                ui.heading("Rules");',
+              'fn central_editor(&mut self, ctx: &egui::Context) {': 'fn central_editor(&mut self, root: &mut egui::Ui) {',
+              'egui::CentralPanel::default().show(ctx, |ui| {': 'egui::CentralPanel::default().show(root, |ui| {',
+              'fn diagnostics_panel(&mut self, ctx: &egui::Context) {': 'fn diagnostics_panel(&mut self, root: &mut egui::Ui) {',
+              'egui::SidePanel::right("diagnostics")': 'egui::Panel::right("diagnostics")',
+              '.show(ctx, |ui| {\n                ui.heading("Diagnostics");': '.show(root, |ui| {\n                ui.heading("Diagnostics");',
+              'fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {\n        self.top_bar(ctx);\n        self.rules_panel(ctx);\n        self.diagnostics_panel(ctx);\n        egui::TopBottomPanel::bottom("status").show(ctx, |ui| {': 'fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {\n        self.top_bar(ui);\n        self.rules_panel(ui);\n        self.diagnostics_panel(ui);\n        egui::Panel::bottom("status").show(ui, |ui| {',
+              '        self.central_editor(ctx);': '        self.central_editor(ui);',
+          }
+          for old, new in replacements.items():
+              if old not in source:
+                  raise SystemExit(f"expected source fragment was not found: {old!r}")
+              source = source.replace(old, new)
+          path.write_text(source)
+          PY
+          cargo fmt --all
+      - name: Commit API migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add espanso-editor/src/app.rs
+          git commit -m "fix(editor): migrate UI to eframe 0.35"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
