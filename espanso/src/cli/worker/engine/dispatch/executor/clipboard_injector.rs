@@ -45,14 +45,14 @@ extern "system" {
 }
 
 #[cfg(target_os = "windows")]
-fn clipboard_sequence_number() -> Option<u32> {
+fn clipboard_sequence_number() -> u32 {
     // SAFETY: GetClipboardSequenceNumber has no parameters and does not retain pointers.
-    Some(unsafe { get_clipboard_sequence_number() })
+    unsafe { get_clipboard_sequence_number() }
 }
 
 #[cfg(not(target_os = "windows"))]
-fn clipboard_sequence_number() -> Option<u32> {
-    None
+fn clipboard_sequence_number() -> u32 {
+    0
 }
 
 pub trait ClipboardParamsProvider {
@@ -176,7 +176,7 @@ impl<'a> ClipboardInjectorAdapter<'a> {
     fn wait_for_selected_text(
         &self,
         previous_text: Option<&str>,
-        previous_sequence: Option<u32>,
+        previous_sequence: u32,
         options: &ClipboardOperationOptions,
     ) -> Option<String> {
         let started_at = Instant::now();
@@ -184,16 +184,17 @@ impl<'a> ClipboardInjectorAdapter<'a> {
         while started_at.elapsed() < SELECTION_COPY_TIMEOUT {
             let current_text = self.clipboard.get_text(options);
             let text_changed = current_text.as_deref() != previous_text;
-            let sequence_changed = match (previous_sequence, clipboard_sequence_number()) {
-                (Some(before), Some(after)) => before != after,
-                _ => false,
-            };
+            let sequence_changed = cfg!(target_os = "windows")
+                && previous_sequence != clipboard_sequence_number();
 
-            if text_changed || sequence_changed {
-                if let Some(text) = current_text {
-                    if !text.trim().is_empty() {
-                        return Some(text);
-                    }
+            if !(text_changed || sequence_changed) {
+                std::thread::sleep(SELECTION_COPY_POLL_INTERVAL);
+                continue;
+            }
+
+            if let Some(text) = current_text {
+                if !text.trim().is_empty() {
+                    return Some(text);
                 }
             }
 
@@ -219,12 +220,14 @@ impl SelectedTextProvider for ClipboardInjectorAdapter<'_> {
         let selected_text =
             self.wait_for_selected_text(previous_text.as_deref(), previous_sequence, &options);
 
-        if params.restore_clipboard {
-            if let Some(previous_text) = previous_text {
-                std::thread::sleep(SELECTION_RESTORE_DELAY);
-                if let Err(error) = self.clipboard.set_text(&previous_text, &options) {
-                    error!("unable to restore clipboard after reading selection: {error}");
-                }
+        if !params.restore_clipboard {
+            return selected_text;
+        }
+
+        if let Some(previous_text) = previous_text {
+            std::thread::sleep(SELECTION_RESTORE_DELAY);
+            if let Err(error) = self.clipboard.set_text(&previous_text, &options) {
+                error!("unable to restore clipboard after reading selection: {error}");
             }
         }
 
