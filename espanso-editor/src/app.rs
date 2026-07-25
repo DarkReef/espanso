@@ -261,8 +261,8 @@ impl MatchStudioApp {
         }
     }
 
-    fn top_bar(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
+    fn top_bar(&mut self, root: &mut egui::Ui) {
+        egui::Panel::top("toolbar").show(root, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.heading("rEspanso Match Studio");
                 ui.separator();
@@ -300,7 +300,7 @@ impl MatchStudioApp {
         });
     }
 
-    fn rules_panel(&mut self, ctx: &egui::Context) {
+    fn rules_panel(&mut self, root: &mut egui::Ui) {
         let Some(workspace) = &self.workspace else {
             return;
         };
@@ -308,10 +308,10 @@ impl MatchStudioApp {
         let rules = workspace.rules();
         let config_root = workspace.config_root().to_path_buf();
 
-        egui::SidePanel::left("rules")
+        egui::Panel::left("rules")
             .resizable(true)
             .default_width(330.0)
-            .show(ctx, |ui| {
+            .show(root, |ui| {
                 ui.heading("Rules");
                 ui.add(
                     egui::TextEdit::singleline(&mut self.filter)
@@ -378,8 +378,8 @@ impl MatchStudioApp {
             });
     }
 
-    fn central_editor(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn central_editor(&mut self, root: &mut egui::Ui) {
+        egui::CentralPanel::default().show(root, |ui| {
             if let Some(error) = &self.load_error {
                 ui.heading("Unable to load Match Studio");
                 ui.label(error.as_str());
@@ -618,7 +618,7 @@ impl MatchStudioApp {
             });
     }
 
-    fn diagnostics_panel(&mut self, ctx: &egui::Context) {
+    fn diagnostics_panel(&mut self, root: &mut egui::Ui) {
         if !self.show_diagnostics {
             return;
         }
@@ -626,10 +626,10 @@ impl MatchStudioApp {
             .workspace
             .as_ref()
             .map_or_else(Vec::new, MatchWorkspace::diagnostics);
-        egui::SidePanel::right("diagnostics")
+        egui::Panel::right("diagnostics")
             .resizable(true)
             .default_width(330.0)
-            .show(ctx, |ui| {
+            .show(root, |ui| {
                 ui.heading("Diagnostics");
                 if diagnostics.is_empty() {
                     ui.label("No YAML, RegExp, conflict or import problems detected.");
@@ -658,18 +658,18 @@ impl MatchStudioApp {
 }
 
 impl eframe::App for MatchStudioApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.top_bar(ctx);
-        self.rules_panel(ctx);
-        self.diagnostics_panel(ctx);
-        egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.top_bar(ui);
+        self.rules_panel(ui);
+        self.diagnostics_panel(ui);
+        egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(self.status.as_str());
                 ui.separator();
                 ui.small(format!("Config: {}", self.config_root.display()));
             });
         });
-        self.central_editor(ctx);
+        self.central_editor(ui);
     }
 }
 
