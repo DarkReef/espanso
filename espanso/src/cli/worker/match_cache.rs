@@ -241,7 +241,7 @@ impl espanso_engine::process::SelectionMatchResolver for CombinedMatchCache<'_> 
                         args.insert("selection".to_owned(), selection.to_owned());
                         detected.push(DetectedMatch {
                             id: m.id,
-                            trigger: Some(selection.to_owned()),
+                            trigger: None,
                             args,
                             ..Default::default()
                         });
@@ -266,7 +266,7 @@ impl espanso_engine::process::SelectionMatchResolver for CombinedMatchCache<'_> 
 
                     detected.push(DetectedMatch {
                         id: m.id,
-                        trigger: Some(selection.to_owned()),
+                        trigger: None,
                         args,
                         ..Default::default()
                     });
