@@ -47,7 +47,7 @@ fn edit_main(args: CliModuleArgs) -> i32 {
     );
 
     let target_file = cli_args.value_of("target_file");
-    if target_file == Some("gui") {
+    if cli_args.is_present("gui") || target_file == Some("gui") {
         return open_match_studio(&paths.config);
     }
 
