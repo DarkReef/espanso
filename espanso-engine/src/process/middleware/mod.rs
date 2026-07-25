@@ -38,6 +38,7 @@ pub mod notification;
 pub mod open_config;
 pub mod render;
 pub mod search;
+pub mod selection_match;
 pub mod stats;
 pub mod suppress;
 pub mod undo;
