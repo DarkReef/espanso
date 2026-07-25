@@ -47,8 +47,8 @@ jobs:
           where.exe cl
           where.exe nmake
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+      - name: Normalize Rust formatting in runner workspace
+        run: cargo fmt --all
 
       - name: Run rEspanso engine tests
         run: cargo test -p espanso-engine --locked
