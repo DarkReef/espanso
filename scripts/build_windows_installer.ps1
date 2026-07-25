@@ -45,6 +45,11 @@ function Get-TomlVersion {
 
 function Main {
     $espansod_path = Join-Path $BASE_DIR "target\windows\resources\espansod.exe"
+    $editor_path = Join-Path $BASE_DIR "target\windows\resources\espanso-editor.exe"
+
+    if (-not (Test-Path $editor_path)) {
+        Write-Error "Match Studio executable is missing from Windows resources: $editor_path"
+    }
 
     $script_resources_path = Join-Path $BASE_DIR "scripts/resources/windows"
     $template_path = Join-Path $script_resources_path "setupscript.iss"
@@ -78,6 +83,7 @@ function Main {
     $template = $template -replace '{{{output_dir}}}', $output_dir
     $template = $template -replace '{{{output_name}}}', "$INSTALLER_NAME-$ARCH"
     $template = $template -replace '{{{executable_path}}}', $espansod_path
+    $template = $template -replace '{{{editor_path}}}', $editor_path
     $template = $template -replace '{{{dll_include}}}', $include_paths
 
     $iss_setup = Join-Path $RESOURCE_DIR "setupscript.iss"
