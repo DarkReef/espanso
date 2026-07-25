@@ -97,3 +97,91 @@ impl Middleware for SelectionMatchMiddleware<'_> {
         event
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct StaticSelectionProvider(Option<&'static str>);
+
+    impl SelectedTextProvider for StaticSelectionProvider {
+        fn get_selected_text(&self) -> Option<String> {
+            self.0.map(str::to_owned)
+        }
+    }
+
+    struct StaticResolver(Vec<DetectedMatch>);
+
+    impl SelectionMatchResolver for StaticResolver {
+        fn find_matches_from_selection(&self, _: &str) -> Vec<DetectedMatch> {
+            self.0.clone()
+        }
+    }
+
+    #[test]
+    fn dispatches_matches_for_selected_text() {
+        let provider = StaticSelectionProvider(Some("  I10  "));
+        let resolver = StaticResolver(vec![DetectedMatch {
+            id: 42,
+            ..Default::default()
+        }]);
+        let middleware = SelectionMatchMiddleware::new(&provider, &resolver);
+        let mut dispatched = Vec::new();
+
+        let output = middleware.next(
+            Event::caused_by(7, EventType::SelectionMatchRequested),
+            &mut |event| dispatched.push(event),
+        );
+
+        assert!(matches!(output.etype, EventType::NOOP));
+        assert_eq!(dispatched.len(), 1);
+        match &dispatched[0].etype {
+            EventType::MatchesDetected(event) => {
+                assert_eq!(event.matches.len(), 1);
+                assert_eq!(event.matches[0].id, 42);
+            }
+            _ => panic!("expected MatchesDetected event"),
+        }
+    }
+
+    #[test]
+    fn shows_error_when_selection_is_missing() {
+        let provider = StaticSelectionProvider(None);
+        let resolver = StaticResolver(Vec::new());
+        let middleware = SelectionMatchMiddleware::new(&provider, &resolver);
+
+        let output = middleware.next(
+            Event::caused_by(7, EventType::SelectionMatchRequested),
+            &mut |_| {},
+        );
+
+        match output.etype {
+            EventType::ShowText(event) => {
+                assert_eq!(event.text, "Не удалось получить выделенный текст.");
+            }
+            _ => panic!("expected ShowText event"),
+        }
+    }
+
+    #[test]
+    fn shows_error_when_no_match_is_found() {
+        let provider = StaticSelectionProvider(Some("unknown"));
+        let resolver = StaticResolver(Vec::new());
+        let middleware = SelectionMatchMiddleware::new(&provider, &resolver);
+
+        let output = middleware.next(
+            Event::caused_by(7, EventType::SelectionMatchRequested),
+            &mut |_| {},
+        );
+
+        match output.etype {
+            EventType::ShowText(event) => {
+                assert_eq!(
+                    event.text,
+                    "Для выделенного текста не найден подходящий match."
+                );
+            }
+            _ => panic!("expected ShowText event"),
+        }
+    }
+}
