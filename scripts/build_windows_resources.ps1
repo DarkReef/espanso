@@ -13,11 +13,20 @@ function Main {
         Write-Output "EXEC_PATH is a required environment variable for this script`n"
         Write-Output 'Please do $env:EXEC_PATH = ".\target\release\espanso.exe" for release'
         Write-Output 'or $env:EXEC_PATH = ".\target\debug\espanso.exe" for debug mode'
+        exit 1
     }
 
-    $EXEC_PATH = Test-Path -Path $env:EXEC_PATH
-    if (!$EXEC_PATH) {
+    if (-not (Test-Path -Path $env:EXEC_PATH)) {
         Write-Error "Could not find executable $env:EXEC_PATH`n"
+    }
+
+    if ([string]::IsNullOrEmpty($env:EDITOR_PATH)) {
+        $binary_dir = Split-Path $env:EXEC_PATH -Parent
+        $env:EDITOR_PATH = Join-Path $binary_dir "espanso-editor.exe"
+    }
+
+    if (-not (Test-Path -Path $env:EDITOR_PATH)) {
+        Write-Error "Could not find Match Studio executable $env:EDITOR_PATH`nBuild it with: cargo build -p espanso-editor --release"
     }
 
     # Find vcruntime140_1.dll
@@ -43,6 +52,7 @@ function Main {
     Get-ChildItem -Path $tooldir -Filter "*.dll" | Copy-Item -Destination $TARGET_DIR
 
     Copy-Item -Path $env:EXEC_PATH -Destination "$TARGET_DIR/espansod.exe"
+    Copy-Item -Path $env:EDITOR_PATH -Destination "$TARGET_DIR/espanso-editor.exe"
 
     # Create the command helper script
     $commandContent = '@"%~dp0espansod.exe" %*'
