@@ -144,12 +144,17 @@ fn main() {
             .about("Open the Espanso's search bar."))
     )
     .subcommand(SubCommand::with_name("edit")
-        .about("Shortcut to open the default text editor to edit config files")
+        .about("Open config files in a text editor or launch rEspanso Match Studio")
+        .arg(Arg::with_name("gui")
+            .long("gui")
+            .takes_value(false)
+            .help("Launch rEspanso Match Studio for the active config root"))
         .arg(Arg::with_name("target_file")
             .help(r#"Defaults to "match/base.yml", it contains the relative path of the file you want to edit,
 such as 'config/default.yml' or 'match/base.yml'.
 For convenience, you can also specify the name directly and Espanso will figure out the path.
-For example, specifying 'email' is equivalent to 'match/email.yml'."#))
+For example, specifying 'email' is equivalent to 'match/email.yml'.
+Use '--gui' (or the legacy positional value 'gui') to launch rEspanso Match Studio."#))
     )
     .subcommand(
       SubCommand::with_name("daemon")
