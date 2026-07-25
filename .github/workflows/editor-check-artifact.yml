@@ -1,0 +1,44 @@
+name: Editor focused check
+
+on:
+  pull_request:
+    paths:
+      - "espanso-editor/**"
+      - "Cargo.toml"
+      - ".github/workflows/editor-check-artifact.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+      - name: Check editor
+        id: check
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo check -p espanso-editor 2>&1 | tee editor-check.log
+      - name: Test editor
+        if: steps.check.outcome == 'success'
+        id: test
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo test -p espanso-editor 2>&1 | tee -a editor-check.log
+      - name: Clippy editor
+        if: steps.check.outcome == 'success'
+        id: clippy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo clippy -p espanso-editor --all-targets -- --deny warnings 2>&1 | tee -a editor-check.log
+      - name: Upload editor check log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: editor-check-log
+          path: editor-check.log
+          if-no-files-found: error
+      - name: Fail when validation failed
+        if: steps.check.outcome != 'success' || steps.test.outcome == 'failure' || steps.clippy.outcome == 'failure'
+        run: exit 1
