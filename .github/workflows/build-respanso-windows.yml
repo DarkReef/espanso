@@ -108,11 +108,13 @@ jobs:
                 @dialog: rEspanso — проверка
                 Информационное окно работает.
 
+            # This rule is intended for text that already exists in another app.
+            # Do not type I10 while rEspanso is active: ordinary trigger detection
+            # would execute the same match before the text can be selected.
             - trigger: "I10"
               replace: |
                 @dialog: rEspanso — выделенный match
-                Найден точный match.
-                Выделенный текст: {{selection}}
+                Найден точный match по выделенному тексту.
           '@ | Set-Content (Join-Path $matchDir "respanso-test.yml") -Encoding UTF8
 
           @'
@@ -154,8 +156,12 @@ jobs:
           1. Extract the entire ZIP. Do not run the EXE from inside the ZIP.
           2. Double-click START-rEspanso.cmd.
           3. Type :rinfo to test an informational dialog.
-          4. Type I10, select it, then press Ctrl+Alt+M to test selected-text execution.
-          5. Use STOP-rEspanso.cmd before deleting or replacing the folder.
+          4. To test selected-text execution, use I10 that already exists in a document,
+             web page or MIS. You may also paste I10 into Notepad with Ctrl+V.
+             Do NOT type I10 while rEspanso is active, because the ordinary trigger
+             engine will execute it immediately before you can select it.
+          5. Select the existing/pasted I10 and press Ctrl+Alt+M.
+          6. Use STOP-rEspanso.cmd before deleting or replacing the folder.
 
           The package includes the required Microsoft Visual C++ runtime DLLs and
           uses isolated portable config/runtime folders, so it does not conflict
