@@ -3,6 +3,7 @@ resolver = "2"
 
 members = [
   "espanso",
+  "espanso-editor",
   "espanso-detect",
   "espanso-ui",
   "espanso-inject",
