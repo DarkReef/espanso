@@ -28,6 +28,7 @@ use super::context::Context;
 mod debug;
 mod process;
 mod search;
+mod selection;
 
 const MIN_BUILTIN_MATCH_ID: i32 = 1_000_000_000;
 
@@ -60,6 +61,7 @@ pub fn get_builtin_matches(config: &dyn Config) -> Vec<BuiltInMatch> {
         debug::create_match_show_logs(),
         process::create_match_exit(),
         process::create_match_restart(),
+        selection::create_match_execute_selection(),
     ];
 
     if config.search_trigger().is_some() || config.search_shortcut().is_some() {
