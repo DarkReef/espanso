@@ -191,6 +191,8 @@ pub fn initialize_and_spawn(
             .expect("failed to initialize injector module"); // TODO: handle the options
             let clipboard = espanso_clipboard::get_clipboard(ClipboardOptions::default())
                 .expect("failed to initialize clipboard module"); // TODO: handle options
+            let clipboard_injector =
+                ClipboardInjectorAdapter::new(&*injector, &*clipboard, &config_manager);
 
             let clipboard_adapter = ClipboardAdapter::new(&*clipboard, &config_manager);
             let clipboard_extension =
@@ -252,11 +254,11 @@ pub fn initialize_and_spawn(
                 &combined_match_cache,
                 &notification_manager,
                 &config_manager,
+                &clipboard_injector,
+                &combined_match_cache,
             );
 
             let event_injector = EventInjectorAdapter::new(&*injector, &config_manager);
-            let clipboard_injector =
-                ClipboardInjectorAdapter::new(&*injector, &*clipboard, &config_manager);
             let key_injector = KeyInjectorAdapter::new(&*injector, &config_manager);
             let context_menu_adapter = ContextMenuHandlerAdapter::new(&*ui_remote);
             let icon_adapter = IconHandlerAdapter::new(&*ui_remote);
