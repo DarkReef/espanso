@@ -17,16 +17,42 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::{convert::TryInto, path::PathBuf};
+use std::{
+    convert::TryInto,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 use espanso_clipboard::{Clipboard, ClipboardOperationOptions};
 use espanso_inject::{keys::Key, InjectionOptions, Injector};
-use log::error;
+use log::{debug, error};
 
 use espanso_engine::{
     dispatch::HtmlInjector,
     dispatch::{ImageInjector, TextInjector},
+    process::SelectedTextProvider,
 };
+
+const SELECTION_COPY_TIMEOUT: Duration = Duration::from_millis(800);
+const SELECTION_COPY_POLL_INTERVAL: Duration = Duration::from_millis(20);
+const SELECTION_RESTORE_DELAY: Duration = Duration::from_millis(30);
+
+#[cfg(target_os = "windows")]
+#[link(name = "user32")]
+extern "system" {
+    fn GetClipboardSequenceNumber() -> u32;
+}
+
+#[cfg(target_os = "windows")]
+fn clipboard_sequence_number() -> Option<u32> {
+    // SAFETY: GetClipboardSequenceNumber has no parameters and does not retain pointers.
+    Some(unsafe { GetClipboardSequenceNumber() })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn clipboard_sequence_number() -> Option<u32> {
+    None
+}
 
 pub trait ClipboardParamsProvider {
     fn get(&self) -> ClipboardParams;
@@ -104,6 +130,27 @@ impl<'a> ClipboardInjectorAdapter<'a> {
         Ok(())
     }
 
+    fn send_copy_combination(&self) -> anyhow::Result<()> {
+        let params = self.params_provider.get();
+        let combination = if cfg!(target_os = "macos") {
+            vec![Key::Meta, Key::C]
+        } else {
+            vec![Key::Control, Key::C]
+        };
+
+        self.injector.send_key_combination(
+            &combination,
+            InjectionOptions {
+                delay: params.paste_shortcut_event_delay as i32,
+                disable_fast_inject: params.disable_x11_fast_inject,
+                x11_use_xdotool_fallback: params.x11_use_xdotool_backend,
+                ..Default::default()
+            },
+        )?;
+
+        Ok(())
+    }
+
     fn restore_clipboard_guard(&self) -> Option<ClipboardRestoreGuard<'a>> {
         let params = self.params_provider.get();
 
@@ -123,6 +170,68 @@ impl<'a> ClipboardInjectorAdapter<'a> {
         ClipboardOperationOptions {
             use_xclip_backend: params.x11_use_xclip_backend,
         }
+    }
+
+    fn wait_for_selected_text(
+        &self,
+        previous_text: Option<&str>,
+        previous_sequence: Option<u32>,
+        options: &ClipboardOperationOptions,
+    ) -> Option<String> {
+        let started_at = Instant::now();
+
+        while started_at.elapsed() < SELECTION_COPY_TIMEOUT {
+            let current_text = self.clipboard.get_text(options);
+            let text_changed = current_text.as_deref() != previous_text;
+            let sequence_changed = match (previous_sequence, clipboard_sequence_number()) {
+                (Some(before), Some(after)) => before != after,
+                _ => false,
+            };
+
+            if text_changed || sequence_changed {
+                if let Some(text) = current_text {
+                    if !text.trim().is_empty() {
+                        return Some(text);
+                    }
+                }
+            }
+
+            std::thread::sleep(SELECTION_COPY_POLL_INTERVAL);
+        }
+
+        None
+    }
+}
+
+impl SelectedTextProvider for ClipboardInjectorAdapter<'_> {
+    fn get_selected_text(&self) -> Option<String> {
+        let params = self.params_provider.get();
+        let options = self.get_operation_options();
+        let previous_text = self.clipboard.get_text(&options);
+        let previous_sequence = clipboard_sequence_number();
+
+        if let Err(error) = self.send_copy_combination() {
+            error!("unable to copy selected text: {error}");
+            return None;
+        }
+
+        let selected_text =
+            self.wait_for_selected_text(previous_text.as_deref(), previous_sequence, &options);
+
+        if params.restore_clipboard {
+            if let Some(previous_text) = previous_text {
+                std::thread::sleep(SELECTION_RESTORE_DELAY);
+                if let Err(error) = self.clipboard.set_text(&previous_text, &options) {
+                    error!("unable to restore clipboard after reading selection: {error}");
+                }
+            }
+        }
+
+        if selected_text.is_none() {
+            debug!("selection copy timed out or returned an empty value");
+        }
+
+        selected_text
     }
 }
 
