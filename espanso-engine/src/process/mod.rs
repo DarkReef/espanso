@@ -49,6 +49,7 @@ pub use middleware::notification::NotificationManager;
 pub use middleware::open_config::ConfigPathProvider;
 pub use middleware::render::{Renderer, RendererError};
 pub use middleware::search::MatchProvider;
+pub use middleware::selection_match::{SelectedTextProvider, SelectionMatchResolver};
 pub use middleware::stats::{set_global_recorder, StatsRecord, StatsRecorder};
 pub use middleware::suppress::EnabledStatusProvider;
 pub use middleware::undo::UndoEnabledProvider;
@@ -74,6 +75,8 @@ pub fn default<'a, MatcherState>(
     match_resolver: &'a dyn MatchResolver,
     notification_manager: &'a dyn NotificationManager,
     alt_code_synth_enabled_provider: &'a dyn AltCodeSynthEnabledProvider,
+    selected_text_provider: &'a dyn SelectedTextProvider,
+    selection_match_resolver: &'a dyn SelectionMatchResolver,
 ) -> impl Processor + 'a {
     default::DefaultProcessor::new(
         matchers,
@@ -95,5 +98,7 @@ pub fn default<'a, MatcherState>(
         match_resolver,
         notification_manager,
         alt_code_synth_enabled_provider,
+        selected_text_provider,
+        selection_match_resolver,
     )
 }
