@@ -310,7 +310,7 @@ impl MatchStudioApp {
 
         egui::Panel::left("rules")
             .resizable(true)
-            .default_width(330.0)
+            .default_size(330.0)
             .show(root, |ui| {
                 ui.heading("Rules");
                 ui.add(
@@ -628,7 +628,7 @@ impl MatchStudioApp {
             .map_or_else(Vec::new, MatchWorkspace::diagnostics);
         egui::Panel::right("diagnostics")
             .resizable(true)
-            .default_width(330.0)
+            .default_size(330.0)
             .show(root, |ui| {
                 ui.heading("Diagnostics");
                 if diagnostics.is_empty() {
