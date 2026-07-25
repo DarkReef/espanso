@@ -62,7 +62,7 @@ Type: files; Name: {app}\vsruntime140_1.dll
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "launcher"; AppUserModelID: "{#MyAppUserModelID}"; IconFilename: "{app}\icon.ico";
-Name: "{autoprograms}\rEspanso Match Studio"; Filename: "{app}\espanso-editor.exe"; IconFilename: "{app}\icon.ico";
+Name: "{autoprograms}\rEspanso Match Studio"; Filename: "{app}\{#MyAppExeName}"; Parameters: "edit --gui"; IconFilename: "{app}\icon.ico";
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "launcher"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
