@@ -11,6 +11,16 @@ The `dev-in` branch adds a Windows-first workflow for executing an existing matc
 
 The clipboard text is restored when `preserve_clipboard: true` is enabled.
 
+## Important distinction from ordinary typing
+
+A trigger remains an ordinary Espanso trigger as well as a selected-text lookup key.
+
+For example, if a rule uses `trigger: "I10"`, typing `I10` while rEspanso is active invokes the ordinary trigger engine immediately. It does not wait for text selection or `Ctrl+Alt+M`.
+
+To test the selected-text path, use text that already exists in a document, web page or MIS. Alternatively, paste the text into an editor, select it, and then press `Ctrl+Alt+M`.
+
+The `selection` variable is available only when the match is invoked through the selected-text hotkey. A match that may also be invoked by ordinary typing should not require `{{selection}}` unless it provides its own fallback value.
+
 ## Exact trigger example
 
 ```yaml
@@ -19,10 +29,19 @@ matches:
     replace: |
       @dialog: Диагноз
       Артериальная гипертензия.
-      Выделено: {{selection}}
 ```
 
-Select `I10`, press `Ctrl+Alt+M`, and the match is rendered as an informational dialog.
+Select an already existing or pasted `I10`, press `Ctrl+Alt+M`, and the match is rendered as an informational dialog.
+
+When the result explicitly needs the selected source text, it can use `{{selection}}`, but that version must be invoked through the selected-text workflow rather than ordinary typing:
+
+```yaml
+matches:
+  - trigger: "I10"
+    replace: |
+      @dialog: Диагноз
+      Выделено: {{selection}}
+```
 
 ## Regexp and API script example
 
@@ -73,3 +92,4 @@ The script can call KSAPD or another API and print dynamic text to stdout. The r
 - The MVP uses simulated Copy and the clipboard. UI Automation support can be added as a preferred Windows path later.
 - Only text clipboard content can currently be restored; other clipboard formats are outside the existing clipboard read contract.
 - The shortcut is currently fixed to `Ctrl+Alt+M` in the first MVP.
+- Trigger and regexp definitions currently remain active for ordinary typed expansion. A future `selection_only: true` mode should separate selected-text actions from regular typing.
