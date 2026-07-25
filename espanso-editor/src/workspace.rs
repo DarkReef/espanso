@@ -191,7 +191,12 @@ impl MatchDocument {
     fn load(path: PathBuf) -> Result<Self> {
         let original = fs::read_to_string(&path)?;
         let original_hash = hash_text(&original);
-        Ok(Self::from_content(path, original.clone(), original, original_hash))
+        Ok(Self::from_content(
+            path,
+            original.clone(),
+            original,
+            original_hash,
+        ))
     }
 
     fn from_content(path: PathBuf, original: String, working: String, original_hash: u64) -> Self {
@@ -964,11 +969,14 @@ fn line_ranges(content: &str) -> Vec<(usize, usize)> {
 }
 
 fn indentation(line: &str) -> usize {
-    line.chars().take_while(|character| *character == ' ').count()
+    line.chars()
+        .take_while(|character| *character == ' ')
+        .count()
 }
 
 fn trim_line(line: &str) -> &str {
-    line.trim_end_matches(|character| character == '\r' || character == '\n').trim_start()
+    line.trim_end_matches(|character| character == '\r' || character == '\n')
+        .trim_start()
 }
 
 fn is_key_line(trimmed: &str, key: &str) -> bool {
@@ -994,7 +1002,8 @@ fn render_rule(draft: &RuleDraft, indent: usize, preserved: &[String]) -> String
                     &child_indent,
                 ));
             } else {
-                let encoded = serde_json::to_string(&draft.triggers).unwrap_or_else(|_| "[]".to_owned());
+                let encoded =
+                    serde_json::to_string(&draft.triggers).unwrap_or_else(|_| "[]".to_owned());
                 fields.push(format!("{child_indent}triggers: {encoded}\n"));
             }
         }
@@ -1074,7 +1083,11 @@ fn preserved_chunks(raw: &str, rule_indent: usize) -> Vec<String> {
             let mut rendered = String::new();
             for (line_index, line) in chunk.iter().enumerate() {
                 if line_index == 0 {
-                    rendered.push_str(&normalize_unknown_first_line(line, rule_indent, child_indent));
+                    rendered.push_str(&normalize_unknown_first_line(
+                        line,
+                        rule_indent,
+                        child_indent,
+                    ));
                 } else {
                     rendered.push_str(line);
                 }
@@ -1151,16 +1164,21 @@ fn prefix_newline_if_needed(content: &str, insertion: usize, block: &str) -> Str
 }
 
 fn save_document(document: &mut MatchDocument) -> Result<()> {
-    let parent = document.path.parent().ok_or_else(|| WorkspaceError::SaveFailed {
-        path: document.path.clone(),
-        message: "missing parent directory".to_owned(),
-    })?;
+    let parent = document
+        .path
+        .parent()
+        .ok_or_else(|| WorkspaceError::SaveFailed {
+            path: document.path.clone(),
+            message: "missing parent directory".to_owned(),
+        })?;
     let file_name = document
         .path
         .file_name()
         .and_then(OsStr::to_str)
         .unwrap_or("matches.yml");
-    let backup = document.path.with_file_name(format!("{file_name}.respanso.bak"));
+    let backup = document
+        .path
+        .with_file_name(format!("{file_name}.respanso.bak"));
     let temporary = parent.join(format!(".{file_name}.respanso.tmp"));
 
     fs::copy(&document.path, &backup).map_err(|error| WorkspaceError::SaveFailed {
@@ -1225,7 +1243,12 @@ fn resolve_import(source: &Path, import: &str) -> PathBuf {
     if import_path.is_absolute() {
         normalize_path(&import_path)
     } else {
-        normalize_path(&source.parent().unwrap_or_else(|| Path::new(".")).join(import_path))
+        normalize_path(
+            &source
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(import_path),
+        )
     }
 }
 
@@ -1370,7 +1393,10 @@ matches:
                 "  - trigger: \":raw\"\n    replace: \"Raw\"\n    custom: 42\n",
             )
             .expect("raw update");
-        assert!(workspace.raw_file(&base).expect("raw").contains("custom: 42"));
+        assert!(workspace
+            .raw_file(&base)
+            .expect("raw")
+            .contains("custom: 42"));
     }
 
     #[test]

@@ -235,10 +235,9 @@ impl MatchStudioApp {
     }
 
     fn refresh_playground(&mut self) {
-        self.playground_results = self
-            .workspace
-            .as_ref()
-            .map_or_else(Vec::new, |workspace| workspace.playground(&self.playground_input));
+        self.playground_results = self.workspace.as_ref().map_or_else(Vec::new, |workspace| {
+            workspace.playground(&self.playground_input)
+        });
     }
 
     fn refresh_regex_examples(&mut self) {
@@ -319,13 +318,10 @@ impl MatchStudioApp {
                         .hint_text("Filter trigger, label, replacement…"),
                 );
                 egui::ComboBox::from_id_salt("file_filter")
-                    .selected_text(
-                        self.file_filter
-                            .as_ref()
-                            .map_or_else(|| "All YAML files".to_owned(), |path| {
-                                relative_display(&config_root, path)
-                            }),
-                    )
+                    .selected_text(self.file_filter.as_ref().map_or_else(
+                        || "All YAML files".to_owned(),
+                        |path| relative_display(&config_root, path),
+                    ))
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.file_filter, None, "All YAML files");
                         for file in &files {
@@ -387,14 +383,19 @@ impl MatchStudioApp {
             if let Some(error) = &self.load_error {
                 ui.heading("Unable to load Match Studio");
                 ui.label(error.as_str());
-                ui.label(format!("Configuration root: {}", self.config_root.display()));
+                ui.label(format!(
+                    "Configuration root: {}",
+                    self.config_root.display()
+                ));
                 return;
             }
             if self.selected.is_none() {
                 ui.vertical_centered(|ui| {
                     ui.heading("Select a rule or create a new one");
                     ui.label("The left panel combines matches from every .yml and .yaml file.");
-                    ui.label("The playground only evaluates causes; it never executes scripts or APIs.");
+                    ui.label(
+                        "The playground only evaluates causes; it never executes scripts or APIs.",
+                    );
                 });
                 self.playground_ui(ui);
                 return;
@@ -568,13 +569,10 @@ impl MatchStudioApp {
         ui.horizontal(|ui| {
             ui.label("Move to");
             egui::ComboBox::from_id_salt("move_target")
-                .selected_text(
-                    self.move_target
-                        .as_ref()
-                        .map_or_else(|| "Choose YAML".to_owned(), |path| {
-                            relative_display(&self.config_root, path)
-                        }),
-                )
+                .selected_text(self.move_target.as_ref().map_or_else(
+                    || "Choose YAML".to_owned(),
+                    |path| relative_display(&self.config_root, path),
+                ))
                 .show_ui(ui, |ui| {
                     for file in files {
                         ui.selectable_value(
