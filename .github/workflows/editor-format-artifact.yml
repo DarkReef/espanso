@@ -1,0 +1,24 @@
+name: Editor format artifact
+
+on:
+  pull_request:
+    paths:
+      - "espanso-editor/**"
+      - "espanso/src/cli/edit.rs"
+      - ".github/workflows/editor-format-artifact.yml"
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+      - name: Format Rust sources
+        run: cargo fmt --all
+      - name: Upload formatted editor sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: editor-formatted-sources
+          path: |
+            espanso-editor/src/*.rs
+            espanso/src/cli/edit.rs
+          if-no-files-found: error
