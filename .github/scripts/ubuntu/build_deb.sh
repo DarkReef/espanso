@@ -12,6 +12,9 @@ main() {
 
   pushd espanso
 
+  log "Building rEspanso Match Studio"
+  cargo build -p espanso-editor --release
+
   log "Building X11 deb package"
   cargo deb --package espanso -- --no-default-features --features modulo,vendored-tls
 
@@ -27,4 +30,4 @@ main() {
   log "Copying to mounted volume"
   find . -maxdepth 1 -name 'espanso-debian-*' -exec cp -t /shared {} +
 }
-main "$@"
+main "@"
