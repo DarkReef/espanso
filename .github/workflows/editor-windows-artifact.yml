@@ -1,0 +1,42 @@
+name: Editor Windows build log
+
+on:
+  pull_request:
+    paths:
+      - "espanso-editor/**"
+      - "espanso/src/cli/edit.rs"
+      - "Cargo.toml"
+      - ".github/workflows/editor-windows-artifact.yml"
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/cache@main
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - uses: actions/checkout@main
+      - name: Build workspace and capture log
+        shell: pwsh
+        run: |
+          cargo build *>&1 | Tee-Object -FilePath editor-windows.log
+          $code = $LASTEXITCODE
+          Set-Content -Path editor-windows.status -Value $code
+          exit 0
+      - name: Upload Windows build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: editor-windows-log
+          path: |
+            editor-windows.log
+            editor-windows.status
+          if-no-files-found: error
+      - name: Fail when build failed
+        shell: pwsh
+        run: |
+          if ((Get-Content editor-windows.status) -ne "0") { exit 1 }
