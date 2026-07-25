@@ -40,13 +40,14 @@ const SELECTION_RESTORE_DELAY: Duration = Duration::from_millis(30);
 #[cfg(target_os = "windows")]
 #[link(name = "user32")]
 extern "system" {
-    fn GetClipboardSequenceNumber() -> u32;
+    #[link_name = "GetClipboardSequenceNumber"]
+    fn get_clipboard_sequence_number() -> u32;
 }
 
 #[cfg(target_os = "windows")]
 fn clipboard_sequence_number() -> Option<u32> {
     // SAFETY: GetClipboardSequenceNumber has no parameters and does not retain pointers.
-    Some(unsafe { GetClipboardSequenceNumber() })
+    Some(unsafe { get_clipboard_sequence_number() })
 }
 
 #[cfg(not(target_os = "windows"))]
