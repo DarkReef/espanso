@@ -68,31 +68,107 @@ jobs:
           Get-Item $binary | Format-List Name,Length,LastWriteTime
           & $binary --version
 
-      - name: Prepare downloadable package
+      - name: Prepare portable downloadable package
         shell: pwsh
         run: |
           $out = "artifact\rEspanso-windows-x64"
-          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $portable = Join-Path $out "portable"
+          $matchDir = Join-Path $portable "config\match"
+          $runtimeDir = Join-Path $portable "runtime"
+          $packagesDir = Join-Path $portable "packages"
+
+          New-Item -ItemType Directory -Force -Path $out, $matchDir, $runtimeDir, $packagesDir | Out-Null
           Copy-Item "target\release\espanso.exe" "$out\rEspanso.exe"
+
+          # The release binary dynamically links to the Microsoft Visual C++ runtime.
+          # Copy the licensed redistributable DLLs next to the executable so the test
+          # build works on Windows machines without Visual Studio or VC++ Build Tools.
+          $crtRoot = Join-Path $env:VCToolsRedistDir "x64"
+          $crtDir = Get-ChildItem -Path $crtRoot -Directory |
+            Where-Object { $_.Name -like "Microsoft.VC*.CRT" } |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+
+          if (-not $crtDir) {
+            throw "Unable to locate the Visual C++ x64 redistributable directory under $crtRoot"
+          }
+
+          Copy-Item (Join-Path $crtDir.FullName "*.dll") $out
+          Write-Host "Bundled Visual C++ runtime from $($crtDir.FullName):"
+          Get-ChildItem $out -Filter "*.dll" | Select-Object Name,Length
+
           Copy-Item "LICENSE" "$out\LICENSE.txt"
           Copy-Item "docs\respanso-dynamic-dialog.md" "$out\DYNAMIC-DIALOG.md"
           Copy-Item "docs\respanso-selection-match.md" "$out\SELECTION-MATCH.md"
 
+          @'
+          matches:
+            - trigger: ":rinfo"
+              replace: |
+                @dialog: rEspanso — проверка
+                Информационное окно работает.
+
+            - trigger: "I10"
+              replace: |
+                @dialog: rEspanso — выделенный match
+                Найден точный match.
+                Выделенный текст: {{selection}}
+          '@ | Set-Content (Join-Path $matchDir "respanso-test.yml") -Encoding UTF8
+
+          @'
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          set "ROOT=%~dp0portable"
+          if not exist "%ROOT%\config\match" mkdir "%ROOT%\config\match"
+          if not exist "%ROOT%\runtime" mkdir "%ROOT%\runtime"
+          if not exist "%ROOT%\packages" mkdir "%ROOT%\packages"
+          start "" "%~dp0rEspanso.exe" --config_dir "%ROOT%\config" --runtime_dir "%ROOT%\runtime" --package_dir "%ROOT%\packages" launcher
+          endlocal
+          '@ | Set-Content "$out\START-rEspanso.cmd" -Encoding ASCII
+
+          @'
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          set "ROOT=%~dp0portable"
+          "%~dp0rEspanso.exe" --config_dir "%ROOT%\config" --runtime_dir "%ROOT%\runtime" --package_dir "%ROOT%\packages" service stop
+          pause
+          endlocal
+          '@ | Set-Content "$out\STOP-rEspanso.cmd" -Encoding ASCII
+
+          @'
+          @echo off
+          cd /d "%~dp0"
+          "%~dp0rEspanso.exe" --version
+          echo Exit code: %ERRORLEVEL%
+          pause
+          '@ | Set-Content "$out\TEST-BINARY.cmd" -Encoding ASCII
+
           @"
-          rEspanso Windows x64 test build
+          rEspanso Windows x64 portable test build
           Branch: $env:GITHUB_REF_NAME
           Commit: $env:GITHUB_SHA
 
-          Important:
-          - Stop an installed Espanso instance before testing this binary.
-          - Selection-match hotkey in the current MVP: Ctrl+Alt+M.
-          - This is an unsigned development build and Windows may show a warning.
+          HOW TO START
+          1. Extract the entire ZIP. Do not run the EXE from inside the ZIP.
+          2. Double-click START-rEspanso.cmd.
+          3. Type :rinfo to test an informational dialog.
+          4. Type I10, select it, then press Ctrl+Alt+M to test selected-text execution.
+          5. Use STOP-rEspanso.cmd before deleting or replacing the folder.
+
+          The package includes the required Microsoft Visual C++ runtime DLLs and
+          uses isolated portable config/runtime folders, so it does not conflict
+          with an installed Espanso instance.
+
+          This is an unsigned development build. Windows SmartScreen may require:
+          More info -> Run anyway, or file Properties -> Unblock.
           "@ | Set-Content "$out\README-FIRST.txt" -Encoding UTF8
 
       - name: Upload Windows binary
         uses: actions/upload-artifact@v4
         with:
-          name: rEspanso-windows-x64-${{ github.sha }}
+          name: rEspanso-windows-portable-x64-${{ github.sha }}
           path: artifact/rEspanso-windows-x64
           if-no-files-found: error
           retention-days: 14
