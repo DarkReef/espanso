@@ -1,0 +1,55 @@
+# rEspanso calculator window example.
+#
+# The core only renders the form and displays the returned text.
+# All calculation logic lives in an external module under
+# %CONFIG%/medical-calculators/modules/.
+
+matches:
+  - trigger: ":calc_demo"
+    replace: |
+      @dialog: Демонстрационный калькулятор
+      {{calculator_result}}
+
+    vars:
+      - name: calculator_inputs
+        type: form
+        params:
+          layout: |
+            Демонстрационная форма rEspanso
+
+            Возраст: [[age]]
+            Категория: [[category]]
+            Фактор A: [[factor_a]]
+
+            Это визуальный пример, не клиническая шкала.
+          fields:
+            age:
+              type: text
+              default: "50"
+            category:
+              type: choice
+              values:
+                - "Категория 1"
+                - "Категория 2"
+              default: "Категория 1"
+            factor_a:
+              type: choice
+              values:
+                - "Нет"
+                - "Да"
+              default: "Нет"
+
+      - name: calculator_result
+        type: script
+        depends_on:
+          - calculator_inputs
+        params:
+          args:
+            - powershell.exe
+            - -NoProfile
+            - -ExecutionPolicy
+            - Bypass
+            - -File
+            - "%CONFIG%/medical-calculators/run-calculator.ps1"
+            - "ui-demo"
+          trim: true
