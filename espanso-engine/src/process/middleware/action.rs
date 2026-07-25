@@ -25,8 +25,12 @@ use crate::event::{
     },
     input::Key,
     internal::{DiscardPreviousEvent, TextFormat},
+    ui::ShowTextEvent,
     Event, EventType,
 };
+
+const DIALOG_DIRECTIVE: &str = "@dialog";
+const DEFAULT_DIALOG_TITLE: &str = "rEspanso";
 
 pub trait MatchInfoProvider {
     fn get_force_mode(&self, match_id: i32) -> Option<TextInjectMode>;
@@ -70,25 +74,37 @@ impl Middleware for ActionMiddleware<'_> {
                 ));
 
                 match &event.etype {
-                    EventType::Rendered(m_event) => Event::caused_by(
-                        event.source_id,
-                        match m_event.format {
-                            TextFormat::Plain => EventType::TextInject(TextInjectRequest {
-                                text: m_event.body.clone(),
-                                force_mode: self
-                                    .match_info_provider
-                                    .get_force_mode(m_event.match_id),
-                            }),
-                            TextFormat::Html => EventType::HtmlInject(HtmlInjectRequest {
-                                html: m_event.body.clone(),
-                            }),
-                            TextFormat::Markdown => {
-                                EventType::MarkdownInject(MarkdownInjectRequest {
-                                    markdown: m_event.body.clone(),
-                                })
-                            }
-                        },
-                    ),
+                    EventType::Rendered(m_event) => {
+                        if let Some(dialog) = parse_dialog_directive(&m_event.body) {
+                            return Event::caused_by(
+                                event.source_id,
+                                EventType::ShowText(ShowTextEvent {
+                                    title: dialog.title,
+                                    text: dialog.text,
+                                }),
+                            );
+                        }
+
+                        Event::caused_by(
+                            event.source_id,
+                            match m_event.format {
+                                TextFormat::Plain => EventType::TextInject(TextInjectRequest {
+                                    text: m_event.body.clone(),
+                                    force_mode: self
+                                        .match_info_provider
+                                        .get_force_mode(m_event.match_id),
+                                }),
+                                TextFormat::Html => EventType::HtmlInject(HtmlInjectRequest {
+                                    html: m_event.body.clone(),
+                                }),
+                                TextFormat::Markdown => {
+                                    EventType::MarkdownInject(MarkdownInjectRequest {
+                                        markdown: m_event.body.clone(),
+                                    })
+                                }
+                            },
+                        )
+                    }
                     EventType::ImageResolved(m_event) => Event::caused_by(
                         event.source_id,
                         EventType::ImageInject(ImageInjectRequest {
@@ -118,7 +134,6 @@ impl Middleware for ActionMiddleware<'_> {
             EventType::TriggerCompensation(m_event) => {
                 let mut backspace_count = m_event.trigger.chars().count();
 
-                // We want to preserve the left separator if present
                 if let Some(left_separator) = &m_event.left_separator {
                     backspace_count -= left_separator.chars().count();
                 }
@@ -131,8 +146,6 @@ impl Middleware for ActionMiddleware<'_> {
                 )
             }
             EventType::Undo(m_event) => {
-                // We subtract one, because the backspace that triggered the undo feature
-                // already removed the last char
                 let backspace_count = m_event.replace.chars().count() - 1;
 
                 dispatch(Event::caused_by(
@@ -152,5 +165,68 @@ impl Middleware for ActionMiddleware<'_> {
             }
             _ => event,
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct DialogDirective {
+    title: String,
+    text: String,
+}
+
+fn parse_dialog_directive(rendered: &str) -> Option<DialogDirective> {
+    let mut lines = rendered.lines();
+    let header = lines.next()?.trim();
+    let suffix = header.strip_prefix(DIALOG_DIRECTIVE)?;
+
+    let title = if suffix.is_empty() {
+        DEFAULT_DIALOG_TITLE
+    } else if let Some(title) = suffix.strip_prefix(':') {
+        let title = title.trim();
+        if title.is_empty() {
+            DEFAULT_DIALOG_TITLE
+        } else {
+            title
+        }
+    } else {
+        return None;
+    };
+
+    Some(DialogDirective {
+        title: title.to_owned(),
+        text: lines.collect::<Vec<_>>().join("\n"),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_dynamic_dialog_after_rendering() {
+        assert_eq!(
+            parse_dialog_directive("@dialog: Пациент Сидоров И. Ю.\nДата ДД: 12.05.2026"),
+            Some(DialogDirective {
+                title: "Пациент Сидоров И. Ю.".to_owned(),
+                text: "Дата ДД: 12.05.2026".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn uses_default_dialog_title() {
+        assert_eq!(
+            parse_dialog_directive("@dialog\nДинамический ответ API"),
+            Some(DialogDirective {
+                title: DEFAULT_DIALOG_TITLE.to_owned(),
+                text: "Динамический ответ API".to_owned(),
+            })
+        );
+    }
+
+    #[test]
+    fn ignores_regular_rendered_text() {
+        assert_eq!(parse_dialog_directive("обычная подстановка"), None);
+        assert_eq!(parse_dialog_directive("@dialogue\nне директива"), None);
     }
 }
