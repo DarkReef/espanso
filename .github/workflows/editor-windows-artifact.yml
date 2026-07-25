@@ -1,4 +1,4 @@
-name: Editor Windows build log
+name: Editor Windows focused check
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ on:
       - ".github/workflows/editor-windows-artifact.yml"
 
 jobs:
-  windows-build:
+  windows-editor:
     runs-on: windows-latest
     steps:
       - uses: actions/cache@main
@@ -20,14 +20,23 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - uses: actions/checkout@main
-      - name: Build workspace and capture log
+      - name: Build editor and check CLI integration
         shell: pwsh
         run: |
-          cargo build *>&1 | Tee-Object -FilePath editor-windows.log
-          $code = $LASTEXITCODE
-          Set-Content -Path editor-windows.status -Value $code
+          $status = 0
+          cargo build -p espanso-editor *>&1 | Tee-Object -FilePath editor-windows.log
+          if ($LASTEXITCODE -ne 0) { $status = $LASTEXITCODE }
+          if ($status -eq 0) {
+            cargo check -p espanso *>&1 | Tee-Object -FilePath editor-windows.log -Append
+            if ($LASTEXITCODE -ne 0) { $status = $LASTEXITCODE }
+          }
+          if ($status -eq 0) {
+            cargo clippy -p espanso-editor --all-targets -- --deny warnings *>&1 | Tee-Object -FilePath editor-windows.log -Append
+            if ($LASTEXITCODE -ne 0) { $status = $LASTEXITCODE }
+          }
+          Set-Content -Path editor-windows.status -Value $status
           exit 0
-      - name: Upload Windows build log
+      - name: Upload Windows validation log
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -36,7 +45,7 @@ jobs:
             editor-windows.log
             editor-windows.status
           if-no-files-found: error
-      - name: Fail when build failed
+      - name: Fail when validation failed
         shell: pwsh
         run: |
           if ((Get-Content editor-windows.status) -ne "0") { exit 1 }
