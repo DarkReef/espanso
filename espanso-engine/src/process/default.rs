@@ -112,10 +112,6 @@ impl<'a> DefaultProcessor<'a> {
                 Box::new(CauseCompensateMiddleware::new()),
                 Box::new(ConfigMiddleware::new(config_path_provider)),
                 Box::new(MultiplexMiddleware::new(multiplexer)),
-                Box::new(SelectionMatchMiddleware::new(
-                    selected_text_provider,
-                    selection_match_resolver,
-                )),
                 Box::new(StatsMiddleware::new()),
                 Box::new(RenderMiddleware::new(renderer)),
                 Box::new(ImageResolverMiddleware::new(path_provider)),
@@ -131,6 +127,10 @@ impl<'a> DefaultProcessor<'a> {
                 Box::new(NotificationMiddleware::new(notification_manager)),
                 Box::new(DelayForModifierReleaseMiddleware::new(
                     modifier_status_provider,
+                )),
+                Box::new(SelectionMatchMiddleware::new(
+                    selected_text_provider,
+                    selection_match_resolver,
                 )),
             ],
         }
