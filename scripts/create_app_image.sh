@@ -9,6 +9,13 @@ readonly OUTPUT_DIR=${TARGET_DIR}/out
 
 main() {
   local espanso_bin=${1:-${BASE_DIR}/target/release/espanso}
+  local editor_bin=${2:-${BASE_DIR}/target/release/espanso-editor}
+
+  if [[ ! -x "${editor_bin}" ]]; then
+    echo "Match Studio executable not found: ${editor_bin}" >&2
+    echo "Build it with: cargo build -p espanso-editor --release" >&2
+    exit 1
+  fi
 
   rm -rf -- "${TARGET_DIR}"
   mkdir -p "${OUTPUT_DIR}"
@@ -32,13 +39,14 @@ main() {
 
   find . -maxdepth 1 -name 'Espanso*.AppImage' -exec chmod +x {} \; -quit
 
-  # Apply a workaround to fix this issue: https://github.com/federico-terzi/espanso/issues/900
+  # Apply a workaround to fix this issue: https://github.com/federicoterzi/espanso/issues/900
   # See: https://github.com/project-slippi/Ishiiruka/issues/323#issuecomment-977415376
   echo "Applying patch for libgmodule"
 
   espanso_appimage=$(find . -maxdepth 1 -name 'Espanso*.AppImage' -print -quit)
 
   "${espanso_appimage}" --appimage-extract
+  install -Dm755 "${editor_bin}" squashfs-root/usr/bin/espanso-editor
 
   find . -maxdepth 1 -name 'Espanso*.AppImage' -delete -quit
   find squashfs-root/usr/lib -maxdepth 1 -name 'libgmodule*' -delete -quit
