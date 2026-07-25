@@ -1,0 +1,94 @@
+name: Build rEspanso Windows
+
+on:
+  push:
+    branches:
+      - dev-in
+  pull_request:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: respanso-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    name: Build Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Show build environment
+        shell: pwsh
+        run: |
+          rustc --version
+          cargo --version
+          cl 2>&1 | Select-Object -First 3
+          nmake /? 2>&1 | Select-Object -First 3
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run rEspanso engine tests
+        run: cargo test -p espanso-engine --locked
+
+      - name: Build release binary
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo build --release --locked -p espanso
+
+      - name: Verify binary
+        shell: pwsh
+        run: |
+          $binary = "target\release\espanso.exe"
+          if (-not (Test-Path $binary)) {
+            throw "Release binary was not produced: $binary"
+          }
+          Get-Item $binary | Format-List Name,Length,LastWriteTime
+          & $binary --version
+
+      - name: Prepare downloadable package
+        shell: pwsh
+        run: |
+          $out = "artifact\rEspanso-windows-x64"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Copy-Item "target\release\espanso.exe" "$out\rEspanso.exe"
+          Copy-Item "LICENSE" "$out\LICENSE.txt"
+          Copy-Item "docs\respanso-dynamic-dialog.md" "$out\DYNAMIC-DIALOG.md"
+          Copy-Item "docs\respanso-selection-match.md" "$out\SELECTION-MATCH.md"
+
+          @"
+          rEspanso Windows x64 test build
+          Branch: $env:GITHUB_REF_NAME
+          Commit: $env:GITHUB_SHA
+
+          Important:
+          - Stop an installed Espanso instance before testing this binary.
+          - Selection-match hotkey in the current MVP: Ctrl+Alt+M.
+          - This is an unsigned development build and Windows may show a warning.
+          "@ | Set-Content "$out\README-FIRST.txt" -Encoding UTF8
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-windows-x64-${{ github.sha }}
+          path: artifact/rEspanso-windows-x64
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 6
