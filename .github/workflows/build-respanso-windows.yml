@@ -73,11 +73,13 @@ jobs:
         run: |
           $out = "artifact\rEspanso-windows-x64"
           $portable = Join-Path $out "portable"
-          $matchDir = Join-Path $portable "config\match"
+          $configDir = Join-Path $portable "config"
+          $matchDir = Join-Path $configDir "match"
+          $calculatorDir = Join-Path $configDir "medical-calculators"
           $runtimeDir = Join-Path $portable "runtime"
           $packagesDir = Join-Path $portable "packages"
 
-          New-Item -ItemType Directory -Force -Path $out, $matchDir, $runtimeDir, $packagesDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $out, $matchDir, $calculatorDir, $runtimeDir, $packagesDir | Out-Null
           Copy-Item "target\release\espanso.exe" "$out\rEspanso.exe"
 
           # The release binary dynamically links to the Microsoft Visual C++ runtime.
@@ -100,6 +102,7 @@ jobs:
           Copy-Item "LICENSE" "$out\LICENSE.txt"
           Copy-Item "docs\respanso-dynamic-dialog.md" "$out\DYNAMIC-DIALOG.md"
           Copy-Item "docs\respanso-selection-match.md" "$out\SELECTION-MATCH.md"
+          Copy-Item "docs\respanso-medical-calculators.md" "$out\MEDICAL-CALCULATORS.md"
 
           @'
           matches:
@@ -117,6 +120,12 @@ jobs:
                 @dialog: rEspanso — восстановление пропущенного матча
                 Матч :i10_9 найден и выполнен.
           '@ | Set-Content (Join-Path $matchDir "respanso-test.yml") -Encoding UTF8
+
+          # Bundle a visual calculator shell. The form lives in YAML while all
+          # calculation logic is delegated to an external module.
+          Copy-Item "examples\medical-calculators\medical-calculators.yml" (Join-Path $matchDir "medical-calculators.yml")
+          Copy-Item "examples\medical-calculators\run-calculator.ps1" (Join-Path $calculatorDir "run-calculator.ps1")
+          Copy-Item "examples\medical-calculators\modules" (Join-Path $calculatorDir "modules") -Recurse
 
           @'
           @echo off
@@ -161,7 +170,9 @@ jobs:
           5. To test the recovery path, first paste :i10_9 into Notepad with Ctrl+V
              (or use text already left behind after a missed expansion), select it,
              and press Ctrl+Alt+M. The same ordinary match must be executed.
-          6. Use STOP-rEspanso.cmd before deleting or replacing the folder.
+          6. Type :calc_demo to open a visual calculator form. Its result is produced
+             by an external PowerShell module, not by the rEspanso core.
+          7. Use STOP-rEspanso.cmd before deleting or replacing the folder.
 
           The selected-text hotkey is a recovery path for ordinary Espanso matches;
           it does not require a separate selection-only rule or special match syntax.
