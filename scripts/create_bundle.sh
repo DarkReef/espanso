@@ -2,22 +2,23 @@
 
 # Creates an app bundle for MacOS
 #
-# Optionally accepts a path to an espanso executable as the first argument: if
-# not provided, by default it expects to find release binaries for both
-# x86_64-darwin and aarch64-darwin and package these in a universal binary for
-# the app bundle
+# Optionally accepts a path to an espanso executable as the first argument and
+# a path to an espanso-editor executable as the second argument. If no paths
+# are provided, universal binaries are created from the release target folders.
 
 set -Eeuf -o pipefail
 
 readonly TARGET_DIR=target/mac/Espanso.app
 
 main() {
-  # Pass in the binary to bundle as "$1"; default to universal
+  # Pass binaries as "$1" and "$2"; default to universal binaries.
   local espanso_bin=${1:-universal}
+  local editor_bin=${2:-universal}
 
   rm -rf -- "${TARGET_DIR}"
 
-  local VERSION=$(awk -F '"' '/^version/ { print $2; exit }' espanso/Cargo.toml)
+  local VERSION
+  VERSION=$(awk -F '"' '/^version/ { print $2; exit }' espanso/Cargo.toml)
 
   mkdir -p "${TARGET_DIR}"/Contents
   mkdir -p "${TARGET_DIR}"/Contents/MacOS
@@ -31,11 +32,20 @@ main() {
 
   if [[ "${espanso_bin}" != universal ]]; then
     cp "${espanso_bin}" "${TARGET_DIR}/Contents/MacOS/espanso"
-    return
+  else
+    lipo -create \
+      -output "${TARGET_DIR}/Contents/MacOS/espanso" \
+      target/aarch64-apple-darwin/release/espanso target/x86_64-apple-darwin/release/espanso
   fi
 
-  lipo -create \
-    -output "${TARGET_DIR}/Contents/MacOS/espanso" \
-    target/aarch64-apple-darwin/release/espanso target/x86_64-apple-darwin/release/espanso
+  if [[ "${editor_bin}" != universal ]]; then
+    cp "${editor_bin}" "${TARGET_DIR}/Contents/MacOS/espanso-editor"
+  else
+    lipo -create \
+      -output "${TARGET_DIR}/Contents/MacOS/espanso-editor" \
+      target/aarch64-apple-darwin/release/espanso-editor target/x86_64-apple-darwin/release/espanso-editor
+  fi
+
+  chmod +x "${TARGET_DIR}/Contents/MacOS/espanso" "${TARGET_DIR}/Contents/MacOS/espanso-editor"
 }
 main "$@"
