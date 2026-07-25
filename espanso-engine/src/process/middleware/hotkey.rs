@@ -1,5 +1,5 @@
 /*
- * This file is part of espanso id: (), trigger: (), trigger: (), left_separator: (), right_separator: (), args: () left_separator: (), right_separator: (), args: () id: (), trigger: (), left_separator: (), right_separator: (), args: ().
+ * This file is part of espanso.
  *
  * Copyright (C) 2019-2021 Federico Terzi
  *
