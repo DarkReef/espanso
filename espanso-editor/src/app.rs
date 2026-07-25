@@ -81,7 +81,7 @@ impl MatchStudioApp {
                 self.load_error = None;
                 self.selected = None;
                 self.raw_rule.clear();
-                self.status = "Workspace reloaded".to_owned();
+                "Workspace reloaded".clone_into(&mut self.status);
             }
             Err(error) => {
                 self.load_error = Some(error.to_string());
@@ -118,7 +118,7 @@ impl MatchStudioApp {
             return;
         };
         match workspace.save_all() {
-            Ok(saved) if saved.is_empty() => self.status = "Nothing to save".to_owned(),
+            Ok(saved) if saved.is_empty() => "Nothing to save".clone_into(&mut self.status),
             Ok(saved) => self.status = format!("Saved {} file(s) with backups", saved.len()),
             Err(error) => self.status = format!("Save blocked: {error}"),
         }
@@ -133,12 +133,12 @@ impl MatchStudioApp {
             .clone()
             .or_else(|| workspace.files().into_iter().next());
         let Some(target) = target else {
-            self.status = "No YAML file is available".to_owned();
+            "No YAML file is available".clone_into(&mut self.status);
             return;
         };
         match workspace.create_rule(&target, &RuleDraft::default()) {
             Ok(id) => {
-                self.status = "New rule created in memory; save to write it".to_owned();
+                "New rule created in memory; save to write it".clone_into(&mut self.status);
                 self.select_rule(id);
             }
             Err(error) => self.status = error.to_string(),
@@ -154,7 +154,7 @@ impl MatchStudioApp {
         };
         match workspace.duplicate_rule(&id) {
             Ok(new_id) => {
-                self.status = "Rule duplicated".to_owned();
+                "Rule duplicated".clone_into(&mut self.status);
                 self.select_rule(new_id);
             }
             Err(error) => self.status = error.to_string(),
@@ -172,7 +172,7 @@ impl MatchStudioApp {
             Ok(()) => {
                 self.selected = None;
                 self.raw_rule.clear();
-                self.status = "Rule deleted in memory; save to write it".to_owned();
+                "Rule deleted in memory; save to write it".clone_into(&mut self.status);
             }
             Err(error) => self.status = error.to_string(),
         }
@@ -187,7 +187,7 @@ impl MatchStudioApp {
         };
         match workspace.update_rule(&id, &self.draft) {
             Ok(()) => {
-                self.status = "Structured changes applied in memory".to_owned();
+                "Structured changes applied in memory".clone_into(&mut self.status);
                 self.refresh_selected();
             }
             Err(error) => self.status = error.to_string(),
@@ -203,7 +203,7 @@ impl MatchStudioApp {
         };
         match workspace.update_rule_raw(&id, &self.raw_rule) {
             Ok(()) => {
-                self.status = "Raw YAML applied in memory".to_owned();
+                "Raw YAML applied in memory".clone_into(&mut self.status);
                 self.refresh_selected();
             }
             Err(error) => self.status = format!("Raw YAML rejected: {error}"),
@@ -218,7 +218,7 @@ impl MatchStudioApp {
             return;
         };
         if target == id.file {
-            self.status = "Choose another YAML file to move the rule".to_owned();
+            "Choose another YAML file to move the rule".clone_into(&mut self.status);
             return;
         }
         let Some(workspace) = &mut self.workspace else {
@@ -227,7 +227,7 @@ impl MatchStudioApp {
         match workspace.move_rule(&id, &target, None) {
             Ok(new_id) => {
                 self.file_filter = Some(target);
-                self.status = "Rule moved between YAML files".to_owned();
+                "Rule moved between YAML files".clone_into(&mut self.status);
                 self.select_rule(new_id);
             }
             Err(error) => self.status = error.to_string(),

@@ -2,6 +2,7 @@ use regex::Regex;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::ffi::OsStr;
+use std::fmt::Write as _;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
@@ -266,7 +267,7 @@ impl MatchWorkspace {
             .into_iter()
             .filter_map(std::result::Result::ok)
             .filter(|entry| entry.file_type().is_file())
-            .map(|entry| entry.into_path())
+            .map(walkdir::DirEntry::into_path)
             .filter(|path| is_yaml_path(path))
             .collect::<Vec<_>>();
         paths.sort();
@@ -554,7 +555,7 @@ impl MatchWorkspace {
             match rule.draft.kind {
                 MatchKind::Trigger => {
                     if rule.draft.triggers.is_empty()
-                        || rule.draft.triggers.iter().any(|trigger| trigger.is_empty())
+                        || rule.draft.triggers.iter().any(String::is_empty)
                     {
                         diagnostics.push(Diagnostic {
                             level: DiagnosticLevel::Error,
@@ -739,12 +740,13 @@ impl MatchWorkspace {
         }
         result.push_str(&regex::escape(&spec.prefix));
         if spec.capture_name.is_empty() {
-            result.push_str(&format!("({})", spec.capture_pattern));
+            let _ = write!(result, "({})", spec.capture_pattern);
         } else {
-            result.push_str(&format!(
+            let _ = write!(
+                result,
                 "(?P<{}>{})",
                 spec.capture_name, spec.capture_pattern
-            ));
+            );
         }
         result.push_str(&regex::escape(&spec.suffix));
         if spec.anchor_end {
@@ -975,8 +977,7 @@ fn indentation(line: &str) -> usize {
 }
 
 fn trim_line(line: &str) -> &str {
-    line.trim_end_matches(|character| character == '\r' || character == '\n')
-        .trim_start()
+    line.trim_end_matches(['\r', '\n']).trim_start()
 }
 
 fn is_key_line(trimmed: &str, key: &str) -> bool {
@@ -1117,7 +1118,7 @@ fn top_level_rule_key(line: &str, rule_indent: usize, child_indent: usize) -> Op
 }
 
 fn normalize_unknown_first_line(line: &str, rule_indent: usize, child_indent: usize) -> String {
-    let trimmed_end = line.trim_end_matches(|character| character == '\r' || character == '\n');
+    let trimmed_end = line.trim_end_matches(['\r', '\n']);
     let newline = if line.ends_with("\r\n") {
         "\r\n"
     } else if line.ends_with('\n') {
