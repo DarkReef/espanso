@@ -56,7 +56,7 @@ impl FormUI for ModuloFormUI<'_> {
         fields: &HashMap<String, FormField>,
     ) -> anyhow::Result<Option<HashMap<String, String>>> {
         let modulo_form_config = ModuloFormConfig {
-            title: "espanso",
+            title: "rEspanso",
             layout,
             fields: convert_fields_into_object(fields),
             max_form_width: self.option_provider.get_max_form_width(),
