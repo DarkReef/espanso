@@ -24,6 +24,7 @@ use espanso_config::{
     matches::{store::MatchStore, Match, MatchCause, MatchEffect},
 };
 use espanso_engine::event::internal::DetectedMatch;
+use regex::Regex;
 
 use super::{builtin::BuiltInMatch, engine::process::middleware::match_select::MatchSummary};
 
@@ -216,5 +217,64 @@ impl espanso_engine::process::MatchResolver for CombinedMatchCache<'_> {
         matches.extend(builtin_matches);
 
         matches
+    }
+}
+
+impl espanso_engine::process::SelectionMatchResolver for CombinedMatchCache<'_> {
+    fn find_matches_from_selection(&self, selection: &str) -> Vec<DetectedMatch> {
+        let selection = selection.trim();
+        let mut detected = Vec::new();
+
+        for m in self.user_match_cache.cache.values() {
+            match &m.cause {
+                MatchCause::Trigger(cause) => {
+                    let matched = cause.triggers.iter().any(|trigger| {
+                        if cause.propagate_case {
+                            trigger.to_lowercase() == selection.to_lowercase()
+                        } else {
+                            trigger == selection
+                        }
+                    });
+
+                    if matched {
+                        let mut args = HashMap::new();
+                        args.insert("selection".to_owned(), selection.to_owned());
+                        detected.push(DetectedMatch {
+                            id: m.id,
+                            trigger: Some(selection.to_owned()),
+                            args,
+                            ..Default::default()
+                        });
+                    }
+                }
+                MatchCause::Regex(cause) => {
+                    let pattern = format!("^(?:{})$", cause.regex);
+                    let Ok(regex) = Regex::new(&pattern) else {
+                        continue;
+                    };
+                    let Some(captures) = regex.captures(selection) else {
+                        continue;
+                    };
+
+                    let mut args = HashMap::new();
+                    args.insert("selection".to_owned(), selection.to_owned());
+                    for name in regex.capture_names().flatten() {
+                        if let Some(value) = captures.name(name) {
+                            args.insert(name.to_owned(), value.as_str().to_owned());
+                        }
+                    }
+
+                    detected.push(DetectedMatch {
+                        id: m.id,
+                        trigger: Some(selection.to_owned()),
+                        args,
+                        ..Default::default()
+                    });
+                }
+                MatchCause::None => {}
+            }
+        }
+
+        detected
     }
 }
