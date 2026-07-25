@@ -83,6 +83,9 @@ jobs:
             --no-default-features \
             --features modulo,native-tls \
             --release
+          cargo build \
+            -p espanso-editor \
+            --release
       - name: Test
         run: |
           cargo test \
@@ -96,6 +99,7 @@ jobs:
         shell: pwsh
         run: |
           $env:EXEC_PATH = "target\release\espanso.exe"
+          $env:EDITOR_PATH = "target\release\espanso-editor.exe"
           scripts\build_windows_resources.ps1
       - name: Download and install Inno Setup (missing in Windows Server 2025)
         run: choco install innosetup --no-progress
@@ -229,6 +233,12 @@ jobs:
             --target aarch64-apple-darwin \
             --no-default-features \
             --features native-tls,modulo
+          cargo test \
+            -p espanso-editor \
+            --target x86_64-apple-darwin
+          cargo test \
+            -p espanso-editor \
+            --target aarch64-apple-darwin
       - name: Build
         run: |
           rustup target add x86_64-apple-darwin
@@ -244,6 +254,14 @@ jobs:
             --release \
             --no-default-features \
             --features native-tls,modulo
+          cargo build \
+            -p espanso-editor \
+            --target x86_64-apple-darwin \
+            --release
+          cargo build \
+            -p espanso-editor \
+            --target aarch64-apple-darwin \
+            --release
           bash ./scripts/create_bundle.sh
       - name: Codesign app bundle
         env:
