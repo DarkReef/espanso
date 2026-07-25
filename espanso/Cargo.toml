@@ -94,6 +94,11 @@ maintainer = "Auca Coyan <aucacoyan@gmail.com>"
 depends = "$auto"
 section = "utility"
 license-file = ["../LICENSE", "1"]
+assets = [
+    ["target/release/espanso", "usr/bin/", "755"],
+    ["target/release/espanso-editor", "usr/bin/", "755"],
+    ["../README.md", "usr/share/doc/espanso/README.md", "644"],
+]
 
 [package.metadata.deb.variants.wayland]
 depends = ["wl-clipboard", "$auto"]
@@ -102,5 +107,6 @@ maintainer-scripts = "scripts/debian/"
 [package.metadata.generate-rpm]
 assets = [
     { source = "target/release/espanso", dest = "/usr/local/bin/espanso", mode = "755" },
+    { source = "target/release/espanso-editor", dest = "/usr/local/bin/espanso-editor", mode = "755" },
 ]
 post_install_script = "setcap 'cap_dac_override+p' /usr/local/bin/espanso"
