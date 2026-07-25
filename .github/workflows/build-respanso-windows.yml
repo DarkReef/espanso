@@ -39,8 +39,8 @@ jobs:
         run: |
           rustc --version
           cargo --version
-          cl 2>&1 | Select-Object -First 3
-          nmake /? 2>&1 | Select-Object -First 3
+          where.exe cl
+          where.exe nmake
 
       - name: Check formatting
         run: cargo fmt --all -- --check
