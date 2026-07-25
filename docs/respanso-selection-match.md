@@ -7,7 +7,7 @@ The `dev-in` branch adds a Windows-first workflow for executing an existing matc
 1. Select text in the current application.
 2. Press `Ctrl+Alt+M`.
 3. rEspanso copies the selection, searches user-defined trigger and regexp matches, and executes the matching rule.
-4. The selected text remains unchanged.
+4. An `@dialog` result leaves the selected source text unchanged. A normal replacement is inserted into the active application and can replace the current selection.
 
 The clipboard text is restored when `preserve_clipboard: true` is enabled.
 
