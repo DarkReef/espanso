@@ -20,6 +20,18 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - uses: actions/checkout@main
+      - name: Install Linux X11 dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            build-essential \
+            git \
+            libdbus-1-dev \
+            libssl-dev \
+            libwxgtk3.*-dev \
+            libx11-dev \
+            libxkbcommon-dev \
+            libxtst-dev
       - name: Capture integration clippy
         run: |
           set +e
