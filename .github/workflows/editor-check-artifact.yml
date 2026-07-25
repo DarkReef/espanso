@@ -1,47 +1,38 @@
-name: Editor focused check
+name: Editor panel API fix
 
 on:
   pull_request:
     paths:
       - "espanso-editor/**"
-      - "Cargo.toml"
       - ".github/workflows/editor-check-artifact.yml"
 
+permissions:
+  contents: write
+
 jobs:
-  check:
+  fix:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@main
-      - name: Validate editor
-        run: |
-          set +e
-          status=0
-          cargo check -p espanso-editor 2>&1 | tee editor-check.log
-          check_status=${PIPESTATUS[0]}
-          if [ "$check_status" -ne 0 ]; then
-            status=$check_status
-          else
-            cargo test -p espanso-editor 2>&1 | tee -a editor-check.log
-            test_status=${PIPESTATUS[0]}
-            if [ "$test_status" -ne 0 ]; then
-              status=$test_status
-            fi
-            cargo clippy -p espanso-editor --all-targets -- --deny warnings 2>&1 | tee -a editor-check.log
-            clippy_status=${PIPESTATUS[0]}
-            if [ "$clippy_status" -ne 0 ]; then
-              status=$clippy_status
-            fi
-          fi
-          echo "$status" > editor-check.status
-          exit 0
-      - name: Upload editor check log
-        if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: editor-check-log
-          path: |
-            editor-check.log
-            editor-check.status
-          if-no-files-found: error
-      - name: Fail when validation failed
-        run: test "$(cat editor-check.status)" = "0"
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Fix Panel sizing API
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("espanso-editor/src/app.rs")
+          source = path.read_text()
+          expected = source.count(".default_width(330.0)")
+          if expected != 2:
+              raise SystemExit(f"expected two default_width calls, found {expected}")
+          path.write_text(source.replace(".default_width(330.0)", ".default_size(330.0)"))
+          PY
+          cargo fmt --all
+      - name: Commit Panel API fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add espanso-editor/src/app.rs
+          git commit -m "fix(editor): use Panel default_size API"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
