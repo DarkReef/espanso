@@ -30,12 +30,14 @@ jobs:
           cargo fmt --all
           git diff --check
 
-      - name: Commit branding and remove one-time automation
+      - name: Commit branding without workflow mutations
         shell: bash
         run: |
-          rm -f scripts/apply_respanso_branding.py
-          rm -f .github/workflows/apply-respanso-branding.yml
-          rm -f .github/workflows/apply-respanso-branding-pr.yml
+          # GITHUB_TOKEN may push ordinary source changes but cannot rewrite
+          # workflow definitions. Restore those files; they are cleaned up later
+          # through the repository integration after the branding commit lands.
+          git restore .github/workflows
+          git restore scripts/apply_respanso_branding.py
           git config user.name "rEspanso Branding Bot"
           git config user.email "actions@users.noreply.github.com"
           git add -A
