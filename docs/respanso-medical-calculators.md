@@ -1,64 +1,34 @@
-# rEspanso medical calculator windows
+# Клинические калькуляторы rEspanso
 
-rEspanso renders calculator and questionnaire windows without embedding clinical formulas into the text-expander core. The editable calculation logic is interpreted by the Rhai runtime bundled inside `rEspanso.exe`.
-
-## Architecture
+rEspanso показывает формы клинических шкал и рассчитывает результат через встроенный интерпретатор Rhai:
 
 ```text
-trigger / selected missed trigger
+обычный trigger / восстановленный match из выделенного текста
         ↓
-Espanso form extension
+Espanso form
         ↓
-embedded Rhai module (.rhai)
+редактируемый модуль Rhai (.rhai)
         ↓
-text or structured result
+результат
         ↓
-@dialog result window
+@dialog
 ```
 
-The core is responsible only for:
+Клинические формулы не зашиты в ядро text-expander. Их можно проверять, версионировать и изменять отдельно, без Rust, Cargo, Visual Studio, Node.js, Python или PowerShell на рабочем компьютере.
 
-- opening the form;
-- collecting field values;
-- passing values to the embedded interpreter;
-- enforcing execution limits and allowed script locations;
-- displaying the returned result;
-- preserving the ordinary Espanso trigger workflow.
+## Доступные match'и
 
-The editable Rhai module is responsible for:
+| Trigger | Калькулятор | Основной результат |
+|---|---|---|
+| `:score2` | SCORE2 | 10-летний риск фатального и нефатального СС-события, 40–69 лет |
+| `:score2op` | SCORE2-OP | 10-летний риск фатального и нефатального СС-события, 70–89 лет |
+| `:hasbled` | HAS-BLED | сумма факторов риска кровотечения, 0–9 |
+| `:cha2vasc` | CHA₂DS₂-VASc + CHA₂DS₂-VA | классический балл и актуальный вариант ESC 2024 без пола |
+| `:findrisc` | FINDRISC | 10-летний риск сахарного диабета 2 типа, 0–26 |
 
-- input validation;
-- the formula or decision table;
-- score interpretation;
-- version and source metadata;
-- clinical disclaimers;
-- tests for boundary values.
+Для SCORE2 и SCORE2-OP в форме по умолчанию выбран регион `Очень высокий риск (Россия)`.
 
-Rhai does not require Rust, Cargo, Visual Studio, Node.js, Python or PowerShell on the workstation. The interpreter is linked into `rEspanso.exe`; changing a `.rhai` file takes effect after the normal configuration reload and does not require recompilation.
-
-## Input contract
-
-A form variable named `calculator_inputs` is passed to the Rhai function as a map:
-
-```rhai
-fn calculate(input) {
-    let age = parse_int(input.age);
-    let smoking = input.smoking == "Да";
-
-    // Formula belongs here, outside the rEspanso core.
-    `Возраст: ${age}; курение: ${smoking}`
-}
-```
-
-Form values currently arrive as strings. Numeric modules should validate and parse them explicitly with `parse_int` or `parse_float`.
-
-A Rhai function may return:
-
-- a string — exposed as a normal single variable;
-- a map — exposed as subvariables such as `{{result.score}}` and `{{result.text}}`;
-- a number or boolean — converted to text.
-
-## Folder layout
+## Файлы
 
 ```text
 config/
@@ -66,79 +36,127 @@ config/
 │   └── medical-calculators.yml
 └── medical-calculators/
     └── modules/
-        ├── findrisc.rhai
-        ├── has-bled.rhai
         ├── score2.rhai
+        ├── score2-op.rhai
+        ├── has-bled.rhai
         ├── cha2ds2-vasc.rhai
-        └── h2fpef.rhai
+        └── findrisc.rhai
 ```
 
-Scripts are allowed only below the active config or packages directory. The embedded engine has no host-registered filesystem, network or process API. Dynamic `eval` and `import` are disabled, and execution is limited by operation count, call depth, expression depth, string size, array size and map size.
+В portable-сборке эти файлы уже размещаются в соответствующих каталогах. Для обычной установки скопируйте:
 
-## Example match
+- `examples/medical-calculators/medical-calculators.yml` в `%CONFIG%/match/`;
+- каталог `examples/medical-calculators/modules/` в `%CONFIG%/medical-calculators/`.
 
-```yaml
-matches:
-  - trigger: ":calc_demo"
-    replace: |
-      @dialog: Демонстрационный калькулятор
-      {{calculator_result}}
+После изменения `.rhai` выполните обычную перезагрузку конфигурации rEspanso.
 
-    vars:
-      - name: calculator_inputs
-        type: form
-        params:
-          layout: |
-            Возраст: [[age]]
-            Фактор: [[factor]]
-          fields:
-            age:
-              type: text
-            factor:
-              type: choice
-              values: ["Нет", "Да"]
+## Контракт модуля
 
-      - name: calculator_result
-        type: rhai
-        depends_on: [calculator_inputs]
-        params:
-          path: "%CONFIG%/medical-calculators/modules/ui-demo.rhai"
-          function: "calculate"
-          input: "calculator_inputs"
-```
-
-Example module:
+Форма передаёт значения как карту строк. Каждый модуль экспортирует функцию:
 
 ```rhai
 fn calculate(input) {
     let age = parse_int(input.age);
-    let factor_points = if input.factor == "Да" { 1 } else { 0 };
-    let demo_score = age / 10 + factor_points;
-
-    `Демонстрационный результат: ${demo_score}`
+    `Возраст: ${age}`
 }
 ```
 
-This repository example deliberately does not implement a validated clinical scale.
+Числа с десятичной запятой нормализуются внутри клинических модулей. Результат возвращается строкой и отображается через `@dialog`.
 
-## Planned clinical modules
+## SCORE2
 
-Each scale should be delivered as an independently versioned module:
+Реализовано непрерывное уравнение SCORE2, а не приблизительная балльная таблица:
 
-- FINDRISC;
-- HAS-BLED;
-- SCORE2 / SCORE2-OP;
-- CHA2DS2-VASc;
-- H2FPEF.
+- раздельные коэффициенты для мужчин и женщин;
+- взаимодействия факторов с возрастом;
+- исходная выживаемость;
+- complementary log-log рекалибровка для четырёх европейских регионов;
+- возрастные пороги категорий риска ESC.
 
-SCORE2 should not be reduced to an improvised point sum. Its module needs validated coefficients/tables for the intended population, explicit applicability limits and reference cases.
+Калькулятор прекращает расчёт при возрасте вне 40–69 лет, документированном ССЗ, сахарном диабете, семейной гиперхолестеринемии, умеренной/тяжёлой ХБП или другом состоянии, которое требует отдельной стратификации.
 
-Before a clinical module is distributed, it should include:
+Источник: SCORE2 Working Group and ESC Cardiovascular Risk Collaboration. *European Heart Journal*. 2021;42:2439–2454. DOI `10.1093/eurheartj/ehab309`. Четырёхзначные параметры опубликованы в дополнении DOI `10.1093/eurheartj/ehab761`.
 
-- a cited authoritative source and version date;
-- unit tests with published examples or independently validated reference cases;
-- explicit input units;
-- age and population applicability limits;
-- a statement that the result supports, but does not replace, clinical judgment;
-- no patient identifiers in debug logs;
-- a module version and checksum.
+Контрольные примеры из публикации для пациента 50 лет, курящего, с САД 140 мм рт. ст., ОХС 5,5 и ХС-ЛПВП 1,3 ммоль/л:
+
+- мужчина: 5,9% в регионе низкого риска и 14,0% в регионе очень высокого риска;
+- женщина: 4,2% и 13,7% соответственно.
+
+## SCORE2-OP
+
+Реализовано непрерывное уравнение SCORE2-OP с половыми коэффициентами, возрастными взаимодействиями, исходной выживаемостью и региональной рекалибровкой.
+
+Поддерживаемый диапазон интерфейса — 70–89 лет. При документированном ССЗ и иных заведомо высокорисковых состояниях расчёт блокируется. Диабет присутствует в исходном уравнении SCORE2-OP, но результат сопровождается предупреждением о необходимости диабет-специфической оценки.
+
+Источник: SCORE2-OP Working Group and ESC Cardiovascular Risk Collaboration. *European Heart Journal*. 2021;42:2455–2467. DOI `10.1093/eurheartj/ehab312`.
+
+## HAS-BLED
+
+Реализованы девять возможных баллов:
+
+- САД >160 мм рт. ст.;
+- нарушение функции почек;
+- нарушение функции печени;
+- инсульт;
+- кровотечение или предрасположенность;
+- лабильное МНО / TTR <60% при приёме антагониста витамина K;
+- возраст >65 лет;
+- антиагрегант или НПВП;
+- чрезмерное употребление алкоголя.
+
+Нарушение функции почек и печени, а также лекарства и алкоголь учитываются раздельно. Исходный порог `≥3` обозначается как высокий риск с необходимостью осторожности и регулярного пересмотра.
+
+В результат встроено актуальное ограничение ESC 2024: HAS-BLED не должен быть самостоятельной причиной не назначать или отменять антикоагулянт; его практический смысл — поиск и коррекция модифицируемых факторов риска кровотечения.
+
+Источники: ESC AF Guidelines 2010 и 2020; ESC AF Guidelines 2024.
+
+## CHA₂DS₂-VASc и CHA₂DS₂-VA
+
+Match одновременно выводит:
+
+- классический CHA₂DS₂-VASc, 0–9;
+- CHA₂DS₂-VA без компонента пола, 0–8;
+- текстовую подсказку ESC 2024: при CHA₂DS₂-VA = 1 антикоагуляцию следует рассмотреть, при ≥2 она рекомендована при отсутствии противопоказаний.
+
+Калькулятор предназначен для подтверждённой клинической фибрилляции предсердий. Он не подставляет табличную «годовую вероятность инсульта», поскольку абсолютная частота зависит от популяции и лечения.
+
+Источник: 2024 ESC Guidelines for the management of atrial fibrillation. *European Heart Journal*. 2024;45:3314–3414. DOI `10.1093/eurheartj/ehae176`.
+
+## FINDRISC
+
+Реализована исходная восьмикомпонентная шкала:
+
+- возраст;
+- ИМТ, рассчитываемый из массы и роста;
+- окружность талии с разными порогами для мужчин и женщин;
+- физическая активность не менее 30 минут в день;
+- ежедневное употребление овощей, фруктов или ягод;
+- антигипертензивная терапия;
+- гипергликемия в анамнезе;
+- семейный анамнез диабета первой или второй степени родства.
+
+Интерпретация: `<7`, `7–11`, `12–14`, `15–20`, `>20` баллов. При возрасте вне исходной когорты 35–64 лет выводится предупреждение.
+
+Источник: Lindström J, Tuomilehto J. *Diabetes Care*. 2003;26:725–731. DOI `10.2337/diacare.26.3.725`.
+
+## Безопасность исполнения
+
+Rhai-скрипты разрешены только внутри активных каталогов config или packages. Встроенный движок не регистрирует доступ к сети, процессам или файловой системе; `eval` и `import` отключены. Ограничены число операций, глубина вызовов и выражений, а также размеры строк, массивов и карт.
+
+Модули не принимают ФИО и другие идентификаторы пациента. В отладочные сообщения не должны попадать персональные данные.
+
+## Автоматическая проверка
+
+`espanso-render/tests/medical_calculators.rs`:
+
+- компилирует и выполняет все пять Rhai-модулей;
+- сверяет SCORE2 с опубликованными референсными примерами;
+- проверяет контрольные непрерывные расчёты SCORE2-OP;
+- проверяет минимальные и максимальные значения балльных шкал;
+- проверяет блокировку SCORE2 при сахарном диабете.
+
+Workflow `Rhai diagnostics` запускается также при изменении примеров клинических калькуляторов и документации.
+
+## Клиническое ограничение
+
+Калькуляторы являются инструментами поддержки решения. Они не подтверждают диагноз, не заменяют клиническую оценку, актуальные рекомендации и совместное принятие решения с пациентом.
