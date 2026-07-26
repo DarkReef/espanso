@@ -1,8 +1,6 @@
 from pathlib import Path
 
 APP = Path("espanso-editor/src/app.rs")
-WORKFLOW = Path(".github/workflows/editor-build.yml")
-SELF = Path(__file__)
 
 app = APP.read_text(encoding="utf-8")
 
@@ -96,7 +94,7 @@ new_top_bar = r'''    fn top_bar(&mut self, root: &mut egui::Ui) {
                         .join(", ")
                 ));
 
-                let right_width = ui.available_width().max(320.0);
+                let right_width = ui.available_width();
                 let restart_message = ui
                     .allocate_ui_with_layout(
                         egui::vec2(right_width, 30.0),
@@ -286,14 +284,3 @@ if "Скомпилировать Rhai-скрипт" not in app:
     )
 
 APP.write_text(app, encoding="utf-8")
-
-workflow = WORKFLOW.read_text(encoding="utf-8")
-start_marker = "  # BEGIN TEMP_GUI_PATCH\n"
-end_marker = "  # END TEMP_GUI_PATCH\n"
-start = workflow.index(start_marker)
-end = workflow.index(end_marker, start) + len(end_marker)
-workflow = workflow[:start] + workflow[end:]
-workflow = workflow.replace("permissions:\n  contents: write", "permissions:\n  contents: read", 1)
-workflow = workflow.replace("    if: github.event_name != 'push'\n", "")
-WORKFLOW.write_text(workflow, encoding="utf-8")
-SELF.unlink()
