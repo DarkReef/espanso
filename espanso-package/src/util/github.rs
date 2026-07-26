@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn test_extract_github_url_parts() {
         assert_eq!(
-            extract_github_url_parts("https://github.com/__TECH_ESPANSO_REPO__").unwrap(),
+            extract_github_url_parts("https://github.com/espanso/espanso").unwrap(),
             GitHubParts {
                 author: "espanso".to_string(),
                 name: "espanso".to_string(),
@@ -114,7 +114,7 @@ mod tests {
         );
 
         assert_eq!(
-            extract_github_url_parts("https://github.com/__TECH_ESPANSO_REPO__.git").unwrap(),
+            extract_github_url_parts("https://github.com/espanso/espanso.git").unwrap(),
             GitHubParts {
                 author: "espanso".to_string(),
                 name: "espanso".to_string(),
@@ -122,7 +122,7 @@ mod tests {
         );
 
         assert_eq!(
-            extract_github_url_parts("git@github.com:__TECH_ESPANSO_REPO__.git").unwrap(),
+            extract_github_url_parts("git@github.com:espanso/espanso.git").unwrap(),
             GitHubParts {
                 author: "espanso".to_string(),
                 name: "espanso".to_string(),
@@ -130,8 +130,7 @@ mod tests {
         );
 
         assert!(
-            extract_github_url_parts("https://gitlab.com/__TECH_ESPANSO_REPO__-test-package/")
-                .is_none()
+            extract_github_url_parts("https://gitlab.com/espanso/espanso-test-package/").is_none()
         );
     }
 }

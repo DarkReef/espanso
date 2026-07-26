@@ -238,7 +238,7 @@ fn get_portable_runtime_path() -> Option<PathBuf> {
     let espanso_exe_path = std::env::current_exe().expect("unable to obtain executable path");
     let exe_dir = espanso_exe_path.parent();
     if let Some(parent) = exe_dir {
-        let config_dir = parent.join(".__TECH_ESPANSO_CRATE__runtime");
+        let config_dir = parent.join(".espanso-runtime");
         return Some(config_dir);
     }
     None
@@ -329,8 +329,8 @@ fn is_portable_mode() -> bool {
 const LEGACY_RUNTIME_DIR_CANDIDATES_FILE: &[&str] = &[
     "espanso.log",
     "espanso.lock",
-    "__TECH_ESPANSO_CRATE__worker.lock",
-    "__TECH_ESPANSO_CRATE__daemon.lock",
+    "espanso-worker.lock",
+    "espanso-daemon.lock",
 ];
 
 // Run an heuristic to determine if the given directory

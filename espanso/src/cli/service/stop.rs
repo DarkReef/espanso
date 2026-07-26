@@ -93,7 +93,7 @@ fn forcefully_terminate_espanso() {
     sys.refresh_processes_specifics(ProcessRefreshKind::new());
 
     let target_process_names = if cfg!(target_os = "windows") {
-        vec!["__TECH_ESPANSO_EXE__", "espansod.exe"]
+        vec!["espanso.exe", "espansod.exe"]
     } else {
         vec!["espanso"]
     };

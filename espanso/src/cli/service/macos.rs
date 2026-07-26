@@ -37,7 +37,7 @@ pub fn register() -> Result<()> {
     if crate::cli::util::is_subject_to_app_translocation_on_macos() {
         error_eprintln!("Unable to register rEspanso as service, please move the rEspanso.app bundle inside the /Applications directory to proceed.");
         error_eprintln!(
-            "For more information, please see: https://github.com/__TECH_ESPANSO_REPO__/issues/844"
+            "For more information, please see: https://github.com/espanso/espanso/issues/844"
         );
         bail!("macOS activated app-translocation on rEspanso");
     }

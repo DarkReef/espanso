@@ -107,41 +107,35 @@ mod tests {
     #[test]
     fn test_extract_gitlab_url_parts() {
         assert_eq!(
-            extract_gitlab_url_parts(
-                "https://gitlab.com/federicoterzi/__TECH_ESPANSO_CRATE__test-package/"
-            )
-            .unwrap(),
+            extract_gitlab_url_parts("https://gitlab.com/federicoterzi/espanso-test-package/")
+                .unwrap(),
             GitLabParts {
                 author: "federicoterzi".to_string(),
-                name: "__TECH_ESPANSO_CRATE__test-package".to_string(),
+                name: "espanso-test-package".to_string(),
             }
         );
 
         assert_eq!(
-            extract_gitlab_url_parts(
-                "git@gitlab.com:federicoterzi/__TECH_ESPANSO_CRATE__test-package.git"
-            )
-            .unwrap(),
+            extract_gitlab_url_parts("git@gitlab.com:federicoterzi/espanso-test-package.git")
+                .unwrap(),
             GitLabParts {
                 author: "federicoterzi".to_string(),
-                name: "__TECH_ESPANSO_CRATE__test-package".to_string(),
+                name: "espanso-test-package".to_string(),
             }
         );
 
         assert_eq!(
-            extract_gitlab_url_parts(
-                "https://gitlab.com/federicoterzi/__TECH_ESPANSO_CRATE__test-package.git"
-            )
-            .unwrap(),
+            extract_gitlab_url_parts("https://gitlab.com/federicoterzi/espanso-test-package.git")
+                .unwrap(),
             GitLabParts {
                 author: "federicoterzi".to_string(),
-                name: "__TECH_ESPANSO_CRATE__test-package".to_string(),
+                name: "espanso-test-package".to_string(),
             }
         );
 
-        assert!(extract_gitlab_url_parts(
-            "https://github.com/federicoterzi/__TECH_ESPANSO_CRATE__test-package/"
-        )
-        .is_none());
+        assert!(
+            extract_gitlab_url_parts("https://github.com/federicoterzi/espanso-test-package/")
+                .is_none()
+        );
     }
 }

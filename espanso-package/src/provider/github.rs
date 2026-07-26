@@ -48,7 +48,7 @@ impl PackageProvider for GitHubPackageProvider {
             self.author, self.name, self.branch
         );
 
-        let temp_dir = tempdir::TempDir::new("__TECH_ESPANSO_CRATE__package-download")?;
+        let temp_dir = tempdir::TempDir::new("espanso-package-download")?;
 
         crate::util::download::download_and_extract_zip(&download_url, temp_dir.path())?;
 

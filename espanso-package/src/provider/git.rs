@@ -81,7 +81,7 @@ impl PackageProvider for GitPackageProvider {
             .ok_or_else(|| anyhow!("missing git repository url"))?;
         let repo_branch = package.git_branch.as_deref();
 
-        let temp_dir = tempdir::TempDir::new("__TECH_ESPANSO_CRATE__package-download")?;
+        let temp_dir = tempdir::TempDir::new("espanso-package-download")?;
 
         Self::clone_repo(temp_dir.path(), repo_url, repo_branch)?;
 

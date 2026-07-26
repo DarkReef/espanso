@@ -33,9 +33,7 @@ impl SecureInputManagerAdapter {
 
 impl SecureInputManager for SecureInputManagerAdapter {
     fn display_secure_input_troubleshoot(&self) -> anyhow::Result<()> {
-        opener::open_browser(
-            "https://__TECH_ESPANSO_ORG__/docs/next/troubleshooting/secure-input/",
-        )?;
+        opener::open_browser("https://espanso.org/docs/next/troubleshooting/secure-input/")?;
         Ok(())
     }
 

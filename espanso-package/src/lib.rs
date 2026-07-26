@@ -106,7 +106,7 @@ pub(crate) mod tests {
     use tempdir::TempDir;
 
     pub fn run_with_temp_dir(action: impl FnOnce(&Path)) {
-        let tmp_dir = TempDir::new("__TECH_ESPANSO_CRATE__package").unwrap();
+        let tmp_dir = TempDir::new("espanso-package").unwrap();
         let tmp_path = tmp_dir.path();
 
         action(tmp_path);

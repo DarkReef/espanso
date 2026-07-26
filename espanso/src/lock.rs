@@ -65,9 +65,9 @@ impl Drop for Lock {
 }
 
 pub fn acquire_daemon_lock(runtime_dir: &Path) -> Option<Lock> {
-    Lock::acquire(runtime_dir, "__TECH_ESPANSO_CRATE__daemon")
+    Lock::acquire(runtime_dir, "espanso-daemon")
 }
 
 pub fn acquire_worker_lock(runtime_dir: &Path) -> Option<Lock> {
-    Lock::acquire(runtime_dir, "__TECH_ESPANSO_CRATE__worker")
+    Lock::acquire(runtime_dir, "espanso-worker")
 }
