@@ -22,10 +22,10 @@ jobs:
         with:
           ref: integrate-studio-portable
           fetch-depth: 0
-      - name: Update Windows notification bindings
+      - name: Resolve updated Windows notification bindings
         run: |
-          cargo update -p tauri-winrt-notification@0.7.2 --precise 0.8.1
-          cargo tree --target x86_64-pc-windows-msvc -i tauri-winrt-notification@0.8.1
+          cargo update -p tauri-winrt-notification
+          cargo tree --target x86_64-pc-windows-msvc -i tauri-winrt-notification
       - name: Commit Cargo.lock
         run: |
           git config user.name "rEspanso Dependency Bot"
