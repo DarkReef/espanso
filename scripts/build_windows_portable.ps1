@@ -32,13 +32,14 @@ function Main {
     # Create the launcher scripts
     $launcherContent = 'start espansod.exe launcher'
     $launcherContent | Out-File "$TARGET_DIR/START_ESPANSO.bat" -Encoding ASCII
-    $editorLauncher = '@"%~dp0espanso-editor.exe" --config-dir "%~dp0.espanso"'
+    $editorLauncher = '@"%~dp0espanso-editor.exe" --config-dir "%~dp0portable\config"'
     $editorLauncher | Out-File "$TARGET_DIR/OPEN_MATCH_STUDIO.cmd" -Encoding ASCII
 
-    New-Item -Path "$TARGET_DIR/.espanso/match" -ItemType Directory -Force | Out-Null
+    $portableConfig = "$TARGET_DIR/portable/config"
+    New-Item -Path "$portableConfig/match" -ItemType Directory -Force | Out-Null
     New-Item -Path "$TARGET_DIR/.espanso-runtime" -ItemType Directory -Force | Out-Null
 
-    $baseMatchFile = "$TARGET_DIR/.espanso/match/base.yml"
+    $baseMatchFile = "$portableConfig/match/base.yml"
     if (-not (Test-Path $baseMatchFile)) {
         @(
             'matches:',
@@ -56,12 +57,12 @@ To start espanso, double click "START_ESPANSO.bat".
 To open rEspanso Match Studio, double click "OPEN_MATCH_STUDIO.cmd".
 
 The portable configuration is stored in:
-  .espanso
+  portable\config
 
 Match Studio is explicitly bound to that directory and loads YAML files from:
-  .espanso\match
+  portable\config\match
 
-A starter .espanso\match\base.yml is included so rules can be created immediately.
+A starter portable\config\match\base.yml is included so rules can be created immediately.
 
 For more information, please visit the official documentation:
 https://espanso.org/docs/
