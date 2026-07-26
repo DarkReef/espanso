@@ -6,6 +6,146 @@ use std::{
 };
 use walkdir::WalkDir;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FlagGroup {
+    Common,
+    Windows,
+    OtherPlatforms,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct BoolFlag {
+    key: &'static str,
+    title: &'static str,
+    when_true: &'static str,
+    when_false: &'static str,
+    default: bool,
+    group: FlagGroup,
+}
+
+const BOOL_FLAGS: &[BoolFlag] = &[
+    BoolFlag {
+        key: "enable",
+        title: "Включить rEspanso для этой конфигурации",
+        when_true: "подстановки активны",
+        when_false: "эта конфигурация отключает подстановки",
+        default: true,
+        group: FlagGroup::Common,
+    },
+    BoolFlag {
+        key: "auto_restart",
+        title: "Автоматически перечитывать конфигурацию",
+        when_true: "worker перезапускается после изменения файлов",
+        when_false: "изменения применятся только после ручного перезапуска",
+        default: true,
+        group: FlagGroup::Common,
+    },
+    BoolFlag {
+        key: "preserve_clipboard",
+        title: "Сохранять содержимое буфера обмена",
+        when_true: "после вставки возвращается прежний буфер",
+        when_false: "в буфере остаётся текст подстановки",
+        default: true,
+        group: FlagGroup::Common,
+    },
+    BoolFlag {
+        key: "apply_patch",
+        title: "Применять встроенные патчи совместимости",
+        when_true: "rEspanso использует встроенные исправления для приложений",
+        when_false: "патчи совместимости отключены",
+        default: true,
+        group: FlagGroup::Common,
+    },
+    BoolFlag {
+        key: "undo_backspace",
+        title: "Отменять подстановку клавишей Backspace",
+        when_true: "Backspace сразу после вставки восстанавливает триггер",
+        when_false: "Backspace работает как обычное удаление",
+        default: true,
+        group: FlagGroup::Common,
+    },
+    BoolFlag {
+        key: "show_notifications",
+        title: "Показывать уведомления",
+        when_true: "системные уведомления разрешены",
+        when_false: "все уведомления скрыты",
+        default: true,
+        group: FlagGroup::Common,
+    },
+    BoolFlag {
+        key: "show_icon",
+        title: "Показывать значок в системном трее",
+        when_true: "значок rEspanso виден в трее",
+        when_false: "значок скрыт",
+        default: true,
+        group: FlagGroup::Common,
+    },
+    BoolFlag {
+        key: "stats_enabled",
+        title: "Вести локальную статистику подстановок",
+        when_true: "счётчики использования записываются локально",
+        when_false: "статистика не записывается",
+        default: false,
+        group: FlagGroup::Common,
+    },
+    BoolFlag {
+        key: "use_standard_includes",
+        title: "Подключать стандартные YAML-файлы match",
+        when_true: "обычные файлы из match загружаются автоматически",
+        when_false: "используются только явно заданные includes",
+        default: true,
+        group: FlagGroup::Common,
+    },
+    BoolFlag {
+        key: "emulate_alt_codes",
+        title: "Эмулировать Windows Alt-коды",
+        when_true: "rEspanso восстанавливает ввод символов через Alt+цифры",
+        when_false: "эмуляция Alt-кодов отключена",
+        default: true,
+        group: FlagGroup::Windows,
+    },
+    BoolFlag {
+        key: "win32_exclude_orphan_events",
+        title: "Фильтровать Windows-события без HID-источника",
+        when_true: "программно созданные orphan-события игнорируются",
+        when_false: "такие события принимаются, что полезно для экранных клавиатур",
+        default: true,
+        group: FlagGroup::Windows,
+    },
+    BoolFlag {
+        key: "secure_input_notification",
+        title: "Уведомлять о Secure Input на macOS",
+        when_true: "показывается предупреждение Secure Input",
+        when_false: "предупреждение скрыто",
+        default: true,
+        group: FlagGroup::OtherPlatforms,
+    },
+    BoolFlag {
+        key: "disable_x11_fast_inject",
+        title: "Отключить быструю вставку X11",
+        when_true: "используется более медленный совместимый механизм XTest",
+        when_false: "используется быстрый механизм XSendEvent",
+        default: false,
+        group: FlagGroup::OtherPlatforms,
+    },
+    BoolFlag {
+        key: "x11_use_xclip_backend",
+        title: "Использовать xclip для буфера X11",
+        when_true: "буфер обмена работает через внешнюю команду xclip",
+        when_false: "используется встроенный backend",
+        default: false,
+        group: FlagGroup::OtherPlatforms,
+    },
+    BoolFlag {
+        key: "x11_use_xdotool_backend",
+        title: "Использовать xdotool для вставки X11",
+        when_true: "включён альтернативный backend xdotool",
+        when_false: "используется стандартный backend вставки",
+        default: false,
+        group: FlagGroup::OtherPlatforms,
+    },
+];
+
 #[derive(Default)]
 pub struct SettingsEditor {
     files: Vec<PathBuf>,
@@ -135,88 +275,140 @@ impl SettingsEditor {
             });
 
         egui::CentralPanel::default().show(root, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.heading("Настройки rEspanso");
-                if self.dirty() {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(210, 135, 25),
-                        "Есть несохранённые изменения",
-                    );
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.heading("Настройки rEspanso");
+                    if self.dirty() {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(210, 135, 25),
+                            "Есть несохранённые изменения",
+                        );
+                    }
+                });
+                ui.label(
+                    "Редактируются YAML-файлы из portable\\config\\config. Правила match здесь не показываются.",
+                );
+                if let Some(path) = &self.selected {
+                    ui.monospace(path.display().to_string());
                 }
-            });
-            ui.label(
-                "Редактируются YAML-файлы из portable\\config\\config. Правила match здесь не показываются.",
-            );
-            if let Some(path) = &self.selected {
-                ui.monospace(path.display().to_string());
-            }
-            ui.separator();
+                ui.separator();
 
-            ui.horizontal(|ui| {
-                if ui
-                    .add_enabled(self.selected.is_some(), egui::Button::new("Сохранить настройки"))
-                    .on_hover_text("Ctrl+S. Перед записью создаётся .respanso.bak")
-                    .clicked()
-                {
-                    match self.save() {
-                        Ok(()) => {
-                            "Настройки сохранены. rEspanso может потребовать перезагрузку конфигурации"
-                                .clone_into(app_status);
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            self.selected.is_some(),
+                            egui::Button::new("Сохранить настройки"),
+                        )
+                        .on_hover_text("Ctrl+S. Перед записью создаётся .respanso.bak")
+                        .clicked()
+                    {
+                        match self.save() {
+                            Ok(()) => {
+                                "Настройки сохранены. rEspanso может потребовать перезагрузку конфигурации"
+                                    .clone_into(app_status);
+                            }
+                            Err(error) => self.error = Some(error),
                         }
-                        Err(error) => self.error = Some(error),
                     }
-                }
-                if ui
-                    .add_enabled(self.selected.is_some(), egui::Button::new("Обновить с диска"))
-                    .on_hover_text("Ctrl+R. Несохранённый текст будет потерян")
-                    .clicked()
-                {
-                    if let Err(error) = self.reload_selected() {
-                        self.error = Some(error);
+                    if ui
+                        .add_enabled(
+                            self.selected.is_some(),
+                            egui::Button::new("Обновить с диска"),
+                        )
+                        .on_hover_text("Ctrl+R. Несохранённый текст будет потерян")
+                        .clicked()
+                    {
+                        if let Err(error) = self.reload_selected() {
+                            self.error = Some(error);
+                        }
                     }
-                }
-            });
+                });
 
-            if let Some(error) = &self.error {
-                ui.colored_label(ui.visuals().error_fg_color, error);
-            } else if !self.status.is_empty() {
-                ui.label(egui::RichText::new(self.status.as_str()).weak());
-            }
-
-            if self.selected.is_none() {
-                ui.add_space(30.0);
-                ui.heading("Файлы настроек не найдены");
-                ui.label(format!("Ожидаемая папка: {}", settings_root.display()));
-                return;
-            }
-
-            let response = ui.add(
-                egui::TextEdit::multiline(&mut self.text)
-                    .code_editor()
-                    .desired_rows(32)
-                    .desired_width(f32::INFINITY),
-            );
-            if response.changed() {
-                self.error = validate_yaml(&self.text).err();
-            }
-
-            match validate_yaml(&self.text) {
-                Ok(()) => {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(40, 150, 90),
-                        "YAML корректен",
-                    );
-                }
-                Err(error) => {
+                if let Some(error) = &self.error {
                     ui.colored_label(ui.visuals().error_fg_color, error);
+                } else if !self.status.is_empty() {
+                    ui.label(egui::RichText::new(self.status.as_str()).weak());
                 }
-            }
-            ui.label(
-                egui::RichText::new(
-                    "После сохранения используйте перезагрузку конфигурации rEspanso либо перезапустите его.",
-                )
-                .weak(),
-            );
+
+                if self.selected.is_none() {
+                    ui.add_space(30.0);
+                    ui.heading("Файлы настроек не найдены");
+                    ui.label(format!("Ожидаемая папка: {}", settings_root.display()));
+                    return;
+                }
+
+                ui.add_space(8.0);
+                ui.heading("Основные флаги");
+                ui.label(
+                    egui::RichText::new(
+                        "Флажки отражают текущий YAML. Если ключ отсутствует, показано штатное значение по умолчанию.",
+                    )
+                    .weak(),
+                );
+                draw_flag_group(
+                    ui,
+                    &mut self.text,
+                    &mut self.error,
+                    FlagGroup::Common,
+                );
+
+                ui.add_space(8.0);
+                ui.heading("Windows");
+                draw_flag_group(
+                    ui,
+                    &mut self.text,
+                    &mut self.error,
+                    FlagGroup::Windows,
+                );
+
+                egui::CollapsingHeader::new("Флаги других платформ")
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        draw_flag_group(
+                            ui,
+                            &mut self.text,
+                            &mut self.error,
+                            FlagGroup::OtherPlatforms,
+                        );
+                    });
+
+                ui.add_space(12.0);
+                ui.separator();
+                ui.heading("Исходный YAML");
+                ui.label(
+                    egui::RichText::new(
+                        "Можно редактировать файл вручную. Флажки выше обновятся автоматически.",
+                    )
+                    .weak(),
+                );
+                let response = ui.add(
+                    egui::TextEdit::multiline(&mut self.text)
+                        .code_editor()
+                        .desired_rows(28)
+                        .desired_width(f32::INFINITY),
+                );
+                if response.changed() {
+                    self.error = validate_yaml(&self.text).err();
+                }
+
+                match validate_yaml(&self.text) {
+                    Ok(()) => {
+                        ui.colored_label(
+                            egui::Color32::from_rgb(40, 150, 90),
+                            "YAML корректен",
+                        );
+                    }
+                    Err(error) => {
+                        ui.colored_label(ui.visuals().error_fg_color, error);
+                    }
+                }
+                ui.label(
+                    egui::RichText::new(
+                        "После сохранения используйте кнопку «(Пере)запустить rEspanso» в правом верхнем углу.",
+                    )
+                    .weak(),
+                );
+            });
         });
     }
 
@@ -230,6 +422,117 @@ impl SettingsEditor {
         self.status.clear();
         Ok(())
     }
+}
+
+fn draw_flag_group(
+    ui: &mut egui::Ui,
+    text: &mut String,
+    error: &mut Option<String>,
+    group: FlagGroup,
+) {
+    for flag in BOOL_FLAGS.iter().filter(|flag| flag.group == group) {
+        ui.group(|ui| {
+            let explicit = read_top_level_bool(text, flag.key);
+            let mut value = explicit.unwrap_or_else(|| flag_default(flag));
+            let changed = ui
+                .checkbox(&mut value, format!("{} — {}", flag.key, flag.title))
+                .changed();
+            if changed {
+                *text = set_top_level_bool(text, flag.key, value);
+                *error = validate_yaml(text).err();
+            }
+
+            let source = if explicit.is_some() {
+                "указано в YAML"
+            } else {
+                "значение по умолчанию; ключ отсутствует"
+            };
+            ui.label(
+                egui::RichText::new(format!(
+                    "Сейчас: {value} ({source}). true — {}; false — {}.",
+                    flag.when_true, flag.when_false
+                ))
+                .small()
+                .weak(),
+            );
+        });
+    }
+}
+
+fn flag_default(flag: &BoolFlag) -> bool {
+    if flag.key == "emulate_alt_codes" {
+        cfg!(target_os = "windows")
+    } else {
+        flag.default
+    }
+}
+
+fn read_top_level_bool(text: &str, key: &str) -> Option<bool> {
+    let value = serde_norway::from_str::<Value>(text).ok()?;
+    let Value::Mapping(mapping) = value else {
+        return None;
+    };
+    mapping.iter().find_map(|(candidate, value)| {
+        let Value::String(candidate) = candidate else {
+            return None;
+        };
+        if candidate != key {
+            return None;
+        }
+        match value {
+            Value::Bool(value) => Some(*value),
+            _ => None,
+        }
+    })
+}
+
+fn set_top_level_bool(text: &str, key: &str, value: bool) -> String {
+    let replacement = format!("{key}: {value}");
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed == "{}" {
+        return format!("{replacement}\n");
+    }
+
+    let had_trailing_newline = text.ends_with('\n');
+    let mut replaced = false;
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        if is_top_level_key(line, key) {
+            let comment = line.find('#').map(|index| line[index..].trim_start());
+            lines.push(match comment {
+                Some(comment) => format!("{replacement}  {comment}"),
+                None => replacement.clone(),
+            });
+            replaced = true;
+        } else {
+            lines.push(line.to_owned());
+        }
+    }
+
+    if !replaced {
+        lines.push(replacement);
+    }
+
+    let mut result = lines.join("\n");
+    if had_trailing_newline || !replaced {
+        result.push('\n');
+    }
+    result
+}
+
+fn is_top_level_key(line: &str, key: &str) -> bool {
+    if line
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_whitespace())
+        || line.trim_start().starts_with('#')
+    {
+        return false;
+    }
+    let Some((candidate, _)) = line.split_once(':') else {
+        return false;
+    };
+    candidate.trim() == key
 }
 
 fn collect_yaml_files(root: &Path) -> Vec<PathBuf> {
@@ -259,7 +562,7 @@ fn create_initial_settings_file(root: &Path) -> Result<(), String> {
     if !path.exists() {
         fs::write(
             &path,
-            "# Настройки rEspanso\n# Добавляйте параметры в формате YAML ниже.\n{}\n",
+            "# Настройки rEspanso\n# Используйте флажки в Match Studio или редактируйте YAML ниже.\n{}\n",
         )
         .map_err(|error| format!("Не удалось создать {}: {error}", path.display()))?;
     }
@@ -301,5 +604,32 @@ mod tests {
     #[test]
     fn rejects_invalid_yaml() {
         assert!(validate_yaml("key: [").is_err());
+    }
+
+    #[test]
+    fn reads_explicit_boolean_flag() {
+        assert_eq!(
+            read_top_level_bool("show_icon: false\n", "show_icon"),
+            Some(false)
+        );
+        assert_eq!(read_top_level_bool("{}\n", "show_icon"), None);
+    }
+
+    #[test]
+    fn inserts_boolean_flag_into_empty_mapping() {
+        assert_eq!(
+            set_top_level_bool("{}\n", "show_icon", false),
+            "show_icon: false\n"
+        );
+    }
+
+    #[test]
+    fn updates_boolean_without_reformatting_other_yaml() {
+        let source = "# comment\nshow_icon: true  # tray\nbackend: auto\n";
+        let updated = set_top_level_bool(source, "show_icon", false);
+        assert_eq!(
+            updated,
+            "# comment\nshow_icon: false  # tray\nbackend: auto\n"
+        );
     }
 }
