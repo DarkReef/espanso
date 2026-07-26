@@ -250,12 +250,12 @@ mod tests {
         let script = dir.path().join("calculator.rhai");
         fs::write(
             &script,
-            r#"
+            r"
                 fn calculate(input) {
                     let age = parse_int(input.age);
                     `Age next year: ${age + 1}`
                 }
-            "#,
+            ",
         )
         .expect("test script should be written");
 
@@ -282,11 +282,11 @@ mod tests {
         let script = dir.path().join("calculator.rhai");
         fs::write(
             &script,
-            r#"
+            r"
                 fn calculate(input) {
                     #{ score: parse_int(input.age) + 1, text: `Age: ${input.age}` }
                 }
-            "#,
+            ",
         )
         .expect("test script should be written");
 
