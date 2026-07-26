@@ -71,7 +71,7 @@ jobs:
             --no-default-features \
             --features vendored-tls
       - name: Clippy
-        run: cargo clippy --all-targets --features=modulo,vendored-tls -- --deny warnings
+        run: cargo clippy --quiet --message-format=short --all-targets --features=modulo,vendored-tls -- --deny warnings
       - uses: cachix/install-nix-action@v31
       - name: nix fmt
         run: nix fmt -- --check **/*.nix
@@ -119,7 +119,7 @@ jobs:
             --no-default-features \
             --features vendored-tls,wayland
       - name: Clippy
-        run: cargo clippy --features=modulo,vendored-tls,wayland -- --deny warnings
+        run: cargo clippy --quiet --message-format=short --features=modulo,vendored-tls,wayland -- --deny warnings
       # leaving this nix because is quite fast. macOS in the other hand takes
       # an hour to complete
       - uses: cachix/install-nix-action@v31
@@ -148,8 +148,8 @@ jobs:
         run: cargo test --workspace
       - name: Clippy
         run: |
-          cargo clippy --target=aarch64-apple-darwin -- --deny warnings
-          cargo clippy --target=x86_64-apple-darwin -- --deny warnings
+          cargo clippy --quiet --message-format=short --target=aarch64-apple-darwin -- --deny warnings
+          cargo clippy --quiet --message-format=short --target=x86_64-apple-darwin -- --deny warnings
 
   windows:
     runs-on: windows-latest
@@ -168,4 +168,4 @@ jobs:
         run: |
           cargo build
       - name: Clippy
-        run: cargo clippy -- --deny warnings
+        run: cargo clippy --quiet --message-format=short -- --deny warnings
