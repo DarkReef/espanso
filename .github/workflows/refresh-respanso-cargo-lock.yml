@@ -1,0 +1,40 @@
+name: Refresh rEspanso Cargo lock
+
+on:
+  pull_request:
+    branches:
+      - dev
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-respanso-cargo-lock
+  cancel-in-progress: false
+
+jobs:
+  refresh-lock:
+    if: github.head_ref == 'rEspanso-feature'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: rEspanso-feature
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve embedded Rhai dependency
+        run: cargo check -p espanso-render
+      - name: Commit Cargo.lock
+        shell: bash
+        run: |
+          git restore .github/workflows/refresh-respanso-cargo-lock.yml
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock is already current"
+            exit 0
+          fi
+          git config user.name "rEspanso Dependency Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add Cargo.lock
+          git commit -m "fix: lock embedded Rhai runtime dependencies"
+          git push origin HEAD:rEspanso-feature
