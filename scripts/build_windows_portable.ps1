@@ -1,39 +1,28 @@
 #!/usr/bin/env pwsh
 
-# Stop on any error
 $ErrorActionPreference = "Stop"
-
-# Enable verbose output
-# Set-PSDebug -Strict -Trace 1
 
 $TARGET_DIR = "target/windows/portable"
 $RESOURCE_DIR = "target/windows/resources"
 
-# Check if the resources were previously built
 if (-not (Test-Path $RESOURCE_DIR)) {
-    Write-Error "You need to build the windows resources first.`nPlease run scripts/build_windows_resources.ps1"
+    Write-Error "Сначала соберите ресурсы Windows: scripts/build_windows_resources.ps1"
     exit 1
 }
 
 function Main {
-    # Clean the target directory
     if (Test-Path $TARGET_DIR) {
         Remove-Item $TARGET_DIR -Recurse -Force
     }
 
-    # Remove the portable folder if found
     if (Test-Path "target/windows/espanso-portable") {
         Remove-Item "target/windows/espanso-portable" -Recurse -Force
     }
 
-    # Copy the resources directory, including espanso-editor.exe
     Copy-Item -Path $RESOURCE_DIR -Destination $TARGET_DIR -Recurse -Force
 
-    # Create the launcher scripts
     $launcherContent = 'start espansod.exe launcher'
     $launcherContent | Out-File "$TARGET_DIR/START_ESPANSO.bat" -Encoding ASCII
-    $editorLauncher = '@"%~dp0espanso-editor.exe" --config-dir "%~dp0portable\config"'
-    $editorLauncher | Out-File "$TARGET_DIR/OPEN_MATCH_STUDIO.cmd" -Encoding ASCII
 
     $portableConfig = "$TARGET_DIR/portable/config"
     New-Item -Path "$portableConfig/match" -ItemType Directory -Force | Out-Null
@@ -43,46 +32,40 @@ function Main {
     if (-not (Test-Path $baseMatchFile)) {
         @(
             'matches:',
-            '  - label: "Portable configuration initialized"',
+            '  - label: "Portable-конфигурация готова"',
             '    trigger: ":respanso_example"',
-            '    replace: "rEspanso Match Studio is ready"',
+            '    replace: "rEspanso Match Studio готов к работе"',
             '    disabled: true'
         ) | Set-Content -Path $baseMatchFile -Encoding UTF8
     }
 
     $readmeContent = @"
-Welcome to Espanso (Portable edition)!
+rEspanso Portable
 
-To start espanso, double click "START_ESPANSO.bat".
-To open rEspanso Match Studio, double click "OPEN_MATCH_STUDIO.cmd".
+Для запуска rEspanso дважды щёлкните START_ESPANSO.bat.
+Для открытия редактора правил дважды щёлкните espanso-editor.exe.
 
-The portable configuration is stored in:
+Редактор запускается напрямую: отдельный CMD-файл ему не требуется.
+Он автоматически использует конфигурацию:
   portable\config
 
-Match Studio is explicitly bound to that directory and loads YAML files from:
+YAML-файлы правил находятся в:
   portable\config\match
 
-A starter portable\config\match\base.yml is included so rules can be created immediately.
+Начальный файл portable\config\match\base.yml уже включён, поэтому новое правило
+можно создать сразу после первого запуска редактора.
 
-For more information, please visit the official documentation:
-https://espanso.org/docs/
+Не удаляйте файлы и папки из комплекта: это может нарушить работу rEspanso.
 
-IMPORTANT: Don't delete any file or directory, otherwise espanso won't work.
-
-FOR ADVANCED USERS:
-
-Espanso also offers a rich CLI interface. To start it from the terminal, cd into the
-current directory and run "espanso start". You can also run "espanso --help" for more information.
-
-The directory contains "espansod.exe", "espanso-editor.exe" and an "espanso.cmd" file.
-You should generally use the provided launcher scripts or the "espanso.cmd" wrapper.
+Для работы через терминал используйте espanso.cmd. Он необходим только как
+совместимая CLI-обёртка и не участвует в запуске Match Studio.
 "@
     $readmeContent | Out-File "$TARGET_DIR/README.txt" -Encoding UTF8
 
     Rename-Item -Path $TARGET_DIR -NewName espanso-portable
     Compress-Archive target/windows/espanso-portable target/windows/Espanso-Win-Portable-x86_64.zip -Force
 
-    Write-Output "Espanso Portable created!"
+    Write-Output "Espanso Portable создан"
 }
 
 Main @PSBoundParameters
