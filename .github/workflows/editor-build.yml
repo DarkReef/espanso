@@ -1,0 +1,138 @@
+name: Match Studio Build
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "espanso-editor/**"
+      - "espanso/src/cli/edit.rs"
+      - "espanso/src/main.rs"
+      - "scripts/**"
+      - ".github/workflows/editor-build.yml"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  editor-quality:
+    name: editor-quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+      - name: Install Linux GUI dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libx11-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libgl1-mesa-dev
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Check
+        run: cargo check -p espanso-editor
+      - name: Test
+        run: cargo test -p espanso-editor
+      - name: Clippy
+        run: cargo clippy -p espanso-editor --all-targets -- --deny warnings
+
+  windows-release:
+    name: windows-release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@main
+      - name: Build release binaries
+        shell: pwsh
+        run: |
+          cargo build -p espanso --release
+          cargo build -p espanso-editor --release
+      - name: Verify CLI launch contract
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "target/release/espanso.exe")) { throw "espanso.exe was not built" }
+          if (-not (Test-Path "target/release/espanso-editor.exe")) { throw "espanso-editor.exe was not built" }
+          target/release/espanso.exe edit --help | Select-String -- "--gui"
+      - name: Assemble portable Match Studio package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "dist/respanso-match-studio-windows-x86_64" | Out-Null
+          Copy-Item "target/release/espanso.exe" "dist/respanso-match-studio-windows-x86_64/espansod.exe"
+          Copy-Item "target/release/espanso-editor.exe" "dist/respanso-match-studio-windows-x86_64/espanso-editor.exe"
+          Set-Content -Path "dist/respanso-match-studio-windows-x86_64/OPEN_MATCH_STUDIO.cmd" -Encoding ASCII -Value '@"%~dp0espansod.exe" edit --gui'
+          Set-Content -Path "dist/respanso-match-studio-windows-x86_64/README.txt" -Encoding UTF8 -Value @'
+          rEspanso Match Studio
+
+          Run OPEN_MATCH_STUDIO.cmd or execute:
+            espansod.exe edit --gui
+
+          The editor resolves the active rEspanso configuration directory automatically.
+          '@
+          Compress-Archive -Path "dist/respanso-match-studio-windows-x86_64" -DestinationPath "dist/respanso-match-studio-windows-x86_64.zip" -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: respanso-match-studio-windows-x86_64
+          path: dist/respanso-match-studio-windows-x86_64.zip
+          if-no-files-found: error
+
+  linux-release:
+    name: linux-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+      - name: Install Linux GUI dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libx11-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libgl1-mesa-dev
+      - name: Build release binaries
+        run: |
+          cargo build -p espanso --release
+          cargo build -p espanso-editor --release
+      - name: Assemble archive
+        run: |
+          mkdir -p dist/respanso-match-studio-linux-x86_64
+          cp target/release/espanso dist/respanso-match-studio-linux-x86_64/
+          cp target/release/espanso-editor dist/respanso-match-studio-linux-x86_64/
+          cat > dist/respanso-match-studio-linux-x86_64/open-match-studio.sh <<'SH'
+          #!/usr/bin/env sh
+          exec "$(dirname "$0")/espanso" edit --gui
+          SH
+          chmod +x dist/respanso-match-studio-linux-x86_64/open-match-studio.sh
+          tar -C dist -czf dist/respanso-match-studio-linux-x86_64.tar.gz respanso-match-studio-linux-x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: respanso-match-studio-linux-x86_64
+          path: dist/respanso-match-studio-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  macos-release:
+    name: macos-release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@main
+      - name: Build native release binaries
+        run: |
+          cargo build -p espanso --release
+          cargo build -p espanso-editor --release
+      - name: Assemble archive
+        run: |
+          mkdir -p dist/respanso-match-studio-macos
+          cp target/release/espanso dist/respanso-match-studio-macos/
+          cp target/release/espanso-editor dist/respanso-match-studio-macos/
+          cat > dist/respanso-match-studio-macos/open-match-studio.command <<'SH'
+          #!/usr/bin/env sh
+          exec "$(dirname "$0")/espanso" edit --gui
+          SH
+          chmod +x dist/respanso-match-studio-macos/open-match-studio.command
+          ditto -c -k --sequesterRsrc --keepParent dist/respanso-match-studio-macos dist/respanso-match-studio-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: respanso-match-studio-macos
+          path: dist/respanso-match-studio-macos.zip
+          if-no-files-found: error
