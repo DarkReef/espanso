@@ -30,7 +30,7 @@ use crate::event::{
 };
 
 const DIALOG_DIRECTIVE: &str = "@dialog";
-const DEFAULT_DIALOG_TITLE: &str = "rrEspanso";
+const DEFAULT_DIALOG_TITLE: &str = "rEspanso";
 
 pub trait MatchInfoProvider {
     fn get_force_mode(&self, match_id: i32) -> Option<TextInjectMode>;
@@ -181,15 +181,13 @@ fn parse_dialog_directive(rendered: &str) -> Option<DialogDirective> {
 
     let title = if suffix.is_empty() {
         DEFAULT_DIALOG_TITLE
-    } else if let Some(title) = suffix.strip_prefix(':') {
-        let title = title.trim();
+    } else {
+        let title = suffix.strip_prefix(':')?.trim();
         if title.is_empty() {
             DEFAULT_DIALOG_TITLE
         } else {
             title
         }
-    } else {
-        return None;
     };
 
     Some(DialogDirective {
