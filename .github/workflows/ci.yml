@@ -3,9 +3,6 @@ name: CI
 on:
   pull_request:
 
-permissions:
-  contents: write
-
 env:
   CARGO_TERM_COLOR: always
 
@@ -14,26 +11,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  refresh-windows-lock:
-    if: github.head_ref == 'integrate-studio-portable'
+  inspect-cargo-update:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@main
+      - name: Capture Cargo update result
+        run: |
+          set +e
+          cargo update -p tauri-winrt-notification > cargo-update.log 2>&1
+          status=$?
+          echo "exit_status=$status" >> cargo-update.log
+          cat cargo-update.log
+          exit 0
+      - uses: actions/upload-artifact@v4
         with:
-          ref: integrate-studio-portable
-          fetch-depth: 0
-      - name: Resolve updated Windows notification bindings
-        run: |
-          cargo update -p tauri-winrt-notification
-          cargo tree --target x86_64-pc-windows-msvc -i tauri-winrt-notification
-      - name: Commit Cargo.lock
-        run: |
-          git config user.name "rEspanso Dependency Bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add Cargo.lock
-          if git diff --cached --quiet; then
-            echo "Cargo.lock is already aligned"
-            exit 0
-          fi
-          git commit -m "fix: align Windows notification dependencies"
-          git push origin HEAD:integrate-studio-portable
+          name: respanso-cargo-update-diagnostic
+          path: cargo-update.log
+          if-no-files-found: error
