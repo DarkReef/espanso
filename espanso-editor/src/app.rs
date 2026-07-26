@@ -1,6 +1,10 @@
-use crate::workspace::{
-    DiagnosticLevel, MatchKind, MatchWorkspace, PlaygroundResult, RegexBuilderSpec,
-    RegexExampleResult, RuleDraft, RuleId,
+use crate::{
+    runtime::RuntimeMonitor,
+    settings::SettingsEditor,
+    workspace::{
+        DiagnosticLevel, MatchKind, MatchWorkspace, PlaygroundResult, RegexBuilderSpec,
+        RegexExampleResult, RuleDraft, RuleId,
+    },
 };
 use eframe::egui;
 use std::path::{Path, PathBuf};
@@ -23,6 +27,12 @@ pub fn run(config_root: PathBuf) -> eframe::Result {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MainTab {
+    Rules,
+    Settings,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EditorMode {
     Structured,
     Raw,
@@ -32,6 +42,9 @@ pub struct MatchStudioApp {
     config_root: PathBuf,
     workspace: Option<MatchWorkspace>,
     load_error: Option<String>,
+    active_tab: MainTab,
+    runtime: RuntimeMonitor,
+    settings: SettingsEditor,
     filter: String,
     focus_filter: bool,
     file_filter: Option<PathBuf>,
@@ -59,10 +72,14 @@ impl MatchStudioApp {
             Ok(workspace) => (Some(workspace), None),
             Err(error) => (None, Some(ru_message(&error.to_string()))),
         };
+        let settings = SettingsEditor::load(&config_root);
         Self {
             config_root,
             workspace,
             load_error,
+            active_tab: MainTab::Rules,
+            runtime: RuntimeMonitor::new(),
+            settings,
             filter: String::new(),
             focus_filter: false,
             file_filter: None,
@@ -111,6 +128,27 @@ impl MatchStudioApp {
             self.confirm_reload = true;
         } else {
             self.reload();
+        }
+    }
+
+    fn save_settings(&mut self) {
+        match self.settings.save() {
+            Ok(()) => {
+                "Настройки rEspanso сохранены. Перезагрузите конфигурацию или перезапустите rEspanso"
+                    .clone_into(&mut self.status);
+            }
+            Err(error) => self.status = error,
+        }
+    }
+
+    fn reload_settings(&mut self) {
+        if self.settings.dirty() {
+            "Настройки не обновлены: сначала сохраните изменения".clone_into(&mut self.status);
+            return;
+        }
+        match self.settings.reload_selected() {
+            Ok(()) => "Настройки перечитаны с диска".clone_into(&mut self.status),
+            Err(error) => self.status = error,
         }
     }
 
@@ -313,6 +351,27 @@ impl MatchStudioApp {
     }
 
     fn handle_shortcuts(&mut self, context: &egui::Context) {
+        if self.active_tab == MainTab::Settings {
+            let (save, reload, help) = context.input(|input| {
+                let primary = input.modifiers.ctrl || input.modifiers.command;
+                (
+                    primary && input.key_pressed(egui::Key::S),
+                    primary && input.key_pressed(egui::Key::R),
+                    input.key_pressed(egui::Key::F1),
+                )
+            });
+            if save {
+                self.save_settings();
+            }
+            if reload {
+                self.reload_settings();
+            }
+            if help {
+                self.show_shortcuts = true;
+            }
+            return;
+        }
+
         let (save, new_rule, duplicate, delete, reload, search, apply, diagnostics, help) = context
             .input(|input| {
                 let primary = input.modifiers.ctrl || input.modifiers.command;
@@ -363,57 +422,119 @@ impl MatchStudioApp {
             ui.horizontal_wrapped(|ui| {
                 ui.heading(APP_TITLE);
                 ui.separator();
-                if ui
-                    .button("Новое правило")
-                    .on_hover_text("Ctrl+N. Добавляет правило в выбранный YAML-файл")
-                    .clicked()
-                {
-                    self.create_rule();
-                }
-                if ui
-                    .button("Сохранить всё")
-                    .on_hover_text("Ctrl+S. Записывает изменения и создаёт резервные копии")
-                    .clicked()
-                {
-                    self.save_all();
-                }
-                if ui
-                    .button("Обновить")
-                    .on_hover_text("Ctrl+R. Перечитывает YAML-файлы с диска")
-                    .clicked()
-                {
-                    self.request_reload();
-                }
-                let has_selection = self.selected.is_some();
-                if ui
-                    .add_enabled(has_selection, egui::Button::new("Дублировать"))
-                    .on_hover_text("Ctrl+D")
-                    .clicked()
-                {
-                    self.duplicate_selected();
-                }
-                if ui
-                    .add_enabled(has_selection, egui::Button::new("Удалить"))
-                    .on_hover_text("Ctrl+Shift+D")
-                    .clicked()
-                {
-                    self.confirm_delete = true;
-                }
+
+                let (runtime_color, runtime_text) = if self.runtime.running() {
+                    (
+                        egui::Color32::from_rgb(40, 160, 90),
+                        format!("rEspanso запущен · {} проц.", self.runtime.process_ids().len()),
+                    )
+                } else {
+                    (
+                        egui::Color32::from_rgb(190, 70, 70),
+                        "rEspanso не запущен".to_owned(),
+                    )
+                };
+                ui.colored_label(runtime_color, runtime_text).on_hover_text(format!(
+                    "Проверяется каждую секунду. Последнее изменение состояния: {} сек. назад. PID: {}",
+                    self.runtime.seconds_since_change(),
+                    self.runtime
+                        .process_ids()
+                        .iter()
+                        .map(u32::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+
                 ui.separator();
-                ui.checkbox(&mut self.show_diagnostics, "Проверка")
-                    .on_hover_text("Ctrl+L. Ошибки YAML, RegExp, дубликаты и проблемы импортов");
+                ui.selectable_value(&mut self.active_tab, MainTab::Rules, "Правила");
+                ui.selectable_value(
+                    &mut self.active_tab,
+                    MainTab::Settings,
+                    "Настройки rEspanso",
+                );
+                ui.separator();
+
+                match self.active_tab {
+                    MainTab::Rules => {
+                        if ui
+                            .button("Новое правило")
+                            .on_hover_text("Ctrl+N. Добавляет правило в выбранный YAML-файл")
+                            .clicked()
+                        {
+                            self.create_rule();
+                        }
+                        if ui
+                            .button("Сохранить всё")
+                            .on_hover_text(
+                                "Ctrl+S. Записывает изменения и создаёт резервные копии",
+                            )
+                            .clicked()
+                        {
+                            self.save_all();
+                        }
+                        if ui
+                            .button("Обновить")
+                            .on_hover_text("Ctrl+R. Перечитывает YAML-файлы с диска")
+                            .clicked()
+                        {
+                            self.request_reload();
+                        }
+                        let has_selection = self.selected.is_some();
+                        if ui
+                            .add_enabled(has_selection, egui::Button::new("Дублировать"))
+                            .on_hover_text("Ctrl+D")
+                            .clicked()
+                        {
+                            self.duplicate_selected();
+                        }
+                        if ui
+                            .add_enabled(has_selection, egui::Button::new("Удалить"))
+                            .on_hover_text("Ctrl+Shift+D")
+                            .clicked()
+                        {
+                            self.confirm_delete = true;
+                        }
+                        ui.separator();
+                        ui.checkbox(&mut self.show_diagnostics, "Проверка").on_hover_text(
+                            "Ctrl+L. Ошибки YAML, RegExp, дубликаты и проблемы импортов",
+                        );
+                        if let Some(workspace) = &self.workspace {
+                            let dirty = workspace.dirty_files().len();
+                            if dirty > 0 {
+                                ui.separator();
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(210, 135, 25),
+                                    format!("Не сохранено файлов: {dirty}"),
+                                );
+                            }
+                        }
+                    }
+                    MainTab::Settings => {
+                        if ui
+                            .button("Сохранить настройки")
+                            .on_hover_text("Ctrl+S")
+                            .clicked()
+                        {
+                            self.save_settings();
+                        }
+                        if ui
+                            .button("Обновить настройки")
+                            .on_hover_text("Ctrl+R")
+                            .clicked()
+                        {
+                            self.reload_settings();
+                        }
+                        if self.settings.dirty() {
+                            ui.colored_label(
+                                egui::Color32::from_rgb(210, 135, 25),
+                                "Настройки не сохранены",
+                            );
+                        }
+                    }
+                }
+
                 if ui.button("Горячие клавиши").on_hover_text("F1").clicked() {
                     self.show_shortcuts = true;
-                }
-                if let Some(workspace) = &self.workspace {
-                    let dirty = workspace.dirty_files().len();
-                    if dirty > 0 {
-                        ui.separator();
-                        ui.colored_label(
-                            egui::Color32::from_rgb(210, 135, 25),
-                            format!("Не сохранено файлов: {dirty}"),
-                        );
-                    }
                 }
             });
         });
@@ -956,13 +1077,13 @@ impl MatchStudioApp {
                         .num_columns(2)
                         .striped(true)
                         .show(ui, |ui| {
-                            shortcut_row(ui, "Ctrl+S", "Сохранить все изменения");
+                            shortcut_row(ui, "Ctrl+S", "Сохранить изменения активной вкладки");
                             shortcut_row(ui, "Ctrl+N", "Создать правило");
                             shortcut_row(ui, "Ctrl+Enter", "Применить изменения правила");
-                            shortcut_row(ui, "Ctrl+F", "Перейти к поиску");
+                            shortcut_row(ui, "Ctrl+F", "Перейти к поиску правил");
                             shortcut_row(ui, "Ctrl+D", "Дублировать правило");
                             shortcut_row(ui, "Ctrl+Shift+D", "Удалить правило");
-                            shortcut_row(ui, "Ctrl+R", "Обновить файлы с диска");
+                            shortcut_row(ui, "Ctrl+R", "Обновить активную вкладку с диска");
                             shortcut_row(ui, "Ctrl+L", "Показать или скрыть проверку");
                             shortcut_row(ui, "F1", "Открыть эту справку");
                         });
@@ -1010,8 +1131,7 @@ impl MatchStudioApp {
                 .show(context, |ui| {
                     ui.label("Обновление с диска отменит все несохранённые изменения.");
                     ui.horizontal(|ui| {
-                        if ui.button("Отменить изменения и обновить").clicked()
-                        {
+                        if ui.button("Отменить изменения и обновить").clicked() {
                             reload = true;
                         }
                         if ui.button("Вернуться").clicked() {
@@ -1032,10 +1152,10 @@ impl MatchStudioApp {
 
 impl eframe::App for MatchStudioApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.runtime.update(ui.ctx());
         self.handle_shortcuts(ui.ctx());
         self.top_bar(ui);
-        self.rules_panel(ui);
-        self.diagnostics_panel(ui);
+
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.label(self.status.as_str());
@@ -1046,7 +1166,18 @@ impl eframe::App for MatchStudioApp {
                 );
             });
         });
-        self.central_editor(ui);
+
+        match self.active_tab {
+            MainTab::Rules => {
+                self.rules_panel(ui);
+                self.diagnostics_panel(ui);
+                self.central_editor(ui);
+            }
+            MainTab::Settings => {
+                let config_root = self.config_root.clone();
+                self.settings.ui(ui, &config_root, &mut self.status);
+            }
+        }
         self.dialogs(ui.ctx());
     }
 }
