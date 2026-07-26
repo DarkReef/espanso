@@ -7,7 +7,7 @@ fn point(value) {
 }
 
 fn calculate(input) {
-    let age = parse_int(input.age.trim());
+    let age = parse_int(input.age);
     if age < 18 || age > 120 {
         return `HAS-BLED не рассчитан.\n\nПроверьте возраст пациента.`;
     }
