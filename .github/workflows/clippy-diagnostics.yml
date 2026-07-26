@@ -4,13 +4,16 @@ on:
   push:
     branches:
       - dev-in
+  pull_request:
+    branches:
+      - dev
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: clippy-diagnostics-${{ github.ref }}
+  group: clippy-diagnostics-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
