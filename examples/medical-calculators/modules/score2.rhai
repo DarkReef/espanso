@@ -8,7 +8,9 @@ fn yes(value) {
 }
 
 fn parse_number(value) {
-    parse_float(value.trim().replace(",", "."))
+    let normalized = value;
+    normalized.replace(",", ".");
+    parse_float(normalized)
 }
 
 fn risk_category(age, risk_percent) {
@@ -30,7 +32,7 @@ fn risk_category(age, risk_percent) {
 }
 
 fn calculate(input) {
-    let age = parse_int(input.age.trim());
+    let age = parse_int(input.age);
     let age_value = parse_number(input.age);
     let sbp = parse_number(input.sbp);
     let total_cholesterol = parse_number(input.total_cholesterol);
@@ -76,15 +78,15 @@ fn calculate(input) {
     let scale2 = 0.0;
 
     if male {
-        lp = 0.3742 * cage
-            + 0.6012 * smoker
-            + 0.2777 * csbp
-            + 0.1458 * ctchol
-            - 0.2698 * chdl
-            - 0.0755 * cage * smoker
-            - 0.0255 * cage * csbp
-            - 0.0281 * cage * ctchol
-            + 0.0426 * cage * chdl;
+        lp = 0.3742 * cage;
+        lp += 0.6012 * smoker;
+        lp += 0.2777 * csbp;
+        lp += 0.1458 * ctchol;
+        lp -= 0.2698 * chdl;
+        lp -= 0.0755 * cage * smoker;
+        lp -= 0.0255 * cage * csbp;
+        lp -= 0.0281 * cage * ctchol;
+        lp += 0.0426 * cage * chdl;
         baseline_survival = 0.9605;
 
         if input.region == "Низкий риск" {
@@ -101,15 +103,15 @@ fn calculate(input) {
             scale2 = 0.8294;
         }
     } else {
-        lp = 0.4648 * cage
-            + 0.7744 * smoker
-            + 0.3131 * csbp
-            + 0.1002 * ctchol
-            - 0.2606 * chdl
-            - 0.1088 * cage * smoker
-            - 0.0277 * cage * csbp
-            - 0.0226 * cage * ctchol
-            + 0.0613 * cage * chdl;
+        lp = 0.4648 * cage;
+        lp += 0.7744 * smoker;
+        lp += 0.3131 * csbp;
+        lp += 0.1002 * ctchol;
+        lp -= 0.2606 * chdl;
+        lp -= 0.1088 * cage * smoker;
+        lp -= 0.0277 * cage * csbp;
+        lp -= 0.0226 * cage * ctchol;
+        lp += 0.0613 * cage * chdl;
         baseline_survival = 0.9776;
 
         if input.region == "Низкий риск" {
@@ -128,7 +130,10 @@ fn calculate(input) {
     }
 
     let uncalibrated = 1.0 - baseline_survival ** exp(lp);
-    let calibrated = 1.0 - exp(-exp(scale1 + scale2 * ln(-ln(1.0 - uncalibrated))));
+    let cumulative_hazard = -ln(1.0 - uncalibrated);
+    let log_cumulative_hazard = ln(cumulative_hazard);
+    let recalibrated_log_hazard = scale1 + scale2 * log_cumulative_hazard;
+    let calibrated = 1.0 - exp(-exp(recalibrated_log_hazard));
     let risk_percent = round(calibrated * 1000.0) / 10.0;
     let category = risk_category(age, risk_percent);
 
