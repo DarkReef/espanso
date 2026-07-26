@@ -18,13 +18,7 @@ pub fn run(config_root: PathBuf) -> eframe::Result {
     eframe::run_native(
         APP_TITLE,
         options,
-        Box::new(move |creation_context| {
-            let mut style = (*creation_context.egui_ctx.style()).clone();
-            style.spacing.item_spacing = egui::vec2(8.0, 8.0);
-            style.spacing.button_padding = egui::vec2(12.0, 6.0);
-            creation_context.egui_ctx.set_style(style);
-            Ok(Box::new(MatchStudioApp::new(config_root)))
-        }),
+        Box::new(move |_creation_context| Ok(Box::new(MatchStudioApp::new(config_root)))),
     )
 }
 
