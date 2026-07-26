@@ -142,9 +142,9 @@ jobs:
           $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
           $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
           $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
-          & "./scripts/build_windows_portable.ps1"
+          & "./scripts/build_windows_native_portable_with_studio.ps1"
 
-          $forbidden = Get-ChildItem "target/windows/respanso-portable-with-studio" -Recurse -File |
+          $forbidden = Get-ChildItem "target/windows/respanso-native-portable-with-studio" -Recurse -File |
             Where-Object { $_.Extension -in @(".bat", ".cmd") }
           if ($forbidden) {
             throw "Portable artifact contains BAT/CMD files: $($forbidden.FullName -join ', ')"
@@ -152,5 +152,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: respanso-native-portable-with-studio-windows-x86_64
-          path: target/windows/rEspanso-Win-Portable-with-Studio-x86_64.zip
+          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
           if-no-files-found: error
