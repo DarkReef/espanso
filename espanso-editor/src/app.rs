@@ -143,13 +143,13 @@ impl MatchStudioApp {
         };
         match workspace.save_all() {
             Ok(saved) if saved.is_empty() => {
-                "Нет изменений для сохранения".clone_into(&mut self.status)
+                "Нет изменений для сохранения".clone_into(&mut self.status);
             }
             Ok(saved) => {
-                self.status = format!("Сохранено файлов: {}. Резервные копии созданы", saved.len())
+                self.status = format!("Сохранено файлов: {}. Резервные копии созданы", saved.len());
             }
             Err(error) => {
-                self.status = format!("Сохранение остановлено: {}", ru_message(&error.to_string()))
+                self.status = format!("Сохранение остановлено: {}", ru_message(&error.to_string()));
             }
         }
     }
@@ -249,7 +249,7 @@ impl MatchStudioApp {
                 self.refresh_selected();
             }
             Err(error) => {
-                self.status = format!("YAML отклонён: {}", ru_message(&error.to_string()))
+                self.status = format!("YAML отклонён: {}", ru_message(&error.to_string()));
             }
         }
     }
@@ -768,7 +768,7 @@ impl MatchStudioApp {
                             format!("Ошибка RegExp: {error}"),
                         );
                     }
-                };
+                }
             });
 
         egui::CollapsingHeader::new("Проверка на примерах")
