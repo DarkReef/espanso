@@ -1,0 +1,78 @@
+name: Clippy diagnostics
+
+on:
+  push:
+    branches:
+      - dev-in
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clippy-diagnostics-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: clippy-diagnostics-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            build-essential \
+            git \
+            libdbus-1-dev \
+            libssl-dev \
+            libwxgtk3.*-dev \
+            libx11-dev \
+            libxkbcommon-dev \
+            libxtst-dev \
+            wl-clipboard
+
+      - name: Capture X11 clippy diagnostics
+        id: x11
+        shell: bash
+        run: |
+          set +e
+          cargo clippy --quiet --message-format=short --all-targets --features=modulo,vendored-tls -- --deny warnings > clippy-x11.log 2>&1
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Capture Wayland clippy diagnostics
+        id: wayland
+        shell: bash
+        run: |
+          set +e
+          cargo clippy --quiet --message-format=short --features=modulo,vendored-tls,wayland -- --deny warnings > clippy-wayland.log 2>&1
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: clippy-diagnostics-${{ github.sha }}
+          path: |
+            clippy-x11.log
+            clippy-wayland.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail when clippy failed
+        if: steps.x11.outputs.status != '0' || steps.wayland.outputs.status != '0'
+        run: exit 1
