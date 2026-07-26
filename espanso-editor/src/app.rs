@@ -1131,7 +1131,8 @@ impl MatchStudioApp {
                 .show(context, |ui| {
                     ui.label("Обновление с диска отменит все несохранённые изменения.");
                     ui.horizontal(|ui| {
-                        if ui.button("Отменить изменения и обновить").clicked() {
+                        if ui.button("Отменить изменения и обновить").clicked()
+                        {
                             reload = true;
                         }
                         if ui.button("Вернуться").clicked() {

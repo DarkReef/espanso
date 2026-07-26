@@ -243,8 +243,7 @@ fn collect_yaml_files(root: &Path) -> Vec<PathBuf> {
             path.extension()
                 .and_then(|extension| extension.to_str())
                 .is_some_and(|extension| {
-                    extension.eq_ignore_ascii_case("yml")
-                        || extension.eq_ignore_ascii_case("yaml")
+                    extension.eq_ignore_ascii_case("yml") || extension.eq_ignore_ascii_case("yaml")
                 })
         })
         .filter(|path| !path.to_string_lossy().ends_with(".respanso.bak"))

@@ -36,9 +36,7 @@ impl RuntimeMonitor {
             .system
             .processes()
             .iter()
-            .filter_map(|(pid, process)| {
-                is_respanso_process(process.name()).then(|| pid.as_u32())
-            })
+            .filter_map(|(pid, process)| is_respanso_process(process.name()).then(|| pid.as_u32()))
             .collect::<Vec<_>>();
         process_ids.sort_unstable();
 
