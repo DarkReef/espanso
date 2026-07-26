@@ -1,0 +1,40 @@
+name: Refresh Rhai lockfile
+
+on:
+  push:
+    branches:
+      - dev-in
+    paths:
+      - ".github/workflows/refresh-rhai-lockfile.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev-in
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve the new Rhai dependency into Cargo.lock
+        run: cargo metadata --format-version 1 --no-deps > /dev/null
+
+      - name: Commit the lockfile and remove this one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/refresh-rhai-lockfile.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock .github/workflows/refresh-rhai-lockfile.yml
+          git diff --cached --exit-code && {
+            echo "Cargo.lock did not change"
+            exit 1
+          }
+          git commit -m "build: refresh Cargo.lock for Rhai runtime"
+          git push origin HEAD:dev-in
