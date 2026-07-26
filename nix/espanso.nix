@@ -37,6 +37,7 @@ rustPlatform.buildRustPackage {
     fileset = lib.fileset.unions [
       ../espanso
       (lib.fileset.fromSource (lib.sources.sourceByRegex ../. [ "^espanso-.*" ]))
+      ../examples/medical-calculators
       ../scripts
       ../Cargo.lock
       ../Cargo.toml
