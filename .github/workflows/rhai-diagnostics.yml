@@ -3,7 +3,7 @@ name: Rhai diagnostics
 on:
   push:
     branches:
-      - dev-in
+      - rEspanso-feature
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
