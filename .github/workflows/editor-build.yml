@@ -20,6 +20,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@main
+      - uses: actions/cache@main
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-match-studio-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
       - name: Install Linux GUI dependencies
         run: |
           sudo apt-get update
@@ -43,10 +50,17 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@main
+      - uses: actions/cache@main
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-match-studio-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
       - name: Build release binaries
         shell: pwsh
         run: |
-          cargo build -p espanso --release
+          cargo build -p espanso --release --no-default-features --features modulo,native-tls
           cargo build -p espanso-editor --release
       - name: Verify CLI launch contract
         shell: pwsh
@@ -81,19 +95,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@main
-      - name: Install Linux GUI dependencies
+      - uses: actions/cache@main
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-match-studio-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
+      - name: Install Linux build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
+            git \
+            libdbus-1-dev \
+            libssl-dev \
+            libwxgtk3.*-dev \
             libx11-dev \
             libxkbcommon-dev \
+            libxtst-dev \
             libwayland-dev \
             libgl1-mesa-dev
       - name: Build release binaries
         run: |
-          cargo build -p espanso --release
+          cargo build -p espanso --release --no-default-features --features modulo,vendored-tls
           cargo build -p espanso-editor --release
+      - name: Verify CLI launch contract
+        run: |
+          test -x target/release/espanso
+          test -x target/release/espanso-editor
+          target/release/espanso edit --help | grep -- "--gui"
       - name: Assemble archive
         run: |
           mkdir -p dist/respanso-match-studio-linux-x86_64
@@ -116,10 +147,22 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@main
+      - uses: actions/cache@main
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-match-studio-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
       - name: Build native release binaries
         run: |
-          cargo build -p espanso --release
+          cargo build -p espanso --release --no-default-features --features modulo,native-tls
           cargo build -p espanso-editor --release
+      - name: Verify CLI launch contract
+        run: |
+          test -x target/release/espanso
+          test -x target/release/espanso-editor
+          target/release/espanso edit --help | grep -- "--gui"
       - name: Assemble archive
         run: |
           mkdir -p dist/respanso-match-studio-macos
