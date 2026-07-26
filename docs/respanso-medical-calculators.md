@@ -1,6 +1,6 @@
 # rEspanso medical calculator windows
 
-rEspanso should render calculator and questionnaire windows without embedding clinical formulas into the text-expander core.
+rEspanso renders calculator and questionnaire windows without embedding clinical formulas into the text-expander core. The editable calculation logic is interpreted by the Rhai runtime bundled inside `rEspanso.exe`.
 
 ## Architecture
 
@@ -9,9 +9,9 @@ trigger / selected missed trigger
         ↓
 Espanso form extension
         ↓
-external calculator module
+embedded Rhai module (.rhai)
         ↓
-stdout text result
+text or structured result
         ↓
 @dialog result window
 ```
@@ -20,11 +20,12 @@ The core is responsible only for:
 
 - opening the form;
 - collecting field values;
-- passing values to an external process;
+- passing values to the embedded interpreter;
+- enforcing execution limits and allowed script locations;
 - displaying the returned result;
 - preserving the ordinary Espanso trigger workflow.
 
-The external module is responsible for:
+The editable Rhai module is responsible for:
 
 - input validation;
 - the formula or decision table;
@@ -33,23 +34,29 @@ The external module is responsible for:
 - clinical disclaimers;
 - tests for boundary values.
 
-## Environment contract
+Rhai does not require Rust, Cargo, Visual Studio, Node.js, Python or PowerShell on the workstation. The interpreter is linked into `rEspanso.exe`; changing a `.rhai` file takes effect after the normal configuration reload and does not require recompilation.
 
-A form variable named `calculator_inputs` exposes values to scripts as:
+## Input contract
 
-```text
-ESPANSO_CALCULATOR_INPUTS_<FIELD_NAME>
+A form variable named `calculator_inputs` is passed to the Rhai function as a map:
+
+```rhai
+fn calculate(input) {
+    let age = parse_int(input.age);
+    let smoking = input.smoking == "Да";
+
+    // Formula belongs here, outside the rEspanso core.
+    `Возраст: ${age}; курение: ${smoking}`
+}
 ```
 
-For example:
+Form values currently arrive as strings. Numeric modules should validate and parse them explicitly with `parse_int` or `parse_float`.
 
-```text
-ESPANSO_CALCULATOR_INPUTS_AGE=64
-ESPANSO_CALCULATOR_INPUTS_SEX=Мужской
-ESPANSO_CALCULATOR_INPUTS_SMOKING=Да
-```
+A Rhai function may return:
 
-The external module prints the complete user-facing result to stdout. A non-zero exit code or stderr message is treated as a calculation failure.
+- a string — exposed as a normal single variable;
+- a map — exposed as subvariables such as `{{result.score}}` and `{{result.text}}`;
+- a number or boolean — converted to text.
 
 ## Folder layout
 
@@ -58,16 +65,15 @@ config/
 ├── match/
 │   └── medical-calculators.yml
 └── medical-calculators/
-    ├── run-calculator.ps1
     └── modules/
-        ├── findrisc.ps1
-        ├── has-bled.ps1
-        ├── score2.ps1
-        ├── cha2ds2-vasc.ps1
-        └── h2fpef.ps1
+        ├── findrisc.rhai
+        ├── has-bled.rhai
+        ├── score2.rhai
+        ├── cha2ds2-vasc.rhai
+        └── h2fpef.rhai
 ```
 
-The first repository example contains only `ui-demo.ps1`. It deliberately does not implement a clinical scale.
+Scripts are allowed only below the active config or packages directory. The embedded engine has no host-registered filesystem, network or process API. Dynamic `eval` and `import` are disabled, and execution is limited by operation count, call depth, expression depth, string size, array size and map size.
 
 ## Example match
 
@@ -93,18 +99,27 @@ matches:
               values: ["Нет", "Да"]
 
       - name: calculator_result
-        type: script
+        type: rhai
         depends_on: [calculator_inputs]
         params:
-          args:
-            - powershell.exe
-            - -NoProfile
-            - -ExecutionPolicy
-            - Bypass
-            - -File
-            - "%CONFIG%/medical-calculators/run-calculator.ps1"
-            - "ui-demo"
+          path: "%CONFIG%/medical-calculators/modules/ui-demo.rhai"
+          function: "calculate"
+          input: "calculator_inputs"
 ```
+
+Example module:
+
+```rhai
+fn calculate(input) {
+    let age = parse_int(input.age);
+    let factor_points = if input.factor == "Да" { 1 } else { 0 };
+    let demo_score = age / 10 + factor_points;
+
+    `Демонстрационный результат: ${demo_score}`
+}
+```
+
+This repository example deliberately does not implement a validated clinical scale.
 
 ## Planned clinical modules
 
@@ -116,13 +131,14 @@ Each scale should be delivered as an independently versioned module:
 - CHA2DS2-VASc;
 - H2FPEF.
 
-SCORE2 should not be reduced to a simplistic point sum: its module may call an HTTP service or a compiled local library while keeping the same form-to-module contract.
+SCORE2 should not be reduced to an improvised point sum. Its module needs validated coefficients/tables for the intended population, explicit applicability limits and reference cases.
 
 Before a clinical module is distributed, it should include:
 
 - a cited authoritative source and version date;
-- unit tests with published examples or validated reference cases;
+- unit tests with published examples or independently validated reference cases;
 - explicit input units;
 - age and population applicability limits;
 - a statement that the result supports, but does not replace, clinical judgment;
-- no patient identifiers in debug logs.
+- no patient identifiers in debug logs;
+- a module version and checksum.
