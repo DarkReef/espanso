@@ -148,7 +148,9 @@ impl MatchStudioApp {
             return;
         };
         match workspace.save_all() {
-            Ok(saved) if saved.is_empty() => "Нет изменений для сохранения".clone_into(&mut self.status),
+            Ok(saved) if saved.is_empty() => {
+                "Нет изменений для сохранения".clone_into(&mut self.status)
+            }
             Ok(saved) => {
                 self.status = format!("Сохранено файлов: {}. Резервные копии созданы", saved.len())
             }
@@ -304,8 +306,7 @@ impl MatchStudioApp {
                 self.draft.regex = pattern;
                 self.builder_error = None;
                 self.refresh_regex_examples();
-                "Регулярное выражение собрано. Проверьте примеры ниже"
-                    .clone_into(&mut self.status);
+                "Регулярное выражение собрано. Проверьте примеры ниже".clone_into(&mut self.status);
             }
             Err(error) => self.builder_error = Some(ru_message(&error)),
         }
@@ -318,8 +319,8 @@ impl MatchStudioApp {
     }
 
     fn handle_shortcuts(&mut self, context: &egui::Context) {
-        let (save, new_rule, duplicate, delete, reload, search, apply, diagnostics, help) =
-            context.input(|input| {
+        let (save, new_rule, duplicate, delete, reload, search, apply, diagnostics, help) = context
+            .input(|input| {
                 let primary = input.modifiers.ctrl || input.modifiers.command;
                 (
                     primary && input.key_pressed(egui::Key::S),
@@ -405,9 +406,8 @@ impl MatchStudioApp {
                     self.confirm_delete = true;
                 }
                 ui.separator();
-                ui.checkbox(&mut self.show_diagnostics, "Проверка").on_hover_text(
-                    "Ctrl+L. Ошибки YAML, RegExp, дубликаты и проблемы импортов",
-                );
+                ui.checkbox(&mut self.show_diagnostics, "Проверка")
+                    .on_hover_text("Ctrl+L. Ошибки YAML, RegExp, дубликаты и проблемы импортов");
                 if ui.button("Горячие клавиши").on_hover_text("F1").clicked() {
                     self.show_shortcuts = true;
                 }
@@ -530,7 +530,10 @@ impl MatchStudioApp {
             if let Some(error) = &self.load_error {
                 ui.heading("Не удалось открыть рабочую папку");
                 ui.colored_label(ui.visuals().error_fg_color, error.as_str());
-                ui.label(format!("Корень конфигурации: {}", self.config_root.display()));
+                ui.label(format!(
+                    "Корень конфигурации: {}",
+                    self.config_root.display()
+                ));
                 ui.separator();
                 ui.label("Ожидаемая папка правил: portable\\config\\match");
                 return;
@@ -550,11 +553,7 @@ impl MatchStudioApp {
             }
 
             ui.horizontal_wrapped(|ui| {
-                ui.selectable_value(
-                    &mut self.mode,
-                    EditorMode::Structured,
-                    "Удобный редактор",
-                );
+                ui.selectable_value(&mut self.mode, EditorMode::Structured, "Удобный редактор");
                 ui.selectable_value(&mut self.mode, EditorMode::Raw, "Исходный YAML");
                 ui.separator();
                 if let Some(id) = &self.selected {
@@ -1017,7 +1016,8 @@ impl MatchStudioApp {
                 .show(context, |ui| {
                     ui.label("Обновление с диска отменит все несохранённые изменения.");
                     ui.horizontal(|ui| {
-                        if ui.button("Отменить изменения и обновить").clicked() {
+                        if ui.button("Отменить изменения и обновить").clicked()
+                        {
                             reload = true;
                         }
                         if ui.button("Вернуться").clicked() {
