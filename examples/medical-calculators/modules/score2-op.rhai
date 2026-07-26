@@ -8,7 +8,9 @@ fn yes(value) {
 }
 
 fn parse_number(value) {
-    parse_float(value.trim().replace(",", "."))
+    let normalized = value;
+    normalized.replace(",", ".");
+    parse_float(normalized)
 }
 
 fn risk_category(risk_percent) {
@@ -22,7 +24,7 @@ fn risk_category(risk_percent) {
 }
 
 fn calculate(input) {
-    let age = parse_int(input.age.trim());
+    let age = parse_int(input.age);
     let age_value = parse_number(input.age);
     let sbp = parse_number(input.sbp);
     let total_cholesterol = parse_number(input.total_cholesterol);
@@ -61,17 +63,17 @@ fn calculate(input) {
     let scale2 = 0.0;
 
     if male {
-        lp = 0.0634 * ca
-            + 0.4245 * diabetes
-            + 0.3524 * smoker
-            + 0.0094 * centered_sbp
-            + 0.0850 * centered_total
-            - 0.3564 * centered_hdl
-            - 0.0174 * ca * diabetes
-            - 0.0247 * ca * smoker
-            - 0.0005 * ca * centered_sbp
-            + 0.0073 * ca * centered_total
-            + 0.0091 * ca * centered_hdl;
+        lp = 0.0634 * ca;
+        lp += 0.4245 * diabetes;
+        lp += 0.3524 * smoker;
+        lp += 0.0094 * centered_sbp;
+        lp += 0.0850 * centered_total;
+        lp -= 0.3564 * centered_hdl;
+        lp -= 0.0174 * ca * diabetes;
+        lp -= 0.0247 * ca * smoker;
+        lp -= 0.0005 * ca * centered_sbp;
+        lp += 0.0073 * ca * centered_total;
+        lp += 0.0091 * ca * centered_hdl;
         uncalibrated = 1.0 - 0.7576 ** exp(lp - 0.0929);
 
         if input.region == "Низкий риск" {
@@ -88,17 +90,17 @@ fn calculate(input) {
             scale2 = 0.70;
         }
     } else {
-        lp = 0.0789 * ca
-            + 0.6010 * diabetes
-            + 0.4921 * smoker
-            + 0.0102 * centered_sbp
-            + 0.0605 * centered_total
-            - 0.3040 * centered_hdl
-            - 0.0107 * ca * diabetes
-            - 0.0255 * ca * smoker
-            - 0.0004 * ca * centered_sbp
-            - 0.0009 * ca * centered_total
-            + 0.0154 * ca * centered_hdl;
+        lp = 0.0789 * ca;
+        lp += 0.6010 * diabetes;
+        lp += 0.4921 * smoker;
+        lp += 0.0102 * centered_sbp;
+        lp += 0.0605 * centered_total;
+        lp -= 0.3040 * centered_hdl;
+        lp -= 0.0107 * ca * diabetes;
+        lp -= 0.0255 * ca * smoker;
+        lp -= 0.0004 * ca * centered_sbp;
+        lp -= 0.0009 * ca * centered_total;
+        lp += 0.0154 * ca * centered_hdl;
         uncalibrated = 1.0 - 0.8082 ** exp(lp - 0.2290);
 
         if input.region == "Низкий риск" {
@@ -116,7 +118,10 @@ fn calculate(input) {
         }
     }
 
-    let calibrated = 1.0 - exp(-exp(scale1 + scale2 * ln(-ln(1.0 - uncalibrated))));
+    let cumulative_hazard = -ln(1.0 - uncalibrated);
+    let log_cumulative_hazard = ln(cumulative_hazard);
+    let recalibrated_log_hazard = scale1 + scale2 * log_cumulative_hazard;
+    let calibrated = 1.0 - exp(-exp(recalibrated_log_hazard));
     let risk_percent = round(calibrated * 1000.0) / 10.0;
     let category = risk_category(risk_percent);
     let diabetes_note = if diabetes > 0.0 {
