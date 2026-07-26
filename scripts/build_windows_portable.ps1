@@ -29,39 +29,52 @@ function Main {
     # Copy the resources directory, including espanso-editor.exe
     Copy-Item -Path $RESOURCE_DIR -Destination $TARGET_DIR -Recurse -Force
 
-    # Create the launcher script
+    # Create the launcher scripts
     $launcherContent = 'start espansod.exe launcher'
     $launcherContent | Out-File "$TARGET_DIR/START_ESPANSO.bat" -Encoding ASCII
+    $editorLauncher = '@"%~dp0espanso-editor.exe" --config-dir "%~dp0.espanso"'
+    $editorLauncher | Out-File "$TARGET_DIR/OPEN_MATCH_STUDIO.cmd" -Encoding ASCII
 
-    New-Item -Path "$TARGET_DIR/.espanso" -ItemType Directory -Force | Out-Null
+    New-Item -Path "$TARGET_DIR/.espanso/match" -ItemType Directory -Force | Out-Null
     New-Item -Path "$TARGET_DIR/.espanso-runtime" -ItemType Directory -Force | Out-Null
+
+    $baseMatchFile = "$TARGET_DIR/.espanso/match/base.yml"
+    if (-not (Test-Path $baseMatchFile)) {
+        @(
+            'matches:',
+            '  - label: "Portable configuration initialized"',
+            '    trigger: ":respanso_example"',
+            '    replace: "rEspanso Match Studio is ready"',
+            '    disabled: true'
+        ) | Set-Content -Path $baseMatchFile -Encoding UTF8
+    }
 
     $readmeContent = @"
 Welcome to Espanso (Portable edition)!
 
-To start espanso, you can double click on "START_ESPANSO.bat"
+To start espanso, double click "START_ESPANSO.bat".
+To open rEspanso Match Studio, double click "OPEN_MATCH_STUDIO.cmd".
 
-After the first run, you will see some files in the ".espanso" directory.
-This is where your snippets and configurations should be defined.
+The portable configuration is stored in:
+  .espanso
 
-To open rEspanso Match Studio, run "espanso edit gui" in a terminal from this directory,
-or start "espanso-editor.exe" directly.
+Match Studio is explicitly bound to that directory and loads YAML files from:
+  .espanso\match
+
+A starter .espanso\match\base.yml is included so rules can be created immediately.
 
 For more information, please visit the official documentation:
 https://espanso.org/docs/
 
 IMPORTANT: Don't delete any file or directory, otherwise espanso won't work.
 
-
 FOR ADVANCED USERS:
 
 Espanso also offers a rich CLI interface. To start it from the terminal, cd into the
 current directory and run "espanso start". You can also run "espanso --help" for more information.
 
-You might have noticed that the directory contains an "espansod.exe", an "espanso-editor.exe"
-and an "espanso.cmd" file. You should generally avoid running "espansod.exe" directly,
-and instead use the "espanso.cmd" wrapper (which can simply be run as "espanso" in the terminal).
-This is needed to correctly manage STD console handles on Windows.
+The directory contains "espansod.exe", "espanso-editor.exe" and an "espanso.cmd" file.
+You should generally use the provided launcher scripts or the "espanso.cmd" wrapper.
 "@
     $readmeContent | Out-File "$TARGET_DIR/README.txt" -Encoding UTF8
 
