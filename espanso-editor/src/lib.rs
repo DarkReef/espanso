@@ -1,4 +1,5 @@
 pub mod app;
+pub mod rhai_lab;
 #[allow(clippy::pedantic)]
 pub mod runtime;
 #[allow(clippy::pedantic)]
