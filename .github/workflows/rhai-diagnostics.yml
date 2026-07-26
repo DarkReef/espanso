@@ -9,6 +9,14 @@ on:
       - "Cargo.lock"
       - "espanso-render/**"
       - ".github/workflows/rhai-diagnostics.yml"
+  pull_request:
+    branches:
+      - dev
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "espanso-render/**"
+      - ".github/workflows/rhai-diagnostics.yml"
   workflow_dispatch:
 
 permissions:
