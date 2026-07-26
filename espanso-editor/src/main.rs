@@ -26,7 +26,7 @@ fn default_config_root() -> PathBuf {
 fn portable_config_root() -> Option<PathBuf> {
     let executable = std::env::current_exe().ok()?;
     let directory = executable.parent()?;
-    let config = directory.join(".espanso");
+    let config = directory.join("portable").join("config");
     config.is_dir().then_some(config)
 }
 
@@ -38,8 +38,10 @@ mod tests {
     fn portable_root_is_relative_to_executable_directory() {
         let executable = std::path::Path::new("bundle").join("espanso-editor");
         assert_eq!(
-            executable.parent().map(|path| path.join(".espanso")),
-            Some(PathBuf::from("bundle/.espanso"))
+            executable
+                .parent()
+                .map(|path| path.join("portable").join("config")),
+            Some(PathBuf::from("bundle/portable/config"))
         );
     }
 }
