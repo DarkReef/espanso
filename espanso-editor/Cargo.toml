@@ -1,0 +1,28 @@
+[package]
+name = "espanso-editor"
+version = "0.1.0"
+authors = ["DarkReef and the espanso contributors"]
+license = "GPL-3.0"
+description = "Russian source-aware multi-YAML rule editor for rEspanso portable and desktop builds"
+edition = "2021"
+
+[dependencies]
+dirs.workspace = true
+eframe = { version = "0.35.0", default-features = false, features = ["default_fonts", "wgpu", "wayland", "x11"] }
+regex.workspace = true
+rhai.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_norway.workspace = true
+sysinfo = "0.28.4"
+thiserror.workspace = true
+walkdir.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true
+
+[dev-dependencies]
+tempdir.workspace = true
+
+[lints]
+workspace = true
