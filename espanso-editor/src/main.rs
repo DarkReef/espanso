@@ -58,4 +58,13 @@ mod tests {
             Some(PathBuf::from("rEspanso Match Studio/portable/config"))
         );
     }
+
+    #[test]
+    fn portable_root_supports_cyrillic_bundle_paths() {
+        let executable = Path::new("Мои программы").join("rEspanso Match Studio.exe");
+        assert_eq!(
+            portable_config_for(&executable),
+            Some(PathBuf::from("Мои программы/portable/config"))
+        );
+    }
 }
