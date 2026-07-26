@@ -8,6 +8,8 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "espanso-render/**"
+      - "examples/medical-calculators/**"
+      - "docs/respanso-medical-calculators.md"
       - ".github/workflows/rhai-diagnostics.yml"
   pull_request:
     branches:
@@ -16,6 +18,8 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "espanso-render/**"
+      - "examples/medical-calculators/**"
+      - "docs/respanso-medical-calculators.md"
       - ".github/workflows/rhai-diagnostics.yml"
   workflow_dispatch:
 
@@ -36,24 +40,24 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Compile embedded Rhai runtime
-        id: compile
+      - name: Run embedded Rhai runtime and clinical calculator tests
+        id: test
         shell: bash
         run: |
           set +e
-          cargo test -p espanso-render --no-run > rhai-build.log 2>&1
+          cargo test -p espanso-render > rhai-test.log 2>&1
           status=$?
-          cat rhai-build.log
+          cat rhai-test.log
           echo "status=$status" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Upload full compiler output
+      - name: Upload full test output
         uses: actions/upload-artifact@v4
         with:
-          name: rhai-build-log-${{ github.sha }}
-          path: rhai-build.log
+          name: rhai-test-log-${{ github.sha }}
+          path: rhai-test.log
           retention-days: 7
 
-      - name: Fail when compilation failed
-        if: steps.compile.outputs.status != '0'
+      - name: Fail when tests failed
+        if: steps.test.outputs.status != '0'
         run: exit 1
