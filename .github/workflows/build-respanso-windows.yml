@@ -135,8 +135,8 @@ jobs:
                 Матч :i10_9 найден и выполнен.
           '@ | Set-Content (Join-Path $matchDir "respanso-test.yml") -Encoding UTF8
 
-          # Bundle the visual form and editable Rhai module. No external runtime is
-          # required on the target workstation.
+          # Bundle the visual forms and editable clinical Rhai modules. No external
+          # runtime is required on the target workstation.
           Copy-Item "examples\medical-calculators\medical-calculators.yml" (Join-Path $matchDir "medical-calculators.yml")
           Copy-Item "examples\medical-calculators\modules" (Join-Path $calculatorDir "modules") -Recurse
 
@@ -153,11 +153,12 @@ jobs:
           5. To test the recovery path, first paste :i10_9 into Notepad with Ctrl+V
              (or use text already left behind after a missed expansion), select it,
              and press Ctrl+Alt+M. The same ordinary match must be executed.
-          6. Type :calc_demo to open a visual calculator form. Its result is produced
-             by the editable portable\config\medical-calculators\modules\ui-demo.rhai
-             module interpreted inside rEspanso.
-          7. Edit ui-demo.rhai, save it, and run :calc_demo again. No compiler,
-             Node.js, Python or PowerShell module is required.
+          6. Clinical calculators are available through these matches:
+             :score2, :score2op, :hasbled, :cha2vasc, :findrisc
+          7. Their editable modules are stored in:
+             portable\config\medical-calculators\modules\
+             Save a module and reload the rEspanso configuration to apply a change.
+             No compiler, Node.js, Python or PowerShell module is required.
           8. Stop rEspanso through its tray menu. Advanced CLI fallback:
              rEspanso.exe service stop
 
@@ -171,6 +172,9 @@ jobs:
           The package includes the required Microsoft Visual C++ runtime DLLs and
           uses isolated portable config/runtime folders, so it does not conflict
           with an installed Espanso instance.
+
+          Clinical calculators support, but do not replace, professional judgement
+          and current clinical guidelines.
 
           This is an unsigned development build. Windows SmartScreen may require:
           More info -> Run anyway, or file Properties -> Unblock.
