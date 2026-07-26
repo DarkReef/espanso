@@ -1,0 +1,43 @@
+name: Apply rEspanso branding through PR
+
+on:
+  pull_request:
+    branches:
+      - dev
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-respanso-branding-pr
+  cancel-in-progress: false
+
+jobs:
+  rebrand:
+    if: github.head_ref == 'rEspanso-feature'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: rEspanso-feature
+          fetch-depth: 0
+
+      - name: Apply branding and validate formatting
+        shell: bash
+        run: |
+          python scripts/apply_respanso_branding.py
+          cargo fmt --all
+          git diff --check
+
+      - name: Commit branding and remove one-time automation
+        shell: bash
+        run: |
+          rm -f scripts/apply_respanso_branding.py
+          rm -f .github/workflows/apply-respanso-branding.yml
+          rm -f .github/workflows/apply-respanso-branding-pr.yml
+          git config user.name "rEspanso Branding Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: complete rEspanso user-facing rebrand"
+          git push origin HEAD:rEspanso-feature
