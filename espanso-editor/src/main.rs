@@ -15,7 +15,7 @@ fn main() {
             "Не удалось запустить rEspanso Match Studio.\n\n{error}\n\nПодробности записаны в:\n{}",
             startup_log_path().display()
         ));
-    };
+    }
 }
 
 fn launch() -> Result<(), String> {
@@ -68,6 +68,7 @@ fn portable_config_root() -> Option<PathBuf> {
     (portable_directory.is_dir() || is_named_standalone).then(|| portable_directory.join("config"))
 }
 
+#[cfg(test)]
 fn portable_config_for(executable: &Path) -> Option<PathBuf> {
     executable
         .parent()
