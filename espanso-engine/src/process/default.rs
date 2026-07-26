@@ -34,9 +34,7 @@ use super::{
         open_config::ConfigMiddleware,
         open_config::ConfigPathProvider,
         render::RenderMiddleware,
-        selection_match::{
-            SelectedTextProvider, SelectionMatchMiddleware, SelectionMatchResolver,
-        },
+        selection_match::{SelectedTextProvider, SelectionMatchMiddleware, SelectionMatchResolver},
         stats::StatsMiddleware,
     },
     AltCodeSynthEnabledProvider, DisableOptions, EnabledStatusProvider, MatchFilter,

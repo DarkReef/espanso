@@ -208,10 +208,8 @@ pub fn initialize_and_spawn(
                 &home_path,
                 &paths.packages,
             );
-            let rhai_extension = espanso_render::extension::rhai::RhaiExtension::new(
-                &paths.config,
-                &paths.packages,
-            );
+            let rhai_extension =
+                espanso_render::extension::rhai::RhaiExtension::new(&paths.config, &paths.packages);
             let shell_extension =
                 espanso_render::extension::shell::ShellExtension::new(&paths.config);
             let form_adapter = FormProviderAdapter::new(&modulo_form_ui);

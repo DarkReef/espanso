@@ -61,9 +61,9 @@ impl RhaiExtension {
             self.config_path.join(candidate)
         };
 
-        let script_path = candidate.canonicalize().map_err(|error| {
-            RhaiExtensionError::UnableToResolvePath(candidate.clone(), error)
-        })?;
+        let script_path = candidate
+            .canonicalize()
+            .map_err(|error| RhaiExtensionError::UnableToResolvePath(candidate.clone(), error))?;
 
         let config_root = canonical_or_original(&self.config_path);
         let packages_root = canonical_or_original(&self.packages_path);
@@ -81,12 +81,7 @@ impl Extension for RhaiExtension {
         "rhai"
     }
 
-    fn calculate(
-        &self,
-        _: &crate::Context,
-        scope: &Scope,
-        params: &Params,
-    ) -> ExtensionResult {
+    fn calculate(&self, _: &crate::Context, scope: &Scope, params: &Params) -> ExtensionResult {
         let Some(Value::String(raw_path)) = params.get("path") else {
             return ExtensionResult::Error(RhaiExtensionError::MissingPath.into());
         };
@@ -123,24 +118,20 @@ impl Extension for RhaiExtension {
             }
         };
 
-        let result = match engine.call_fn::<Dynamic>(
-            &mut RhaiScope::new(),
-            &ast,
-            entrypoint,
-            (input,),
-        ) {
-            Ok(result) => result,
-            Err(error) => {
-                return ExtensionResult::Error(
-                    RhaiExtensionError::Execution(
-                        script_path,
-                        entrypoint.to_owned(),
-                        error.to_string(),
-                    )
-                    .into(),
-                );
-            }
-        };
+        let result =
+            match engine.call_fn::<Dynamic>(&mut RhaiScope::new(), &ast, entrypoint, (input,)) {
+                Ok(result) => result,
+                Err(error) => {
+                    return ExtensionResult::Error(
+                        RhaiExtensionError::Execution(
+                            script_path,
+                            entrypoint.to_owned(),
+                            error.to_string(),
+                        )
+                        .into(),
+                    );
+                }
+            };
 
         ExtensionResult::Success(dynamic_to_extension_output(result))
     }
@@ -287,8 +278,7 @@ mod tests {
 
     #[test]
     fn converts_map_result_to_multiple_output() {
-        let dir = TempDir::new("respanso-rhai-map")
-            .expect("temporary directory should be created");
+        let dir = TempDir::new("respanso-rhai-map").expect("temporary directory should be created");
         let script = dir.path().join("calculator.rhai");
         fs::write(
             &script,

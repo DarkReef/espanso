@@ -24,7 +24,10 @@ fn run() -> Result<i32, String> {
 
     let core = root.join(core_binary_name());
     if !core.is_file() {
-        return Err(format!("rEspanso core executable is missing: {}", core.display()));
+        return Err(format!(
+            "rEspanso core executable is missing: {}",
+            core.display()
+        ));
     }
 
     let paths = PortablePaths::new(root);

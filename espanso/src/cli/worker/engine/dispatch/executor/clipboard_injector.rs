@@ -184,8 +184,8 @@ impl<'a> ClipboardInjectorAdapter<'a> {
         while started_at.elapsed() < SELECTION_COPY_TIMEOUT {
             let current_text = self.clipboard.get_text(options);
             let text_changed = current_text.as_deref() != previous_text;
-            let sequence_changed = cfg!(target_os = "windows")
-                && previous_sequence != clipboard_sequence_number();
+            let sequence_changed =
+                cfg!(target_os = "windows") && previous_sequence != clipboard_sequence_number();
 
             if !(text_changed || sequence_changed) {
                 std::thread::sleep(SELECTION_COPY_POLL_INTERVAL);
