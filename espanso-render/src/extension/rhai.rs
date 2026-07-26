@@ -17,14 +17,15 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
-use rhai::{Array, Dynamic, Engine, Map, Scope as RhaiScope};
+use rhai::{Dynamic, Engine, Map, Scope as RhaiScope};
 use thiserror::Error;
 
-use crate::{
-    Extension, ExtensionOutput, ExtensionResult, Number, Params, Scope, Value,
-};
+use crate::{Extension, ExtensionOutput, ExtensionResult, Params, Scope, Value};
 
 const DEFAULT_ENTRYPOINT: &str = "calculate";
 const MAX_OPERATIONS: u64 = 100_000;
@@ -112,13 +113,13 @@ impl Extension for RhaiExtension {
             Err(error) => return ExtensionResult::Error(error.into()),
         };
 
-        let mut engine = create_restricted_engine();
+        let engine = create_restricted_engine();
         let ast = match engine.compile_file(script_path.clone()) {
             Ok(ast) => ast,
             Err(error) => {
                 return ExtensionResult::Error(
-                    RhaiExtensionError::Compilation(script_path, error).into(),
-                )
+                    RhaiExtensionError::Compilation(script_path, error.to_string()).into(),
+                );
             }
         };
 
@@ -131,8 +132,13 @@ impl Extension for RhaiExtension {
             Ok(result) => result,
             Err(error) => {
                 return ExtensionResult::Error(
-                    RhaiExtensionError::Execution(script_path, entrypoint.to_owned(), error).into(),
-                )
+                    RhaiExtensionError::Execution(
+                        script_path,
+                        entrypoint.to_owned(),
+                        error.to_string(),
+                    )
+                    .into(),
+                );
             }
         };
 
@@ -183,28 +189,6 @@ fn extension_output_to_dynamic(output: &ExtensionOutput) -> Dynamic {
     }
 }
 
-#[allow(dead_code)]
-fn value_to_dynamic(value: &Value) -> Dynamic {
-    match value {
-        Value::Null => Dynamic::UNIT,
-        Value::Bool(value) => Dynamic::from(*value),
-        Value::Number(Number::Integer(value)) => Dynamic::from(*value),
-        Value::Number(Number::Float(value)) => Dynamic::from(*value),
-        Value::String(value) => Dynamic::from(value.clone()),
-        Value::Array(values) => {
-            let array: Array = values.iter().map(value_to_dynamic).collect();
-            array.into()
-        }
-        Value::Object(values) => {
-            let mut map = Map::new();
-            for (name, value) in values {
-                map.insert(name.as_str().into(), value_to_dynamic(value));
-            }
-            Dynamic::from_map(map)
-        }
-    }
-}
-
 fn dynamic_to_extension_output(value: Dynamic) -> ExtensionOutput {
     if value.is::<Map>() {
         let map = value
@@ -243,15 +227,15 @@ pub enum RhaiExtensionError {
     PathOutsideAllowedRoots(PathBuf),
 
     #[error("unable to compile Rhai script '{0}': {1}")]
-    Compilation(PathBuf, Box<rhai::EvalAltResult>),
+    Compilation(PathBuf, String),
 
     #[error("Rhai function '{1}' failed in script '{0}': {2}")]
-    Execution(PathBuf, String, Box<rhai::EvalAltResult>),
+    Execution(PathBuf, String, String),
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, collections::HashMap};
+    use std::{collections::HashMap, fs};
 
     use tempdir::TempDir;
 
