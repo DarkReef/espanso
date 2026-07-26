@@ -50,13 +50,16 @@ jobs:
       - name: Normalize Rust formatting in runner workspace
         run: cargo fmt --all
 
+      - name: Run embedded runtime tests
+        run: cargo test -p espanso-render
+
       - name: Run rEspanso engine tests
-        run: cargo test -p espanso-engine --locked
+        run: cargo test -p espanso-engine
 
       - name: Build release binary
         env:
           CARGO_TERM_COLOR: always
-        run: cargo build --release --locked -p espanso
+        run: cargo build --release -p espanso
 
       - name: Verify binary
         shell: pwsh
@@ -121,10 +124,9 @@ jobs:
                 Матч :i10_9 найден и выполнен.
           '@ | Set-Content (Join-Path $matchDir "respanso-test.yml") -Encoding UTF8
 
-          # Bundle a visual calculator shell. The form lives in YAML while all
-          # calculation logic is delegated to an external module.
+          # Bundle the visual form and editable Rhai module. No external runtime is
+          # required on the target workstation.
           Copy-Item "examples\medical-calculators\medical-calculators.yml" (Join-Path $matchDir "medical-calculators.yml")
-          Copy-Item "examples\medical-calculators\run-calculator.ps1" (Join-Path $calculatorDir "run-calculator.ps1")
           Copy-Item "examples\medical-calculators\modules" (Join-Path $calculatorDir "modules") -Recurse
 
           @'
@@ -171,8 +173,11 @@ jobs:
              (or use text already left behind after a missed expansion), select it,
              and press Ctrl+Alt+M. The same ordinary match must be executed.
           6. Type :calc_demo to open a visual calculator form. Its result is produced
-             by an external PowerShell module, not by the rEspanso core.
-          7. Use STOP-rEspanso.cmd before deleting or replacing the folder.
+             by the editable portable\config\medical-calculators\modules\ui-demo.rhai
+             module interpreted inside rEspanso.exe.
+          7. Edit ui-demo.rhai, save it, and run :calc_demo again. No compiler,
+             Node.js, Python or PowerShell module is required.
+          8. Use STOP-rEspanso.cmd before deleting or replacing the folder.
 
           The selected-text hotkey is a recovery path for ordinary Espanso matches;
           it does not require a separate selection-only rule or special match syntax.
