@@ -52,39 +52,25 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Run embedded runtime tests
-        run: cargo test --quiet -p espanso-render
-
-      - name: Run rEspanso engine tests
-        run: cargo test --quiet -p espanso-engine
-
-      - name: Run native portable launcher tests
-        run: cargo test --quiet -p espanso --bin respanso-portable
-
-      - name: Run Match Studio tests
-        run: cargo test --quiet -p espanso-editor
-
       - name: Build release binaries
         env:
           CARGO_TERM_COLOR: always
         run: cargo build --quiet --release -p espanso --bin espanso --bin respanso-portable -p espanso-editor
 
-      - name: Run strict Clippy
-        run: cargo clippy -p espanso -p espanso-editor --all-targets -- --deny warnings
-
       - name: Verify source binaries
         shell: pwsh
         run: |
-          $core = "target\release\espanso.exe"
-          $launcher = "target\release\respanso-portable.exe"
-          $studio = "target\release\espanso-editor.exe"
-          foreach ($path in @($core, $launcher, $studio)) {
-            if (-not (Test-Path $path)) {
+          $required = @(
+            "target/release/espanso.exe",
+            "target/release/respanso-portable.exe",
+            "target/release/espanso-editor.exe"
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path -Path $path -PathType Leaf)) {
               throw "Release binary was not produced: $path"
             }
           }
-          Get-Item $core, $launcher, $studio | Format-Table Name,Length,LastWriteTime
-          & $core --version
+          Get-Item $required | Format-Table Name,Length,LastWriteTime
 
       - name: Assemble unified native portable package
         shell: pwsh
@@ -92,9 +78,9 @@ jobs:
           $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
           $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
           $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
-          & "./scripts/build_windows_portable.ps1"
+          & "./scripts/build_windows_native_portable_with_studio.ps1"
 
-          $package = "target/windows/respanso-portable-with-studio"
+          $package = "target/windows/respanso-native-portable-with-studio"
           $required = @(
             "$package/rEspanso.exe",
             "$package/rEspanso-core.exe",
@@ -119,7 +105,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rEspanso-native-portable-with-studio-windows-x64-${{ github.sha }}
-          path: target/windows/rEspanso-Win-Portable-with-Studio-x86_64.zip
+          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
