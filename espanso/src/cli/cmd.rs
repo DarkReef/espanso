@@ -67,7 +67,7 @@ fn cmd_main(args: CliModuleArgs) -> i32 {
 
 fn send_event_to_worker(runtime_path: &Path, event: IPCEvent) -> Result<()> {
     if acquire_worker_lock(runtime_path).is_some() {
-        bail!("Worker process is not running, please start Espanso first.")
+        bail!("Worker process is not running, please start rEspanso first.")
     }
 
     let mut client = create_ipc_client_to_worker(runtime_path)?;

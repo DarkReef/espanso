@@ -1,6 +1,6 @@
-# rEspanso dynamic dialogs
+# rrEspanso dynamic dialogs
 
-Dynamic dialogs combine a regular-expression trigger, named capture groups, an Espanso script variable, and the `@dialog` output directive.
+Dynamic dialogs combine a regular-expression trigger, named capture groups, an rEspanso script variable, and the `@dialog` output directive.
 
 ## Patient lookup example
 
@@ -68,6 +68,6 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-Typing `:пац_СидоровИЮ1985` runs the script after the regex groups have been captured. The fully rendered result starts with `@dialog`, so rEspanso opens the text viewer instead of inserting the output into the active application.
+Typing `:пац_СидоровИЮ1985` runs the script after the regex groups have been captured. The fully rendered result starts with `@dialog`, so rrEspanso opens the text viewer instead of inserting the output into the active application.
 
 The API should return a short, human-readable `text` field for this first implementation. A structured card schema can be added later without changing the regex or script execution flow.

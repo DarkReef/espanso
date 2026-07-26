@@ -338,7 +338,7 @@ fn grant_linux_capabilities(use_evdev_backend: bool) -> bool {
             warn!("EVDEV backend is being used, but without enabling linux capabilities.");
             warn!("  Although you CAN run espanso EVDEV backend as root, it's not recommended due");
             warn!(
-        "  to security reasons. Espanso supports linux capabilities to limit the attack surface"
+        "  to security reasons. rEspanso supports linux capabilities to limit the attack surface"
       );
             warn!(
                 "  area by only leveraging on the CAP_DAC_OVERRIDE capability (needed to work with"

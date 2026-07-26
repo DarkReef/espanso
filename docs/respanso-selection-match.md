@@ -1,18 +1,18 @@
-# rEspanso: recover a missed match from selected text
+# rrEspanso: recover a missed match from selected text
 
-The `dev-in` branch adds a Windows-first recovery path for ordinary Espanso matches.
+The `dev-in` branch adds a Windows-first recovery path for ordinary rEspanso matches.
 
-The feature is intended for cases where Espanso misses a trigger during typing, especially in slow or unusual input fields such as desktop medical information systems. If the trigger text remains in the field, select it and press `Ctrl+Alt+M`. rEspanso copies the selection, searches the existing user matches, and executes the same rule.
+The feature is intended for cases where rEspanso misses a trigger during typing, especially in slow or unusual input fields such as desktop medical information systems. If the trigger text remains in the field, select it and press `Ctrl+Alt+M`. rrEspanso copies the selection, searches the existing user matches, and executes the same rule.
 
 No separate `selection_only` match and no special trigger syntax are required.
 
 ## Usage
 
-1. Type an ordinary Espanso trigger.
-2. If Espanso expands it normally, nothing else is needed.
+1. Type an ordinary rEspanso trigger.
+2. If rEspanso expands it normally, nothing else is needed.
 3. If the trigger remains as plain text, select the complete trigger.
 4. Press `Ctrl+Alt+M`.
-5. rEspanso searches exact trigger matches and full regexp matches, then executes the matching rule.
+5. rrEspanso searches exact trigger matches and full regexp matches, then executes the matching rule.
 
 An `@dialog` result leaves the selected source text unchanged. A normal replacement is inserted into the active application and can replace the current selection.
 
@@ -30,7 +30,7 @@ Normal path:
 
 ```text
 Type :i10_9
-→ Espanso expands it automatically
+→ rEspanso expands it automatically
 ```
 
 Recovery path:
@@ -39,7 +39,7 @@ Recovery path:
 :i10_9 remains in the MIS field
 → select :i10_9
 → press Ctrl+Alt+M
-→ rEspanso executes the same match
+→ rrEspanso executes the same match
 ```
 
 ## Informational dialog

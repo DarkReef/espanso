@@ -1,8 +1,8 @@
-# rEspanso clinical calculators.
+# rrEspanso clinical calculators.
 #
-# Each match opens an Espanso form, passes its string values to an embedded Rhai
+# Each match opens an rEspanso form, passes its string values to an embedded Rhai
 # module and shows the calculated result in an informational dialog. Clinical
-# equations remain editable and auditable outside the rEspanso core.
+# equations remain editable and auditable outside the rrEspanso core.
 
 matches:
   - trigger: ":score2"

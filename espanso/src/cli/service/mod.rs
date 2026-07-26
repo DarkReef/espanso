@@ -102,7 +102,7 @@ fn service_main(args: CliModuleArgs) -> i32 {
         std::thread::sleep(std::time::Duration::from_millis(300));
         return start_main(&paths, &paths_overrides, sub_args);
     } else {
-        eprintln!("Invalid usage, please run `espanso service --help` for more information.");
+        eprintln!("Invalid usage, please run `rEspanso service --help` for more information.");
     }
 
     SERVICE_SUCCESS
@@ -152,10 +152,10 @@ fn start_main(paths: &Paths, _paths_overrides: &PathsOverrides, args: &ArgMatche
     error_eprintln!("unable to start service: timed out");
 
     error_eprintln!(
-    "Hint: sometimes this happens because another Espanso process is left running for some reason."
+    "Hint: sometimes this happens because another rEspanso process is left running for some reason."
   );
     error_eprintln!(
-    "      Please try running 'espanso restart' or manually killing all Espanso processes, then try again."
+    "      Please try running 'espanso restart' or manually killing all rEspanso processes, then try again."
   );
 
     SERVICE_TIMED_OUT
@@ -170,7 +170,7 @@ fn stop_main(paths: &Paths) -> i32 {
     drop(lock_file);
 
     if let Err(err) = stop::terminate_worker(&paths.runtime) {
-        error_eprintln!("unable to stop espanso: {}", err);
+        error_eprintln!("unable to stop rEspanso: {}", err);
         return SERVICE_FAILURE;
     }
 

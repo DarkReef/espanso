@@ -72,9 +72,9 @@ pub fn get_modifiers_state() -> Result<Option<super::ModifiersState>> {
     let window = xdg_shell.create_window(surface, WindowDecorations::RequestServer, &qh);
     // Configure the window, this may include hints to the compositor about the desired minimum size of the
     // window, app id for WM identification, the window title, etc.
-    window.set_title("Espanso Sync Tool");
+    window.set_title("rEspanso Sync Tool");
     // GitHub does not let projects use the `org.github` domain but the `io.github` domain is fine.
-    window.set_app_id("Espanso.SyncTool");
+    window.set_app_id("rEspanso.SyncTool");
     window.set_min_size(Some((256, 256)));
 
     // In order for the window to be mapped, we need to perform an initial commit with no attached buffer.

@@ -30,11 +30,11 @@ pub fn is_espanso_in_path() -> bool {
 
 pub fn add_espanso_to_path(prompt_when_necessary: bool) -> Result<()> {
     if crate::cli::util::is_subject_to_app_translocation_on_macos() {
-        error_eprintln!("Unable to register Espanso to PATH, please move the Espanso.app bundle inside the /Applications directory to proceed.");
+        error_eprintln!("Unable to register rEspanso to PATH, please move the rEspanso.app bundle inside the /Applications directory to proceed.");
         error_eprintln!(
-            "For more information, please see: https://github.com/espanso/espanso/issues/844"
+            "For more information, please see: https://github.com/__TECH_ESPANSO_REPO__/issues/844"
         );
-        bail!("macOS activated app-translocation on Espanso");
+        bail!("macOS activated app-translocation on rEspanso");
     }
 
     let target_link_dir = PathBuf::from("/usr/local/bin");

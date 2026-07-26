@@ -52,7 +52,7 @@ impl EspansoHubPackageProvider {
 
 impl PackageProvider for EspansoHubPackageProvider {
     fn name(&self) -> String {
-        "espanso-hub".to_string()
+        "__TECH_ESPANSO_CRATE__hub".to_string()
     }
 
     fn download(&self, package: &PackageSpecifier) -> Result<Box<dyn Package>> {
@@ -73,7 +73,7 @@ impl PackageProvider for EspansoHubPackageProvider {
         let archive_sha256 = read_string_from_url(&package_info.archive_sha256_url)
             .context("unable to read archive sha256 signature")?;
 
-        let temp_dir = tempdir::TempDir::new("espanso-package-download")?;
+        let temp_dir = tempdir::TempDir::new("__TECH_ESPANSO_CRATE__package-download")?;
 
         crate::util::download::download_and_extract_zip_verify_sha256(
             &package_info.archive_url,

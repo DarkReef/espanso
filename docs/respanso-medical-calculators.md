@@ -1,11 +1,11 @@
-# Клинические калькуляторы rEspanso
+# Клинические калькуляторы rrEspanso
 
-rEspanso показывает формы клинических шкал и рассчитывает результат через встроенный интерпретатор Rhai:
+rrEspanso показывает формы клинических шкал и рассчитывает результат через встроенный интерпретатор Rhai:
 
 ```text
 обычный trigger / восстановленный match из выделенного текста
         ↓
-Espanso form
+rEspanso form
         ↓
 редактируемый модуль Rhai (.rhai)
         ↓
@@ -48,7 +48,7 @@ config/
 - `examples/medical-calculators/medical-calculators.yml` в `%CONFIG%/match/`;
 - каталог `examples/medical-calculators/modules/` в `%CONFIG%/medical-calculators/`.
 
-После изменения `.rhai` выполните обычную перезагрузку конфигурации rEspanso.
+После изменения `.rhai` выполните обычную перезагрузку конфигурации rrEspanso.
 
 ## Контракт модуля
 

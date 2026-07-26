@@ -66,14 +66,14 @@ pub fn is_registered() -> bool {
                     let current_path = std::env::current_exe().expect("unable to get exec path");
 
                     if current_path != target_path {
-                        warn_eprintln!("WARNING: Espanso is already registered as a service, but it points to another executable,");
+                        warn_eprintln!("WARNING: rEspanso is already registered as a service, but it points to another executable,");
                         warn_eprintln!("which can create some inconsistencies.");
                         warn_eprintln!(
               "To fix the problem, unregister and register espanso again with these commands:"
             );
                         warn_eprintln!("");
-                        warn_eprintln!("   espanso service unregister");
-                        warn_eprintln!("   espanso service register");
+                        warn_eprintln!("   rEspanso service unregister");
+                        warn_eprintln!("   rEspanso service register");
                         warn_eprintln!("");
                     }
 

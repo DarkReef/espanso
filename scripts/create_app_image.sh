@@ -30,17 +30,17 @@ main() {
     --appdir "${BUILD_DIR}" \
     --output appimage
 
-  find . -maxdepth 1 -name 'Espanso*.AppImage' -exec chmod +x {} \; -quit
+  find . -maxdepth 1 -name 'rEspanso*.AppImage' -exec chmod +x {} \; -quit
 
   # Apply a workaround to fix this issue: https://github.com/federico-terzi/espanso/issues/900
   # See: https://github.com/project-slippi/Ishiiruka/issues/323#issuecomment-977415376
   echo "Applying patch for libgmodule"
 
-  espanso_appimage=$(find . -maxdepth 1 -name 'Espanso*.AppImage' -print -quit)
+  espanso_appimage=$(find . -maxdepth 1 -name 'rEspanso*.AppImage' -print -quit)
 
   "${espanso_appimage}" --appimage-extract
 
-  find . -maxdepth 1 -name 'Espanso*.AppImage' -delete -quit
+  find . -maxdepth 1 -name 'rEspanso*.AppImage' -delete -quit
   find squashfs-root/usr/lib -maxdepth 1 -name 'libgmodule*' -delete -quit
 
   appimagetool=$(

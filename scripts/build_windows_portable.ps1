@@ -37,7 +37,7 @@ function Main {
     New-Item -Path "$TARGET_DIR/.espanso-runtime" -ItemType Directory -Force | Out-Null
 
     $readmeContent = @"
-Welcome to Espanso (Portable edition)!
+Welcome to rEspanso (Portable edition)!
 
 To start espanso, you can double click on "START_ESPANSO.bat"
 
@@ -52,7 +52,7 @@ IMPORTANT: Don't delete any file or directory, otherwise espanso won't work.
 
 FOR ADVANCED USERS:
 
-Espanso also offers a rich CLI interface. To start it from the terminal, cd into the
+rEspanso also offers a rich CLI interface. To start it from the terminal, cd into the
 current directory and run "espanso start". You can also run "espanso --help" for more information.
 
 You might have noticed that the directory contains both an "espansod.exe" and an "espanso.cmd" file.
@@ -63,9 +63,9 @@ STD console handles on Windows.
     $readmeContent | Out-File "$TARGET_DIR/README.txt" -Encoding UTF8
 
     Rename-Item -Path $TARGET_DIR -NewName espanso-portable
-    Compress-Archive target/windows/espanso-portable target/windows/Espanso-Win-Portable-x86_64.zip -Force
+    Compress-Archive target/windows/espanso-portable target/windows/rEspanso-Win-Portable-x86_64.zip -Force
 
-    Write-Output "Espanso Portable created!"
+    Write-Output "rEspanso Portable created!"
 }
 
 Main @PSBoundParameters

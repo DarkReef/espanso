@@ -35,11 +35,11 @@ pub fn register() -> Result<()> {
     prevent_running_as_root_on_macos();
 
     if crate::cli::util::is_subject_to_app_translocation_on_macos() {
-        error_eprintln!("Unable to register Espanso as service, please move the Espanso.app bundle inside the /Applications directory to proceed.");
+        error_eprintln!("Unable to register rEspanso as service, please move the rEspanso.app bundle inside the /Applications directory to proceed.");
         error_eprintln!(
-            "For more information, please see: https://github.com/espanso/espanso/issues/844"
+            "For more information, please see: https://github.com/__TECH_ESPANSO_REPO__/issues/844"
         );
-        bail!("macOS activated app-translocation on Espanso");
+        bail!("macOS activated app-translocation on rEspanso");
     }
 
     let home_dir = dirs::home_dir().expect("could not get user home directory");
@@ -143,9 +143,9 @@ pub fn is_registered() -> bool {
 
 pub fn start_service() -> Result<()> {
     if !is_registered() {
-        eprintln!("Unable to start espanso as a service as it's not been registered.");
-        eprintln!("You can either register it first with `espanso service register` or");
-        eprintln!("you can run it in unmanaged mode with `espanso service start --unmanaged`");
+        eprintln!("Unable to start rEspanso as a service as it's not been registered.");
+        eprintln!("You can either register it first with `rEspanso service register` or");
+        eprintln!("you can run it in unmanaged mode with `rEspanso service start --unmanaged`");
         eprintln!();
         eprintln!("NOTE: unmanaged mode means espanso does not rely on the system service manager");
         eprintln!("      to run, but as a result, you are in charge of starting/stopping espanso");

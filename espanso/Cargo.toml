@@ -1,12 +1,12 @@
 [package]
 name = "espanso"
 version = "2.4.0"
-authors = ["Federico Terzi <federicoterzi96@gmail.com>"]
+authors = ["Куцин Иван Юрьевич", "Federico Terzi <federicoterzi96@gmail.com>"]
 license = "GPL-3.0"
-description = "Cross-platform Text Expander written in Rust"
+description = "rEspanso — privacy-first cross-platform text expander and automation fork"
 readme = "../README.md"
-homepage = "https://espanso.org/"
-repository = "https://github.com/espanso/espanso"
+homepage = "https://github.com/DarkReef/espanso"
+repository = "https://github.com/DarkReef/espanso"
 edition = "2021"
 
 [features]
@@ -90,7 +90,7 @@ caps = "0.5.2"
 const_format = "0.2.14"
 
 [package.metadata.deb]
-maintainer = "Auca Coyan <aucacoyan@gmail.com>"
+maintainer = "Куцин Иван Юрьевич"
 depends = "$auto"
 section = "utility"
 license-file = ["../LICENSE", "1"]

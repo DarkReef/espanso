@@ -87,11 +87,11 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let processed_args = preprocess_aliases(args);
 
-    let mut clap_instance = App::new("espanso")
+    let mut clap_instance = App::new("rEspanso")
     .version(VERSION)
     .long_version(VERSION)
-    .author("Federico Terzi and the espanso contributors")
-    .about("A Privacy-first, Cross-platform Text Expander")
+    .author("Куцин Иван Юрьевич; based on Espanso by Federico Terzi and contributors")
+    .about("rEspanso — a privacy-first cross-platform text expander and automation fork")
     .arg(
       Arg::with_name("v")
         .short('v')
@@ -103,21 +103,21 @@ fn main() {
         .long("config_dir")
         .takes_value(true)
         .hidden(true)
-        .help("Specify a custom path from which espanso should read the configuration"),
+        .help("Specify a custom path from which rEspanso should read the configuration"),
     )
     .arg(
       Arg::with_name("package_dir")
         .long("package_dir")
         .takes_value(true)
         .hidden(true)
-        .help("Specify a custom path for the espanso package directory"),
+        .help("Specify a custom path for the rEspanso package directory"),
     )
     .arg(
       Arg::with_name("runtime_dir")
         .long("runtime_dir")
         .takes_value(true)
         .hidden(true)
-        .help("Specify a custom path for the espanso runtime directory"),
+        .help("Specify a custom path for the rEspanso runtime directory"),
     )
     .subcommand(
       SubCommand::with_name("env-path")
@@ -133,7 +133,7 @@ fn main() {
         .about("Add or remove the 'espanso' command from the PATH"),
     )
     .subcommand(SubCommand::with_name("cmd")
-        .about("Send a command to the espanso daemon.")
+        .about("Send a command to the rEspanso daemon.")
         .subcommand(SubCommand::with_name("enable")
             .about("Enable expansions."))
         .subcommand(SubCommand::with_name("disable")
@@ -141,14 +141,14 @@ fn main() {
         .subcommand(SubCommand::with_name("toggle")
             .about("Enable/Disable expansions."))
         .subcommand(SubCommand::with_name("search")
-            .about("Open the Espanso's search bar."))
+            .about("Open the rEspanso's search bar."))
     )
     .subcommand(SubCommand::with_name("edit")
         .about("Shortcut to open the default text editor to edit config files")
         .arg(Arg::with_name("target_file")
             .help(r#"Defaults to "match/base.yml", it contains the relative path of the file you want to edit,
 such as 'config/default.yml' or 'match/base.yml'.
-For convenience, you can also specify the name directly and Espanso will figure out the path.
+For convenience, you can also specify the name directly and rEspanso will figure out the path.
 For example, specifying 'email' is equivalent to 'match/email.yml'."#))
     )
     .subcommand(
@@ -267,7 +267,7 @@ For example, specifying 'email' is equivalent to 'match/email.yml'."#))
     )
     .subcommand(
       SubCommand::with_name("path")
-        .about("Prints all the espanso directory paths to easily locate configuration and matches.")
+        .about("Prints all the rEspanso directory paths to easily locate configuration and matches.")
         .subcommand(SubCommand::with_name("config").about("Print the current config folder path."))
         .subcommand(
           SubCommand::with_name("packages").about("Print the current packages folder path."),
@@ -287,16 +287,16 @@ For example, specifying 'email' is equivalent to 'match/email.yml'."#))
     )
     .subcommand(
       SubCommand::with_name("service")
-        .subcommand(SubCommand::with_name("register").about("Register espanso as a system service"))
+        .subcommand(SubCommand::with_name("register").about("Register rEspanso as a system service"))
         .subcommand(
-          SubCommand::with_name("unregister").about("Unregister espanso from system services"),
+          SubCommand::with_name("unregister").about("Unregister rEspanso from system services"),
         )
         .subcommand(
           SubCommand::with_name("check")
-            .about("Check if espanso is registered as a system service"),
+            .about("Check if rEspanso is registered as a system service"),
         )
         .subcommand(SubCommand::with_name("start")
-        .about("Start espanso as a service")
+        .about("Start rEspanso as a service")
         .arg(
             Arg::with_name("unmanaged")
                 .long("unmanaged")
@@ -305,17 +305,17 @@ For example, specifying 'email' is equivalent to 'match/email.yml'."#))
                 .help("Run espanso as an unmanaged service (avoid system manager)"),
         ))
         .subcommand(SubCommand::with_name("restart")
-        .about("Restart the espanso service")
+        .about("Restart the rEspanso service")
         .arg(
             Arg::with_name("unmanaged")
                 .long("unmanaged")
                 .required(false)
                 .takes_value(false)
         ))
-        .subcommand(SubCommand::with_name("stop").about("Stop espanso service"))
+        .subcommand(SubCommand::with_name("stop").about("Stop rEspanso service"))
         .subcommand(
-        SubCommand::with_name("status").about("Check if the espanso daemon is running or not."))
-        .about("A collection of commands to manage the Espanso service (for example, enabling auto-start on system boot)."),
+        SubCommand::with_name("status").about("Check if the rEspanso daemon is running or not."))
+        .about("A collection of commands to manage the rEspanso service (for example, enabling auto-start on system boot)."),
     )
     .subcommand(SubCommand::with_name("match")
         .about("List and execute matches from the CLI")
@@ -407,7 +407,7 @@ SubCommand::with_name("install")
         .long("git")
         .required(false)
         .takes_value(true)
-        .help("Git repository from which espanso should install the package."),
+        .help("Git repository from which rEspanso should install the package."),
     )
     .arg(
       Arg::with_name("git-branch")
@@ -428,7 +428,7 @@ SubCommand::with_name("install")
         .long("refresh-index")
         .required(false)
         .takes_value(false)
-        .help("Request a fresh copy of the Espanso Hub package index instead of using the cached version.")
+        .help("Request a fresh copy of the rEspanso Hub package index instead of using the cached version.")
     )
     .arg(
       Arg::with_name("use-native-git")

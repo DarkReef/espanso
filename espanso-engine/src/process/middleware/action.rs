@@ -30,7 +30,7 @@ use crate::event::{
 };
 
 const DIALOG_DIRECTIVE: &str = "@dialog";
-const DEFAULT_DIALOG_TITLE: &str = "rEspanso";
+const DEFAULT_DIALOG_TITLE: &str = "rrEspanso";
 
 pub trait MatchInfoProvider {
     fn get_force_mode(&self, match_id: i32) -> Option<TextInjectMode>;
