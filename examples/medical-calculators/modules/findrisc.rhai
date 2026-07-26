@@ -8,11 +8,13 @@ fn yes(value) {
 }
 
 fn parse_number(value) {
-    parse_float(value.trim().replace(",", "."))
+    let normalized = value;
+    normalized.replace(",", ".");
+    parse_float(normalized)
 }
 
 fn calculate(input) {
-    let age = parse_int(input.age.trim());
+    let age = parse_int(input.age);
     let weight = parse_number(input.weight);
     let height_cm = parse_number(input.height);
     let waist = parse_number(input.waist);
@@ -66,8 +68,14 @@ fn calculate(input) {
         5
     };
 
-    let score = age_points + bmi_points + waist_points + activity_points + vegetables_points
-        + bp_medication_points + high_glucose_points + family_points;
+    let score = age_points;
+    score += bmi_points;
+    score += waist_points;
+    score += activity_points;
+    score += vegetables_points;
+    score += bp_medication_points;
+    score += high_glucose_points;
+    score += family_points;
 
     let interpretation = if score < 7 {
         "Низкий риск: примерно 1 из 100"
