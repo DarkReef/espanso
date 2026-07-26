@@ -49,4 +49,13 @@ mod tests {
             Some(PathBuf::from("bundle/portable/config"))
         );
     }
+
+    #[test]
+    fn portable_root_supports_bundle_paths_with_spaces() {
+        let executable = Path::new("rEspanso Match Studio").join("rEspanso Match Studio.exe");
+        assert_eq!(
+            portable_config_for(&executable),
+            Some(PathBuf::from("rEspanso Match Studio/portable/config"))
+        );
+    }
 }
