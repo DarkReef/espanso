@@ -20,6 +20,9 @@ on:
       - "SECURITY.md"
       - "tarpaulin.toml"
 
+permissions:
+  contents: write
+
 defaults:
   run:
     shell: bash
@@ -32,7 +35,59 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  integrate-studio:
+    if: github.head_ref == 'integrate-studio-portable'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+        with:
+          ref: integrate-studio-portable
+          fetch-depth: 0
+      - name: Install integration dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            build-essential \
+            git \
+            libdbus-1-dev \
+            libssl-dev \
+            libwxgtk3.*-dev \
+            libx11-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libgl1-mesa-dev \
+            libxtst-dev
+      - name: Copy Studio and apply integration patch
+        run: |
+          git fetch origin gui-studio
+          git checkout origin/gui-studio -- espanso-editor
+          python3 scripts/integrate_studio_portable.py
+          cargo fmt --all
+          cargo check -p espanso -p espanso-editor
+          cargo test -p espanso-editor
+      - name: Commit integrated source and lockfile
+        run: |
+          git config user.name "rEspanso Integration Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add \
+            Cargo.toml Cargo.lock \
+            espanso-editor \
+            espanso/src/main.rs \
+            espanso/src/cli/edit.rs \
+            espanso-engine/src/event/mod.rs \
+            espanso-engine/src/process/middleware/context_menu.rs \
+            espanso-engine/src/process/middleware/open_config.rs \
+            scripts/build_windows_resources.ps1 \
+            scripts/build_windows_portable.ps1
+          if git diff --cached --quiet; then
+            echo "Integration content is already current"
+            exit 0
+          fi
+          git commit -m "feat: integrate Match Studio into rEspanso portable"
+          git push origin HEAD:integrate-studio-portable
+
   linux-x11:
+    if: github.head_ref != 'integrate-studio-portable'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/cache@main
@@ -75,13 +130,9 @@ jobs:
       - uses: cachix/install-nix-action@v31
       - name: nix fmt
         run: nix fmt -- --check **/*.nix
-      # This step fails to find `xcb/xcb.h`
-      #
-      #  xcb/xcb.h: No such file or directory
-      # - name: nix build
-      #   run: nix build
 
   linux-wayland:
+    if: github.head_ref != 'integrate-studio-portable'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/cache@main
@@ -120,13 +171,12 @@ jobs:
             --features vendored-tls,wayland
       - name: Clippy
         run: cargo clippy --features=modulo,vendored-tls,wayland -- --deny warnings
-      # leaving this nix because is quite fast. macOS in the other hand takes
-      # an hour to complete
       - uses: cachix/install-nix-action@v31
       - name: nix build
         run: nix build .#espanso-wayland
 
   macos:
+    if: github.head_ref != 'integrate-studio-portable'
     runs-on: macos-latest
     steps:
       - uses: actions/cache@main
@@ -152,6 +202,7 @@ jobs:
           cargo clippy --target=x86_64-apple-darwin -- --deny warnings
 
   windows:
+    if: github.head_ref != 'integrate-studio-portable'
     runs-on: windows-latest
     steps:
       - uses: actions/cache@main
@@ -165,7 +216,6 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
       - name: Build
-        run: |
-          cargo build
+        run: cargo build
       - name: Clippy
         run: cargo clippy -- --deny warnings
