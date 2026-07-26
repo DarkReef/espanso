@@ -21,7 +21,9 @@ jobs:
       - name: Align Windows bindings used by WGPU
         shell: bash
         run: |
-          cargo update -p windows@0.61.1 --precise 0.62.0
+          # Keep windows 0.61 for legacy notification crates, but re-resolve the
+          # broad gpu-allocator dependency against the editor's windows 0.62.
+          cargo update -p gpu-allocator@0.28.0
           cargo check -p espanso-editor
       - name: Commit lockfile
         shell: bash
