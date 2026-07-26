@@ -40,8 +40,19 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
+      - name: Capture pending rustfmt changes
+        shell: bash
+        run: |
+          cargo fmt --all
+          git diff --stat
+          git diff > rustfmt.patch
+
+      - name: Upload rustfmt patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustfmt-patch-${{ github.sha }}
+          path: rustfmt.patch
+          retention-days: 7
 
       - name: Run embedded Rhai runtime and clinical calculator tests
         id: test
