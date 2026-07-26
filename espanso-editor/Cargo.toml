@@ -16,6 +16,9 @@ serde_norway.workspace = true
 thiserror.workspace = true
 walkdir.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true
+
 [dev-dependencies]
 tempdir.workspace = true
 
