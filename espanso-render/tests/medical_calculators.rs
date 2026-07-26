@@ -58,7 +58,10 @@ fn score2_matches_published_reference_examples() {
     assert!(male_low.contains("SCORE2: 5.9%"), "{male_low}");
     assert!(male_very_high.contains("SCORE2: 14"), "{male_very_high}");
     assert!(female_low.contains("SCORE2: 4.2%"), "{female_low}");
-    assert!(female_very_high.contains("SCORE2: 13.7%"), "{female_very_high}");
+    assert!(
+        female_very_high.contains("SCORE2: 13.7%"),
+        "{female_very_high}"
+    );
 }
 
 #[test]
