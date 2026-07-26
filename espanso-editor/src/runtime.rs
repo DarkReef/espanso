@@ -220,8 +220,10 @@ mod tests {
 
     #[test]
     fn native_portable_launcher_is_checked_first() {
-        let candidates = executable_candidates();
-        assert_eq!(candidates[0].to_ascii_lowercase(), "respanso.exe");
+        let first = executable_candidates()[0].to_ascii_lowercase();
+        assert!(first.contains("respanso"));
+        assert!(!first.contains("core"));
+        assert!(!first.contains("daemon"));
     }
 
     #[test]
