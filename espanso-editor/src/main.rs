@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() -> eframe::Result {
     let config_root = parse_config_root().unwrap_or_else(default_config_root);
@@ -27,9 +27,14 @@ fn default_config_root() -> PathBuf {
 
 fn portable_config_root() -> Option<PathBuf> {
     let executable = std::env::current_exe().ok()?;
-    let directory = executable.parent()?;
-    let config = directory.join("portable").join("config");
+    let config = portable_config_for(&executable)?;
     config.is_dir().then_some(config)
+}
+
+fn portable_config_for(executable: &Path) -> Option<PathBuf> {
+    executable
+        .parent()
+        .map(|directory| directory.join("portable").join("config"))
 }
 
 #[cfg(test)]
@@ -38,11 +43,9 @@ mod tests {
 
     #[test]
     fn portable_root_is_relative_to_executable_directory() {
-        let executable = std::path::Path::new("bundle").join("espanso-editor");
+        let executable = Path::new("bundle").join("espanso-editor");
         assert_eq!(
-            executable
-                .parent()
-                .map(|path| path.join("portable").join("config")),
+            portable_config_for(&executable),
             Some(PathBuf::from("bundle/portable/config"))
         );
     }
