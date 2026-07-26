@@ -33,6 +33,7 @@ concurrency:
 
 jobs:
   linux-x11:
+    if: github.head_ref != 'integrate-studio-portable'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/cache@main
@@ -49,29 +50,12 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y \
-            build-essential \
-            git \
-            libdbus-1-dev \
-            libssl-dev \
-            libwxgtk3.*-dev \
-            libx11-dev \
-            libxkbcommon-dev \
-            libwayland-dev \
-            libgl1-mesa-dev \
-            libxtst-dev
+            build-essential git libdbus-1-dev libssl-dev libwxgtk3.*-dev \
+            libx11-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev libxtst-dev
       - name: Build
-        run: |
-          cargo build \
-            --no-default-features \
-            --features modulo,vendored-tls
+        run: cargo build --no-default-features --features modulo,vendored-tls
       - name: Test
-        run: |
-          cargo test \
-            --workspace \
-            --exclude espanso-modulo \
-            --exclude espanso-ipc \
-            --no-default-features \
-            --features vendored-tls
+        run: cargo test --workspace --exclude espanso-modulo --exclude espanso-ipc --no-default-features --features vendored-tls
       - name: Clippy
         run: cargo clippy --all-targets --features=modulo,vendored-tls -- --deny warnings
       - uses: cachix/install-nix-action@v31
@@ -79,6 +63,7 @@ jobs:
         run: nix fmt -- --check **/*.nix
 
   linux-wayland:
+    if: github.head_ref != 'integrate-studio-portable'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/cache@main
@@ -95,30 +80,12 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y \
-            build-essential \
-            git \
-            libdbus-1-dev \
-            libssl-dev \
-            libwxgtk3.*-dev \
-            libx11-dev \
-            libxkbcommon-dev \
-            libwayland-dev \
-            libgl1-mesa-dev \
-            libxtst-dev \
-            wl-clipboard
+            build-essential git libdbus-1-dev libssl-dev libwxgtk3.*-dev \
+            libx11-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev libxtst-dev wl-clipboard
       - name: Build
-        run: |
-          cargo build \
-            --no-default-features \
-            --features modulo,vendored-tls,wayland
+        run: cargo build --no-default-features --features modulo,vendored-tls,wayland
       - name: Test
-        run: |
-          cargo test \
-            --workspace \
-            --exclude espanso-modulo \
-            --exclude espanso-ipc \
-            --no-default-features \
-            --features vendored-tls,wayland
+        run: cargo test --workspace --exclude espanso-modulo --exclude espanso-ipc --no-default-features --features vendored-tls,wayland
       - name: Clippy
         run: cargo clippy --features=modulo,vendored-tls,wayland -- --deny warnings
       - uses: cachix/install-nix-action@v31
@@ -126,6 +93,7 @@ jobs:
         run: nix build .#espanso-wayland
 
   macos:
+    if: github.head_ref != 'integrate-studio-portable'
     runs-on: macos-latest
     steps:
       - uses: actions/cache@main
@@ -164,7 +132,17 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
       - name: Build rEspanso and Match Studio
-        run: cargo build --release -p espanso -p espanso-editor
+        shell: pwsh
+        run: |
+          cargo build --release -p espanso -p espanso-editor *>&1 | Tee-Object -FilePath windows-build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload Windows build diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: respanso-windows-build-diagnostic
+          path: windows-build.log
+          if-no-files-found: error
       - name: Test Match Studio
         run: cargo test -p espanso-editor
       - name: Clippy
