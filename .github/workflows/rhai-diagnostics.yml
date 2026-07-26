@@ -24,7 +24,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: rhai-diagnostics-${{ github.event.pull_request.number || github.ref }}
@@ -39,6 +39,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+
+      - name: Apply rustfmt to calculator tests
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          cargo fmt --all
+          if ! git diff --quiet -- espanso-render/tests/medical_calculators.rs; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add espanso-render/tests/medical_calculators.rs
+            git commit -m "style(calculators): apply rustfmt"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
 
       - name: Run embedded Rhai runtime and clinical calculator tests
         id: test
