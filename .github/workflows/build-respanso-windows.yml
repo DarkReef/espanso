@@ -51,15 +51,15 @@ jobs:
         run: cargo fmt --all
 
       - name: Run embedded runtime tests
-        run: cargo test -p espanso-render
+        run: cargo test --quiet -p espanso-render
 
       - name: Run rEspanso engine tests
-        run: cargo test -p espanso-engine
+        run: cargo test --quiet -p espanso-engine
 
       - name: Build release binary
         env:
           CARGO_TERM_COLOR: always
-        run: cargo build --release -p espanso
+        run: cargo build --quiet --release -p espanso
 
       - name: Verify binary
         shell: pwsh
