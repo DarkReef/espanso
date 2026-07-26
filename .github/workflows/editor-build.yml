@@ -12,51 +12,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # BEGIN TEMP_GUI_PATCH
-  apply-gui-studio-patch:
-    name: apply-gui-studio-patch
-    if: github.event_name == 'pull_request' && github.head_ref == 'gui-studio'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@main
-        with:
-          ref: gui-studio
-      - name: Install Linux GUI dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            libx11-dev \
-            libxkbcommon-dev \
-            libwayland-dev \
-            libgl1-mesa-dev
-      - name: Integrate Rhai tab and stable toolbar
-        run: |
-          sed -i 's/ui.available_width().max(320.0)/ui.available_width()/' scripts/apply_gui_studio_rhai_patch.py
-          python scripts/apply_gui_studio_rhai_patch.py
-          cargo fmt --all
-          cargo check -p espanso-editor
-      - name: Commit generated source and lockfile
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No generated changes"
-            exit 0
-          fi
-          git commit -m "feat(editor): integrate Rhai lab and stable toolbar"
-          git push origin HEAD:gui-studio
-  # END TEMP_GUI_PATCH
-
   editor-quality:
-    if: github.event_name != 'push'
     name: editor-quality
     runs-on: ubuntu-latest
     steps:
@@ -87,7 +49,6 @@ jobs:
         run: cargo clippy -p espanso-editor --all-targets -- --deny warnings
 
   windows-release:
-    if: github.event_name != 'push'
     name: windows-release
     runs-on: windows-latest
     steps:
@@ -177,7 +138,6 @@ jobs:
           if-no-files-found: error
 
   linux-release:
-    if: github.event_name != 'push'
     name: linux-release
     runs-on: ubuntu-latest
     steps:
@@ -222,7 +182,6 @@ jobs:
           if-no-files-found: error
 
   macos-release:
-    if: github.event_name != 'push'
     name: macos-release
     runs-on: macos-latest
     steps:
