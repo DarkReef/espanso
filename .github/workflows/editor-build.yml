@@ -1,9 +1,6 @@
 name: Match Studio Build
 
 on:
-  push:
-    branches:
-      - gui-studio
   pull_request:
     paths:
       - "Cargo.toml"
@@ -24,7 +21,7 @@ jobs:
   # BEGIN TEMP_GUI_PATCH
   apply-gui-studio-patch:
     name: apply-gui-studio-patch
-    if: github.event_name == 'push' && github.ref_name == 'gui-studio'
+    if: github.event_name == 'pull_request' && github.head_ref == 'gui-studio'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@main
