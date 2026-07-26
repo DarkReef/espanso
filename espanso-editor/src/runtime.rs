@@ -71,10 +71,8 @@ impl Default for RuntimeMonitor {
 }
 
 fn is_respanso_process(name: &str) -> bool {
-    matches!(
-        name.to_ascii_lowercase().as_str(),
-        "espansod" | "espansod.exe" | "respansod" | "respansod.exe" | "espanso" | "espanso.exe"
-    )
+    let normalized = name.to_ascii_lowercase();
+    normalized.contains("respanso") && !normalized.contains("match studio")
 }
 
 #[cfg(test)]
@@ -82,10 +80,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn recognizes_daemon_and_cli_process_names() {
-        assert!(is_respanso_process("espansod.exe"));
+    fn recognizes_only_respanso_process_names() {
         assert!(is_respanso_process("rEspansod.exe"));
-        assert!(is_respanso_process("ESPANSO"));
+        assert!(is_respanso_process("rEspanso.exe"));
+        assert!(is_respanso_process("RESPANSO-service.exe"));
+        assert!(!is_respanso_process("espansod.exe"));
+        assert!(!is_respanso_process("espanso.exe"));
         assert!(!is_respanso_process("rEspanso Match Studio.exe"));
     }
 }
