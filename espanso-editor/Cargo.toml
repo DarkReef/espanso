@@ -3,7 +3,7 @@ name = "espanso-editor"
 version = "0.1.0"
 authors = ["DarkReef and the espanso contributors"]
 license = "GPL-3.0"
-description = "Source-aware multi-YAML match editor for rEspanso"
+description = "Russian source-aware multi-YAML match editor for rEspanso"
 edition = "2021"
 
 [dependencies]
