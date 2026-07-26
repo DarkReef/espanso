@@ -24,6 +24,11 @@ function Main {
     $launcherContent = 'start espansod.exe launcher'
     $launcherContent | Out-File "$TARGET_DIR/START_ESPANSO.bat" -Encoding ASCII
 
+    # Keep espanso-editor.exe for `espanso edit --gui`, and add a user-facing direct-launch copy.
+    if (Test-Path "$TARGET_DIR/espanso-editor.exe") {
+        Copy-Item "$TARGET_DIR/espanso-editor.exe" "$TARGET_DIR/rEspanso Match Studio.exe" -Force
+    }
+
     $portableConfig = "$TARGET_DIR/portable/config"
     New-Item -Path "$portableConfig/match" -ItemType Directory -Force | Out-Null
     New-Item -Path "$TARGET_DIR/.espanso-runtime" -ItemType Directory -Force | Out-Null
@@ -43,7 +48,7 @@ function Main {
 rEspanso Portable
 
 Для запуска rEspanso дважды щёлкните START_ESPANSO.bat.
-Для открытия редактора правил дважды щёлкните espanso-editor.exe.
+Для открытия редактора правил дважды щёлкните «rEspanso Match Studio.exe».
 
 Редактор запускается напрямую: отдельный CMD-файл ему не требуется.
 Он автоматически использует конфигурацию:
@@ -51,6 +56,9 @@ rEspanso Portable
 
 YAML-файлы правил находятся в:
   portable\config\match
+
+При ошибке редактор показывает русское системное окно и создаёт журнал:
+  rEspanso Match Studio.log
 
 Начальный файл portable\config\match\base.yml уже включён, поэтому новое правило
 можно создать сразу после первого запуска редактора.
