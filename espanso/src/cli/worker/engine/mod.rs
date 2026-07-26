@@ -208,6 +208,10 @@ pub fn initialize_and_spawn(
                 &home_path,
                 &paths.packages,
             );
+            let rhai_extension = espanso_render::extension::rhai::RhaiExtension::new(
+                &paths.config,
+                &paths.packages,
+            );
             let shell_extension =
                 espanso_render::extension::shell::ShellExtension::new(&paths.config);
             let form_adapter = FormProviderAdapter::new(&modulo_form_ui);
@@ -221,6 +225,7 @@ pub fn initialize_and_spawn(
                 &echo_extension,
                 &random_extension,
                 &script_extension,
+                &rhai_extension,
                 &shell_extension,
                 &form_extension,
                 &choice_extension,
@@ -280,7 +285,7 @@ pub fn initialize_and_spawn(
             // Disable previously granted linux capabilities if not needed anymore
             if has_granted_capabilities {
                 if let Err(err) = crate::capabilities::clear_capabilities() {
-                    error!("unable to revoke linux capabilities: {err}");
+                    error!("unable to revoke CAP_DAC_OVERRIDE capability: {err}");
                 }
             }
 
