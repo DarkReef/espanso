@@ -24,11 +24,15 @@ fn launch() -> Result<(), String> {
 
     append_startup_log(&format!(
         "Запуск. EXE: {}; конфигурация: {}; текущая папка: {}",
-        std::env::current_exe()
-            .map_or_else(|_| "не определён".to_owned(), |path| path.display().to_string()),
+        std::env::current_exe().map_or_else(
+            |_| "не определён".to_owned(),
+            |path| path.display().to_string()
+        ),
         config_root.display(),
-        std::env::current_dir()
-            .map_or_else(|_| "не определена".to_owned(), |path| path.display().to_string())
+        std::env::current_dir().map_or_else(
+            |_| "не определена".to_owned(),
+            |path| path.display().to_string()
+        )
     ));
 
     espanso_editor::run(config_root).map_err(|error| error.to_string())
@@ -61,8 +65,7 @@ fn portable_config_root() -> Option<PathBuf> {
         .and_then(|value| value.to_str())
         .is_some_and(|value| value.eq_ignore_ascii_case("rEspanso Match Studio"));
 
-    (portable_directory.is_dir() || is_named_standalone)
-        .then(|| portable_directory.join("config"))
+    (portable_directory.is_dir() || is_named_standalone).then(|| portable_directory.join("config"))
 }
 
 fn portable_config_for(executable: &Path) -> Option<PathBuf> {
@@ -94,8 +97,7 @@ fn initialize_match_directory(config_root: &Path) -> Result<(), String> {
                 .extension()
                 .and_then(|extension| extension.to_str())
                 .is_some_and(|extension| {
-                    extension.eq_ignore_ascii_case("yml")
-                        || extension.eq_ignore_ascii_case("yaml")
+                    extension.eq_ignore_ascii_case("yml") || extension.eq_ignore_ascii_case("yaml")
                 })
         });
 
