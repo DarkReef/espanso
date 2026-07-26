@@ -3,7 +3,7 @@ name: Build rEspanso Windows
 on:
   push:
     branches:
-      - dev-in
+      - rEspanso-feature
   pull_request:
     branches:
       - dev
@@ -125,7 +125,7 @@ jobs:
                 @dialog: rEspanso — проверка
                 Информационное окно работает.
 
-            # Обычный матч Espanso. При штатном вводе он заменяется автоматически.
+            # Обычный матч rEspanso. При штатном вводе он заменяется автоматически.
             # Если движок пропустил длинный триггер и текст остался в поле,
             # выделите его и нажмите Ctrl+Alt+M — rEspanso повторно найдёт
             # и исполнит тот же матч.
@@ -149,7 +149,7 @@ jobs:
           1. Extract the entire ZIP. Do not run an EXE from inside the ZIP.
           2. Double-click rEspanso.exe. It automatically uses the adjacent portable folder.
           3. Type :rinfo to test an informational dialog.
-          4. Type :i10_9 normally. If Espanso catches it, the dialog opens immediately.
+          4. Type :i10_9 normally. If rEspanso catches it, the dialog opens immediately.
           5. To test the recovery path, first paste :i10_9 into Notepad with Ctrl+V
              (or use text already left behind after a missed expansion), select it,
              and press Ctrl+Alt+M. The same ordinary match must be executed.
@@ -166,12 +166,12 @@ jobs:
           rEspanso-core.exe is an internal engine file and must remain beside it.
           No CMD/BAT launcher files are required.
 
-          The selected-text hotkey is a recovery path for ordinary Espanso matches;
+          The selected-text hotkey is a recovery path for ordinary rEspanso matches;
           it does not require a separate selection-only rule or special match syntax.
 
           The package includes the required Microsoft Visual C++ runtime DLLs and
           uses isolated portable config/runtime folders, so it does not conflict
-          with an installed Espanso instance.
+          with an installed rEspanso instance.
 
           Clinical calculators support, but do not replace, professional judgement
           and current clinical guidelines.
