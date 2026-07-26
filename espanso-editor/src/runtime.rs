@@ -1,6 +1,6 @@
 use eframe::egui;
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
     thread,
     time::{Duration, Instant},
@@ -73,7 +73,7 @@ impl RuntimeMonitor {
         let clicked = ui
             .button("(Пере)запустить rEspanso")
             .on_hover_text(
-                "Завершает найденные процессы rEspanso и запускает portable-версию рядом с Match Studio",
+                "Завершает найденные процессы rEspanso и запускает нативную portable-версию рядом с Match Studio",
             )
             .clicked();
         if !clicked {
@@ -106,18 +106,14 @@ impl RuntimeMonitor {
         let working_directory = executable
             .parent()
             .ok_or_else(|| "Не удалось определить папку запуска rEspanso".to_owned())?;
-        let file_name = executable
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or_default()
-            .to_ascii_lowercase();
 
         let mut command = Command::new(&executable);
         command.current_dir(working_directory);
-        if file_name.contains("espansod") {
-            command.arg("launcher");
-        } else {
-            command.arg("start");
+        match launch_mode(&executable) {
+            LaunchMode::NativePortable => {}
+            LaunchMode::CoreOrDaemon => {
+                command.arg("launcher");
+            }
         }
         command
             .spawn()
@@ -137,6 +133,25 @@ impl RuntimeMonitor {
 impl Default for RuntimeMonitor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LaunchMode {
+    NativePortable,
+    CoreOrDaemon,
+}
+
+fn launch_mode(executable: &Path) -> LaunchMode {
+    let name = executable
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if name == "respanso.exe" || name == "respanso" || name.contains("portable") {
+        LaunchMode::NativePortable
+    } else {
+        LaunchMode::CoreOrDaemon
     }
 }
 
@@ -162,24 +177,24 @@ fn find_respanso_executable() -> Result<PathBuf, String> {
 #[cfg(target_os = "windows")]
 fn executable_candidates() -> &'static [&'static str] {
     &[
-        "rEspansod.exe",
-        "respansod.exe",
-        "espansod.exe",
         "rEspanso.exe",
         "respanso.exe",
-        "espanso.exe",
+        "rEspanso-core.exe",
+        "respanso-core.exe",
+        "rEspansod.exe",
+        "respansod.exe",
     ]
 }
 
 #[cfg(not(target_os = "windows"))]
 fn executable_candidates() -> &'static [&'static str] {
     &[
-        "rEspansod",
-        "respansod",
-        "espansod",
         "rEspanso",
         "respanso",
-        "espanso",
+        "rEspanso-core",
+        "respanso-core",
+        "rEspansod",
+        "respansod",
     ]
 }
 
@@ -196,6 +211,7 @@ mod tests {
     fn recognizes_only_respanso_process_names() {
         assert!(is_respanso_process("rEspansod.exe"));
         assert!(is_respanso_process("rEspanso.exe"));
+        assert!(is_respanso_process("rEspanso-core.exe"));
         assert!(is_respanso_process("RESPANSO-service.exe"));
         assert!(!is_respanso_process("espansod.exe"));
         assert!(!is_respanso_process("espanso.exe"));
@@ -203,17 +219,29 @@ mod tests {
     }
 
     #[test]
-    fn daemon_candidates_are_checked_before_cli_candidates() {
+    fn native_portable_launcher_is_checked_first() {
         let candidates = executable_candidates();
-        assert!(candidates[0].to_ascii_lowercase().contains("espansod"));
+        assert_eq!(candidates[0].to_ascii_lowercase(), "respanso.exe");
+    }
+
+    #[test]
+    fn native_portable_launcher_uses_default_launcher_mode() {
+        assert_eq!(
+            launch_mode(Path::new("rEspanso.exe")),
+            LaunchMode::NativePortable
+        );
+        assert_eq!(
+            launch_mode(Path::new("rEspanso-core.exe")),
+            LaunchMode::CoreOrDaemon
+        );
     }
 
     #[test]
     fn candidate_path_is_resolved_relative_to_root() {
-        let root = std::path::Path::new("portable-root");
+        let root = Path::new("portable-root");
         assert_eq!(
-            root.join("rEspansod.exe"),
-            PathBuf::from("portable-root/rEspansod.exe")
+            root.join("rEspanso.exe"),
+            PathBuf::from("portable-root/rEspanso.exe")
         );
     }
 }
