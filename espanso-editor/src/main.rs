@@ -15,7 +15,7 @@ fn main() {
             "Не удалось запустить rEspanso Match Studio.\n\n{error}\n\nПодробности записаны в:\n{}",
             startup_log_path().display()
         ));
-    }
+    };
 }
 
 fn launch() -> Result<(), String> {
@@ -184,7 +184,7 @@ fn show_error_dialog(message: &str) {
     let title = HSTRING::from("rEspanso Match Studio — ошибка запуска");
     unsafe {
         let _ = MessageBoxW(None, &text, &title, MB_OK | MB_ICONERROR);
-    }
+    };
 }
 
 #[cfg(not(windows))]
