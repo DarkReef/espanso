@@ -55,7 +55,7 @@ jobs:
       - name: Build release binaries
         env:
           CARGO_TERM_COLOR: always
-        run: cargo build --quiet --release -p espanso --bin espanso --bin respanso-portable -p espanso-editor
+        run: cargo build --quiet --release -p espanso -p espanso-editor
 
       - name: Verify source binaries
         shell: pwsh
