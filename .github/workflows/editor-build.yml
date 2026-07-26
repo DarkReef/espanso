@@ -56,12 +56,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-match-studio-static-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
-      - name: Build autonomous Match Studio
+          key: ${{ runner.os }}-match-studio-wgpu-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
+      - name: Build WGPU Match Studio
         shell: pwsh
-        run: |
-          $env:RUSTFLAGS = "-C target-feature=+crt-static"
-          cargo build -p espanso-editor --release
+        run: cargo build -p espanso-editor --release
       - name: Assemble standalone and portable overlay
         shell: pwsh
         run: |
@@ -75,17 +73,16 @@ jobs:
           Copy-Item $editor "$standalone/rEspanso Match Studio.exe"
           Copy-Item $editor "$overlay/rEspanso Match Studio.exe"
 
-          # Дополнительная страховка для систем без установленного Microsoft Visual C++ Runtime.
+          # Portable package carries the MSVC runtime beside the EXE.
           $vcruntime = Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter "vcruntime140.dll" -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -like "*\VC\Redist\MSVC\*" -and $_.FullName -like "*\x64\*" } |
             Select-Object -First 1
-          if ($vcruntime) {
-            $runtimeDirectory = Split-Path $vcruntime.FullName -Parent
-            Get-ChildItem -Path $runtimeDirectory -Filter "*.dll" |
-              Copy-Item -Destination $standalone -Force
-            Get-ChildItem -Path $runtimeDirectory -Filter "*.dll" |
-              Copy-Item -Destination $overlay -Force
-          }
+          if (-not $vcruntime) { throw "Microsoft Visual C++ runtime files were not found" }
+          $runtimeDirectory = Split-Path $vcruntime.FullName -Parent
+          Get-ChildItem -Path $runtimeDirectory -Filter "*.dll" |
+            Copy-Item -Destination $standalone -Force
+          Get-ChildItem -Path $runtimeDirectory -Filter "*.dll" |
+            Copy-Item -Destination $overlay -Force
 
           @(
             'matches:',
@@ -96,23 +93,25 @@ jobs:
           ) | Set-Content -Path "$standalone/portable/config/match/base.yml" -Encoding UTF8
 
           Set-Content -Path "$standalone/README.txt" -Encoding UTF8 -Value @'
-          rEspanso Match Studio — автономная сборка
+          rEspanso Match Studio — автономная сборка WGPU
 
           Запустите «rEspanso Match Studio.exe» двойным щелчком.
           Программа использует portable\config\match рядом с EXE.
+          Графический интерфейс работает через WGPU/DirectX и не требует OpenGL.
 
           При ошибке появится русское системное окно, а подробности будут записаны
           в «rEspanso Match Studio.log» рядом с программой.
           '@
 
           Set-Content -Path "$overlay/README — Match Studio.txt" -Encoding UTF8 -Value @'
-          rEspanso Match Studio — дополнение к существующему rEspanso Portable
+          rEspanso Match Studio — WGPU-дополнение к существующему rEspanso Portable
 
           Распакуйте содержимое этого архива непосредственно в корень portable-сборки,
           где уже находятся папка «portable» и файл «espansod.exe».
 
           Запускайте «rEspanso Match Studio.exe» двойным щелчком.
           Существующие portable\config\match\*.yml не изменяются и не заменяются.
+          Графический интерфейс работает через WGPU/DirectX и не требует OpenGL.
 
           При ошибке появится русское системное окно, а подробности будут записаны
           в «rEspanso Match Studio.log» рядом с программой.
