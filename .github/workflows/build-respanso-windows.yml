@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - rEspanso-feature
+      - fix/native-portable-with-studio
   pull_request:
     branches:
       - dev
+      - rEspanso-feature
   workflow_dispatch:
 
 permissions:
@@ -18,7 +20,7 @@ concurrency:
 
 jobs:
   build-windows:
-    name: Build Windows x64
+    name: Build native Windows x64 portable
     runs-on: windows-2022
     timeout-minutes: 90
 
@@ -47,8 +49,8 @@ jobs:
           where.exe cl
           where.exe nmake
 
-      - name: Normalize Rust formatting in runner workspace
-        run: cargo fmt --all
+      - name: Check formatting
+        run: cargo fmt --all -- --check
 
       - name: Run embedded runtime tests
         run: cargo test --quiet -p espanso-render
@@ -59,144 +61,65 @@ jobs:
       - name: Run native portable launcher tests
         run: cargo test --quiet -p espanso --bin respanso-portable
 
+      - name: Run Match Studio tests
+        run: cargo test --quiet -p espanso-editor
+
       - name: Build release binaries
         env:
           CARGO_TERM_COLOR: always
-        run: cargo build --quiet --release -p espanso --bin espanso --bin respanso-portable
+        run: cargo build --quiet --release -p espanso --bin espanso --bin respanso-portable -p espanso-editor
+
+      - name: Run strict Clippy
+        run: cargo clippy -p espanso -p espanso-editor --all-targets -- --deny warnings
 
       - name: Verify source binaries
         shell: pwsh
         run: |
           $core = "target\release\espanso.exe"
           $launcher = "target\release\respanso-portable.exe"
-          if (-not (Test-Path $core)) {
-            throw "Release core binary was not produced: $core"
+          $studio = "target\release\espanso-editor.exe"
+          foreach ($path in @($core, $launcher, $studio)) {
+            if (-not (Test-Path $path)) {
+              throw "Release binary was not produced: $path"
+            }
           }
-          if (-not (Test-Path $launcher)) {
-            throw "Portable launcher was not produced: $launcher"
-          }
-          Get-Item $core, $launcher | Format-Table Name,Length,LastWriteTime
+          Get-Item $core, $launcher, $studio | Format-Table Name,Length,LastWriteTime
           & $core --version
 
-      - name: Prepare portable downloadable package
+      - name: Assemble unified native portable package
         shell: pwsh
         run: |
-          $out = "artifact\rEspanso-windows-x64"
-          $portable = Join-Path $out "portable"
-          $configDir = Join-Path $portable "config"
-          $matchDir = Join-Path $configDir "match"
-          $calculatorDir = Join-Path $configDir "medical-calculators"
-          $runtimeDir = Join-Path $portable "runtime"
-          $packagesDir = Join-Path $portable "packages"
+          $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
+          $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
+          $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
+          & "./scripts/build_windows_portable.ps1"
 
-          New-Item -ItemType Directory -Force -Path $out, $matchDir, $calculatorDir, $runtimeDir, $packagesDir | Out-Null
-
-          # rEspanso.exe is the only user-facing launcher. It discovers and passes
-          # portable/config, portable/runtime and portable/packages automatically.
-          Copy-Item "target\release\respanso-portable.exe" "$out\rEspanso.exe"
-          Copy-Item "target\release\espanso.exe" "$out\rEspanso-core.exe"
-
-          # The release binaries dynamically link to the Microsoft Visual C++ runtime.
-          # Copy the licensed redistributable DLLs next to the executables so the test
-          # build works on Windows machines without Visual Studio or VC++ Build Tools.
-          $crtRoot = Join-Path $env:VCToolsRedistDir "x64"
-          $crtDir = Get-ChildItem -Path $crtRoot -Directory |
-            Where-Object { $_.Name -like "Microsoft.VC*.CRT" } |
-            Sort-Object Name -Descending |
-            Select-Object -First 1
-
-          if (-not $crtDir) {
-            throw "Unable to locate the Visual C++ x64 redistributable directory under $crtRoot"
+          $package = "target/windows/respanso-portable-with-studio"
+          $required = @(
+            "$package/rEspanso.exe",
+            "$package/rEspanso-core.exe",
+            "$package/rEspanso Match Studio.exe",
+            "$package/portable/config/match",
+            "$package/portable/runtime",
+            "$package/portable/packages"
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path $path)) {
+              throw "Unified portable package is missing: $path"
+            }
           }
 
-          Copy-Item (Join-Path $crtDir.FullName "*.dll") $out
-          Write-Host "Bundled Visual C++ runtime from $($crtDir.FullName):"
-          Get-ChildItem $out -Filter "*.dll" | Select-Object Name,Length
-
-          Copy-Item "LICENSE" "$out\LICENSE.txt"
-          Copy-Item "docs\respanso-dynamic-dialog.md" "$out\DYNAMIC-DIALOG.md"
-          Copy-Item "docs\respanso-selection-match.md" "$out\SELECTION-MATCH.md"
-          Copy-Item "docs\respanso-medical-calculators.md" "$out\MEDICAL-CALCULATORS.md"
-
-          @'
-          matches:
-            - trigger: ":rinfo"
-              replace: |
-                @dialog: rEspanso — проверка
-                Информационное окно работает.
-
-            # Обычный матч rEspanso. При штатном вводе он заменяется автоматически.
-            # Если движок пропустил длинный триггер и текст остался в поле,
-            # выделите его и нажмите Ctrl+Alt+M — rEspanso повторно найдёт
-            # и исполнит тот же матч.
-            - trigger: ":i10_9"
-              replace: |
-                @dialog: rEspanso — восстановление пропущенного матча
-                Матч :i10_9 найден и выполнен.
-          '@ | Set-Content (Join-Path $matchDir "respanso-test.yml") -Encoding UTF8
-
-          # Bundle the visual forms and editable clinical Rhai modules. No external
-          # runtime is required on the target workstation.
-          Copy-Item "examples\medical-calculators\medical-calculators.yml" (Join-Path $matchDir "medical-calculators.yml")
-          Copy-Item "examples\medical-calculators\modules" (Join-Path $calculatorDir "modules") -Recurse
-
-          @"
-          rEspanso Windows x64 portable test build
-          Branch: $env:GITHUB_REF_NAME
-          Commit: $env:GITHUB_SHA
-
-          HOW TO START
-          1. Extract the entire ZIP. Do not run an EXE from inside the ZIP.
-          2. Double-click rEspanso.exe. It automatically uses the adjacent portable folder.
-          3. Type :rinfo to test an informational dialog.
-          4. Type :i10_9 normally. If rEspanso catches it, the dialog opens immediately.
-          5. To test the recovery path, first paste :i10_9 into Notepad with Ctrl+V
-             (or use text already left behind after a missed expansion), select it,
-             and press Ctrl+Alt+M. The same ordinary match must be executed.
-          6. Clinical calculators are available through these matches:
-             :score2, :score2op, :hasbled, :cha2vasc, :findrisc
-          7. Their editable modules are stored in:
-             portable\config\medical-calculators\modules\
-             Save a module and reload the rEspanso configuration to apply a change.
-             No compiler, Node.js, Python or PowerShell module is required.
-          8. Stop rEspanso through its tray menu. Advanced CLI fallback:
-             rEspanso.exe service stop
-
-          rEspanso.exe is the user-facing native portable launcher.
-          rEspanso-core.exe is an internal engine file and must remain beside it.
-          No CMD/BAT launcher files are required.
-
-          The selected-text hotkey is a recovery path for ordinary rEspanso matches;
-          it does not require a separate selection-only rule or special match syntax.
-
-          The package includes the required Microsoft Visual C++ runtime DLLs and
-          uses isolated portable config/runtime folders, so it does not conflict
-          with an installed rEspanso instance.
-
-          Clinical calculators support, but do not replace, professional judgement
-          and current clinical guidelines.
-
-          This is an unsigned development build. Windows SmartScreen may require:
-          More info -> Run anyway, or file Properties -> Unblock.
-          "@ | Set-Content "$out\README-FIRST.txt" -Encoding UTF8
-
-          # Verify that the packaged GUI-subsystem launcher can locate the renamed
-          # core, inject portable paths and forward an ordinary CLI command.
-          $verification = Start-Process `
-            -FilePath "$out\rEspanso.exe" `
-            -ArgumentList "--version" `
-            -WorkingDirectory $out `
-            -Wait `
-            -PassThru
-          if ($verification.ExitCode -ne 0) {
-            throw "Packaged native portable launcher verification failed with exit code $($verification.ExitCode)"
+          $forbidden = Get-ChildItem $package -Recurse -File |
+            Where-Object { $_.Extension -in @(".bat", ".cmd") }
+          if ($forbidden) {
+            throw "Unified portable package contains BAT/CMD files: $($forbidden.FullName -join ', ')"
           }
 
-      - name: Upload Windows binary
+      - name: Upload unified Windows portable
         uses: actions/upload-artifact@v4
         with:
-          name: rEspanso-windows-portable-x64-${{ github.sha }}
-          path: artifact/rEspanso-windows-x64
+          name: rEspanso-native-portable-with-studio-windows-x64-${{ github.sha }}
+          path: target/windows/rEspanso-Win-Portable-with-Studio-x86_64.zip
           if-no-files-found: error
           retention-days: 14
-          compression-level: 6
+          compression-level: 0
