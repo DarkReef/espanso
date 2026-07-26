@@ -5,7 +5,7 @@ $TARGET_DIR = "target/windows/resources"
 
 function Main {
     if ([string]::IsNullOrEmpty($env:EXEC_PATH)) {
-        Write-Error 'EXEC_PATH is required, for example .\target\release\espanso.exe'
+        Write-Error '.\target\release\espanso.exe is required through EXEC_PATH'
     }
     if (-not (Test-Path -Path $env:EXEC_PATH)) {
         Write-Error "Could not find rEspanso executable $env:EXEC_PATH"
@@ -36,9 +36,7 @@ function Main {
     Copy-Item -Path $env:EXEC_PATH -Destination "$TARGET_DIR/espansod.exe"
     Copy-Item -Path $env:EDITOR_PATH -Destination "$TARGET_DIR/rEspanso Match Studio.exe"
 
-    $commandContent = '@"%~dp0espansod.exe" %*'
-    $commandContent | Out-File "$TARGET_DIR/espanso.cmd" -Encoding ASCII
-    Write-Output "Windows resources with Match Studio created"
+    Write-Output "Windows resources with Match Studio created without BAT/CMD wrappers"
 }
 
 Main @PSBoundParameters

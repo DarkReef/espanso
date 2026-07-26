@@ -25,7 +25,7 @@ fn run() -> Result<i32, String> {
     let core = root.join(core_binary_name());
     if !core.is_file() {
         return Err(format!(
-            "rrEspanso core executable is missing: {}",
+            "rEspanso core executable is missing: {}",
             core.display()
         ));
     }
@@ -54,7 +54,7 @@ fn run() -> Result<i32, String> {
 
     let status = command
         .status()
-        .map_err(|error| format!("unable to start rrEspanso core: {error}"))?;
+        .map_err(|error| format!("unable to start rEspanso core: {error}"))?;
     Ok(status.code().unwrap_or(1))
 }
 
@@ -65,7 +65,7 @@ fn core_binary_name() -> &'static str {
 
 #[cfg(not(target_os = "windows"))]
 fn core_binary_name() -> &'static str {
-    "rrEspanso-core"
+    "rEspanso-core"
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
