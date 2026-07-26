@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 fn main() -> eframe::Result {
     let config_root = parse_config_root().unwrap_or_else(default_config_root);
@@ -37,7 +37,7 @@ mod tests {
 
     #[test]
     fn portable_root_is_relative_to_executable_directory() {
-        let executable = Path::new("bundle").join("espanso-editor");
+        let executable = std::path::Path::new("bundle").join("espanso-editor");
         assert_eq!(
             executable.parent().map(|path| path.join(".espanso")),
             Some(PathBuf::from("bundle/.espanso"))
