@@ -1,3 +1,4 @@
+use eframe::egui;
 use std::{
     path::PathBuf,
     process::Command,
@@ -7,13 +8,6 @@ use std::{
 use sysinfo::{PidExt, ProcessExt, System, SystemExt};
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(1);
-const NOTICE_DURATION: Duration = Duration::from_secs(8);
-
-struct ActionNotice {
-    message: String,
-    success: bool,
-    created_at: Instant,
-}
 
 pub struct RuntimeMonitor {
     system: System,
@@ -21,7 +15,6 @@ pub struct RuntimeMonitor {
     process_ids: Vec<u32>,
     last_refresh: Option<Instant>,
     last_change: Instant,
-    action_notice: Option<ActionNotice>,
 }
 
 impl RuntimeMonitor {
@@ -32,12 +25,10 @@ impl RuntimeMonitor {
             process_ids: Vec::new(),
             last_refresh: None,
             last_change: Instant::now(),
-            action_notice: None,
         }
     }
 
-    pub fn update(&mut self, context: &eframe::egui::Context) {
-        self.restart_button(context);
+    pub fn update(&mut self, context: &egui::Context) {
         context.request_repaint_after(REFRESH_INTERVAL);
         if self
             .last_refresh
@@ -78,49 +69,23 @@ impl RuntimeMonitor {
         self.last_change.elapsed().as_secs()
     }
 
-    fn restart_button(&mut self, context: &eframe::egui::Context) {
-        let mut clicked = false;
-        eframe::egui::Area::new(eframe::egui::Id::new("respanso_restart_button"))
-            .anchor(eframe::egui::Align2::RIGHT_TOP, [-8.0, 5.0])
-            .order(eframe::egui::Order::Foreground)
-            .show(context, |ui| {
-                if ui
-                    .button("(Пере)запустить rEspanso")
-                    .on_hover_text(
-                        "Завершает найденные процессы rEspanso и запускает portable-версию рядом с Match Studio",
-                    )
-                    .clicked()
-                {
-                    clicked = true;
-                }
-
-                if let Some(notice) = self
-                    .action_notice
-                    .as_ref()
-                    .filter(|notice| notice.created_at.elapsed() < NOTICE_DURATION)
-                {
-                    let color = if notice.success {
-                        eframe::egui::Color32::from_rgb(40, 150, 90)
-                    } else {
-                        ui.visuals().error_fg_color
-                    };
-                    ui.colored_label(color, notice.message.as_str());
-                }
-            });
-
-        if clicked {
-            let result = self.restart_respanso();
-            let (message, success) = match result {
-                Ok(message) => (message, true),
-                Err(message) => (message, false),
-            };
-            self.action_notice = Some(ActionNotice {
-                message,
-                success,
-                created_at: Instant::now(),
-            });
-            context.request_repaint();
+    pub fn restart_button(&mut self, ui: &mut egui::Ui) -> Option<String> {
+        let clicked = ui
+            .button("(Пере)запустить rEspanso")
+            .on_hover_text(
+                "Завершает найденные процессы rEspanso и запускает portable-версию рядом с Match Studio",
+            )
+            .clicked();
+        if !clicked {
+            return None;
         }
+
+        let result = self.restart_respanso();
+        self.last_refresh = None;
+        Some(match result {
+            Ok(message) => message,
+            Err(message) => format!("Ошибка управления rEspanso: {message}"),
+        })
     }
 
     fn restart_respanso(&mut self) -> Result<String, String> {
@@ -158,7 +123,6 @@ impl RuntimeMonitor {
             .spawn()
             .map_err(|error| format!("Не удалось запустить {}: {error}", executable.display()))?;
 
-        self.last_refresh = None;
         Ok(if stopped == 0 {
             format!("rEspanso запущен: {}", executable.display())
         } else {
