@@ -145,6 +145,12 @@ fn main() {
     )
     .subcommand(SubCommand::with_name("edit")
         .about("Shortcut to open the default text editor to edit config files")
+        .arg(
+          Arg::with_name("gui")
+            .long("gui")
+            .takes_value(false)
+            .help("Open rEspanso Match Studio"),
+        )
         .arg(Arg::with_name("target_file")
             .help(r#"Defaults to "match/base.yml", it contains the relative path of the file you want to edit,
 such as 'config/default.yml' or 'match/base.yml'.

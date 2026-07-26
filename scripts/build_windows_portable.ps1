@@ -1,71 +1,64 @@
 #!/usr/bin/env pwsh
 
-# Stop on any error
 $ErrorActionPreference = "Stop"
-
-# Enable verbose output
-# Set-PSDebug -Strict -Trace 1
-
 $TARGET_DIR = "target/windows/portable"
 $RESOURCE_DIR = "target/windows/resources"
-
-# Check if the resources were previously built
-if (-not (Test-Path $RESOURCE_DIR)) {
-    Write-Error "You need to build the windows resources first.`nPlease run scripts/build_windows_resources.ps1"
-    exit 1
-}
+$PACKAGE_DIR = "target/windows/respanso-portable-with-studio"
+$ARCHIVE_PATH = "target/windows/rEspanso-Win-Portable-with-Studio-x86_64.zip"
 
 function Main {
-    # Clean the target directory
-    if (Test-Path $TARGET_DIR) {
-        Remove-Item $TARGET_DIR -Recurse -Force
+    if (-not (Test-Path $RESOURCE_DIR)) {
+        Write-Error "Build Windows resources first: scripts/build_windows_resources.ps1"
+    }
+    foreach ($path in @($TARGET_DIR, $PACKAGE_DIR)) {
+        if (Test-Path $path) {
+            Remove-Item $path -Recurse -Force
+        }
     }
 
-    # Remove the portable folder if found
-    if (Test-Path "target/windows/espanso-portable") {
-        Remove-Item "target/windows/espanso-portable" -Recurse -Force
-    }
-
-    # Copy the resources directory
     Copy-Item -Path $RESOURCE_DIR -Destination $TARGET_DIR -Recurse -Force
+    'start "" espansod.exe launcher' | Out-File "$TARGET_DIR/START_ESPANSO.bat" -Encoding ASCII
 
-    # Create the launcher script
-    $launcherContent = 'start espansod.exe launcher'
-    $launcherContent | Out-File "$TARGET_DIR/START_ESPANSO.bat" -Encoding ASCII
-
-    New-Item -Path "$TARGET_DIR/.espanso" -ItemType Directory -Force | Out-Null
+    New-Item -Path "$TARGET_DIR/.espanso/match" -ItemType Directory -Force | Out-Null
     New-Item -Path "$TARGET_DIR/.espanso-runtime" -ItemType Directory -Force | Out-Null
 
-    $readmeContent = @"
-Welcome to rEspanso (Portable edition)!
+    $baseMatch = "$TARGET_DIR/.espanso/match/base.yml"
+    if (-not (Test-Path $baseMatch)) {
+        @(
+            'matches:',
+            '  - label: "rEspanso Portable готов"',
+            '    trigger: ":respanso_example"',
+            '    replace: "rEspanso и Match Studio работают из единого portable-комплекта"',
+            '    disabled: true'
+        ) | Set-Content -Path $baseMatch -Encoding UTF8
+    }
 
-To start espanso, you can double click on "START_ESPANSO.bat"
+    @"
+rEspanso Portable + Match Studio
 
-After the first run, you will see some files in the ".espanso" directory.
-This is where your snippets and configurations should be defined.
+1. Запустите START_ESPANSO.bat.
+2. Откройте меню значка rEspanso в трее и выберите «Открыть rEspanso Studio».
+3. Studio также можно открыть напрямую файлом «rEspanso Match Studio.exe».
 
-For more information, please visit the official documentation:
-https://espanso.org/docs/
+rEspanso и Studio используют одну конфигурацию:
+  .espanso
 
-IMPORTANT: Don't delete any file or directory, otherwise espanso won't work.
+Правила находятся в:
+  .espanso\match
 
+Рабочие файлы процесса находятся в:
+  .espanso-runtime
 
-FOR ADVANCED USERS:
+Командная строка:
+  espanso.cmd --help
+  espanso.cmd edit --gui
 
-rEspanso also offers a rich CLI interface. To start it from the terminal, cd into the
-current directory and run "espanso start". You can also run "espanso --help" for more information.
+Не разделяйте файлы комплекта: daemon и Studio рассчитаны на совместное portable-размещение.
+"@ | Out-File "$TARGET_DIR/README.txt" -Encoding UTF8
 
-You might have noticed that the directory contains both an "espansod.exe" and an "espanso.cmd" file.
-You should generally avoid running "espansod.exe" directly, and instead use the "espanso.cmd"
-wrapper (which can simply be run as "espanso" in the terminal). This is needed to correctly manage
-STD console handles on Windows.
-"@
-    $readmeContent | Out-File "$TARGET_DIR/README.txt" -Encoding UTF8
-
-    Rename-Item -Path $TARGET_DIR -NewName espanso-portable
-    Compress-Archive target/windows/espanso-portable target/windows/rEspanso-Win-Portable-x86_64.zip -Force
-
-    Write-Output "rEspanso Portable created!"
+    Move-Item -Path $TARGET_DIR -Destination $PACKAGE_DIR
+    Compress-Archive -Path $PACKAGE_DIR -DestinationPath $ARCHIVE_PATH -Force
+    Write-Output "Unified rEspanso Portable + Match Studio created: $ARCHIVE_PATH"
 }
 
 Main @PSBoundParameters
