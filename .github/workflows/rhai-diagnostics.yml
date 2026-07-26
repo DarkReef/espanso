@@ -7,7 +7,10 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "espanso-engine/src/process/default.rs"
       - "espanso-render/**"
+      - "espanso/src/bin/respanso-portable.rs"
+      - "espanso/src/cli/worker/engine/**"
       - "examples/medical-calculators/**"
       - "docs/respanso-medical-calculators.md"
       - ".github/workflows/rhai-diagnostics.yml"
@@ -17,14 +20,17 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "espanso-engine/src/process/default.rs"
       - "espanso-render/**"
+      - "espanso/src/bin/respanso-portable.rs"
+      - "espanso/src/cli/worker/engine/**"
       - "examples/medical-calculators/**"
       - "docs/respanso-medical-calculators.md"
       - ".github/workflows/rhai-diagnostics.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: rhai-diagnostics-${{ github.event.pull_request.number || github.ref }}
@@ -40,19 +46,25 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Capture pending rustfmt changes
+      - name: Apply rustfmt to rEspanso branch changes
+        if: github.event_name == 'push'
         shell: bash
         run: |
           cargo fmt --all
-          git diff --stat
-          git diff > rustfmt.patch
-
-      - name: Upload rustfmt patch
-        uses: actions/upload-artifact@v4
-        with:
-          name: rustfmt-patch-${{ github.sha }}
-          path: rustfmt.patch
-          retention-days: 7
+          files=(
+            espanso-engine/src/process/default.rs
+            espanso-render/src/extension/rhai.rs
+            espanso/src/bin/respanso-portable.rs
+            espanso/src/cli/worker/engine/dispatch/executor/clipboard_injector.rs
+            espanso/src/cli/worker/engine/mod.rs
+          )
+          if ! git diff --quiet -- "${files[@]}"; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- "${files[@]}"
+            git commit -m "style(respanso): apply rustfmt"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
 
       - name: Run embedded Rhai runtime and clinical calculator tests
         id: test
