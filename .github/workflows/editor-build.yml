@@ -65,30 +65,26 @@ jobs:
         run: |
           if (-not (Test-Path "target/release/espanso-editor.exe")) { throw "espanso-editor.exe was not built" }
           $package = "dist/respanso-match-studio-windows-x86_64"
-          $config = "$package/portable/config"
-          New-Item -ItemType Directory -Force -Path "$config/match" | Out-Null
-          Copy-Item "target/release/espanso-editor.exe" "$package/espanso-editor.exe"
+          New-Item -ItemType Directory -Force -Path "$package/portable/config/match" | Out-Null
+          Copy-Item "target/release/espanso-editor.exe" "$package/rEspanso Match Studio.exe"
           @(
             'matches:',
-            '  - label: "Portable configuration initialized"',
+            '  - label: "Portable-конфигурация готова"',
             '    trigger: ":respanso_example"',
-            '    replace: "rEspanso Match Studio is ready"',
+            '    replace: "rEspanso Match Studio готов к работе"',
             '    disabled: true'
-          ) | Set-Content -Path "$config/match/base.yml" -Encoding UTF8
-          Set-Content -Path "$package/OPEN_MATCH_STUDIO.cmd" -Encoding ASCII -Value '@"%~dp0espanso-editor.exe" --config-dir "%~dp0portable\config"'
+          ) | Set-Content -Path "$package/portable/config/match/base.yml" -Encoding UTF8
           Set-Content -Path "$package/README.txt" -Encoding UTF8 -Value @'
-          rEspanso Match Studio — portable configuration
+          rEspanso Match Studio
 
-          Run OPEN_MATCH_STUDIO.cmd.
+          Запустите «rEspanso Match Studio.exe» двойным щелчком.
+          Вспомогательный CMD-файл не требуется.
 
-          This package is explicitly bound to:
+          Программа автоматически использует конфигурацию:
             portable\config
 
-          Match YAML files are loaded from:
+          YAML-файлы правил находятся в:
             portable\config\match
-
-          A starter portable\config\match\base.yml is included so rules can be created immediately.
-          Put additional .yml/.yaml files into portable\config\match.
           '@
           Compress-Archive -Path $package -DestinationPath "dist/respanso-match-studio-windows-x86_64.zip" -Force
       - uses: actions/upload-artifact@v4
@@ -124,22 +120,16 @@ jobs:
         run: |
           test -x target/release/espanso-editor
           package=dist/respanso-match-studio-linux-x86_64
-          config="$package/portable/config"
-          mkdir -p "$config/match"
-          cp target/release/espanso-editor "$package/"
-          cat > "$config/match/base.yml" <<'YAML'
+          mkdir -p "$package/portable/config/match"
+          cp target/release/espanso-editor "$package/rEspanso-Match-Studio"
+          cat > "$package/portable/config/match/base.yml" <<'YAML'
           matches:
-            - label: "Portable configuration initialized"
+            - label: "Portable-конфигурация готова"
               trigger: ":respanso_example"
-              replace: "rEspanso Match Studio is ready"
+              replace: "rEspanso Match Studio готов к работе"
               disabled: true
           YAML
-          cat > "$package/open-match-studio.sh" <<'SH'
-          #!/usr/bin/env sh
-          root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-          exec "$root/espanso-editor" --config-dir "$root/portable/config"
-          SH
-          chmod +x "$package/open-match-studio.sh"
+          chmod +x "$package/rEspanso-Match-Studio"
           tar -C dist -czf dist/respanso-match-studio-linux-x86_64.tar.gz respanso-match-studio-linux-x86_64
       - uses: actions/upload-artifact@v4
         with:
@@ -165,22 +155,16 @@ jobs:
         run: |
           test -x target/release/espanso-editor
           package=dist/respanso-match-studio-macos
-          config="$package/portable/config"
-          mkdir -p "$config/match"
-          cp target/release/espanso-editor "$package/"
-          cat > "$config/match/base.yml" <<'YAML'
+          mkdir -p "$package/portable/config/match"
+          cp target/release/espanso-editor "$package/rEspanso-Match-Studio"
+          cat > "$package/portable/config/match/base.yml" <<'YAML'
           matches:
-            - label: "Portable configuration initialized"
+            - label: "Portable-конфигурация готова"
               trigger: ":respanso_example"
-              replace: "rEspanso Match Studio is ready"
+              replace: "rEspanso Match Studio готов к работе"
               disabled: true
           YAML
-          cat > "$package/open-match-studio.command" <<'SH'
-          #!/usr/bin/env sh
-          root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-          exec "$root/espanso-editor" --config-dir "$root/portable/config"
-          SH
-          chmod +x "$package/open-match-studio.command"
+          chmod +x "$package/rEspanso-Match-Studio"
           ditto -c -k --sequesterRsrc --keepParent "$package" dist/respanso-match-studio-macos.zip
       - uses: actions/upload-artifact@v4
         with:
