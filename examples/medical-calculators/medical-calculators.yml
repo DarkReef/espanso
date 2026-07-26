@@ -1,8 +1,8 @@
 # rEspanso calculator window example.
 #
-# The core only renders the form and displays the returned text.
-# All calculation logic lives in an external module under
-# %CONFIG%/medical-calculators/modules/.
+# The core only renders the form, passes the values to an embedded Rhai module
+# and displays the returned text. Editing the .rhai file does not require a
+# compiler or any separately installed runtime.
 
 matches:
   - trigger: ":calc_demo"
@@ -40,16 +40,10 @@ matches:
               default: "Нет"
 
       - name: calculator_result
-        type: script
+        type: rhai
         depends_on:
           - calculator_inputs
         params:
-          args:
-            - powershell.exe
-            - -NoProfile
-            - -ExecutionPolicy
-            - Bypass
-            - -File
-            - "%CONFIG%/medical-calculators/run-calculator.ps1"
-            - "ui-demo"
-          trim: true
+          path: "%CONFIG%/medical-calculators/modules/ui-demo.rhai"
+          function: "calculate"
+          input: "calculator_inputs"
