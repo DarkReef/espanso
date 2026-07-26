@@ -176,11 +176,16 @@ jobs:
           More info -> Run anyway, or file Properties -> Unblock.
           "@ | Set-Content "$out\README-FIRST.txt" -Encoding UTF8
 
-          # Verify that the packaged user-facing EXE can locate the renamed core,
-          # inject portable paths and forward an ordinary CLI command.
-          & "$out\rEspanso.exe" --version
-          if ($LASTEXITCODE -ne 0) {
-            throw "Packaged native portable launcher verification failed with exit code $LASTEXITCODE"
+          # Verify that the packaged GUI-subsystem launcher can locate the renamed
+          # core, inject portable paths and forward an ordinary CLI command.
+          $verification = Start-Process `
+            -FilePath "$out\rEspanso.exe" `
+            -ArgumentList "--version" `
+            -WorkingDirectory $out `
+            -Wait `
+            -PassThru
+          if ($verification.ExitCode -ne 0) {
+            throw "Packaged native portable launcher verification failed with exit code $($verification.ExitCode)"
           }
 
       - name: Upload Windows binary
