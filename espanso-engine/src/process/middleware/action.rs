@@ -181,15 +181,13 @@ fn parse_dialog_directive(rendered: &str) -> Option<DialogDirective> {
 
     let title = if suffix.is_empty() {
         DEFAULT_DIALOG_TITLE
-    } else if let Some(title) = suffix.strip_prefix(':') {
-        let title = title.trim();
+    } else {
+        let title = suffix.strip_prefix(':')?.trim();
         if title.is_empty() {
             DEFAULT_DIALOG_TITLE
         } else {
             title
         }
-    } else {
-        return None;
     };
 
     Some(DialogDirective {
