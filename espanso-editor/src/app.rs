@@ -1,4 +1,5 @@
 use crate::{
+    rhai_lab::RhaiLab,
     runtime::RuntimeMonitor,
     settings::SettingsEditor,
     workspace::{
@@ -30,6 +31,7 @@ pub fn run(config_root: PathBuf) -> eframe::Result {
 enum MainTab {
     Rules,
     Settings,
+    Rhai,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,6 +47,7 @@ pub struct MatchStudioApp {
     active_tab: MainTab,
     runtime: RuntimeMonitor,
     settings: SettingsEditor,
+    rhai_lab: RhaiLab,
     filter: String,
     focus_filter: bool,
     file_filter: Option<PathBuf>,
@@ -73,6 +76,7 @@ impl MatchStudioApp {
             Err(error) => (None, Some(ru_message(&error.to_string()))),
         };
         let settings = SettingsEditor::load(&config_root);
+        let rhai_lab = RhaiLab::new();
         Self {
             config_root,
             workspace,
@@ -80,6 +84,7 @@ impl MatchStudioApp {
             active_tab: MainTab::Rules,
             runtime: RuntimeMonitor::new(),
             settings,
+            rhai_lab,
             filter: String::new(),
             focus_filter: false,
             file_filter: None,
@@ -351,6 +356,27 @@ impl MatchStudioApp {
     }
 
     fn handle_shortcuts(&mut self, context: &egui::Context) {
+        if self.active_tab == MainTab::Rhai {
+            let (run, compile, help) = context.input(|input| {
+                let primary = input.modifiers.ctrl || input.modifiers.command;
+                (
+                    primary && !input.modifiers.shift && input.key_pressed(egui::Key::Enter),
+                    primary && input.modifiers.shift && input.key_pressed(egui::Key::Enter),
+                    input.key_pressed(egui::Key::F1),
+                )
+            });
+            if compile {
+                self.rhai_lab.compile_current();
+            }
+            if run {
+                self.rhai_lab.run_current();
+            }
+            if help {
+                self.show_shortcuts = true;
+            }
+            return;
+        }
+
         if self.active_tab == MainTab::Settings {
             let (save, reload, help) = context.input(|input| {
                 let primary = input.modifiers.ctrl || input.modifiers.command;
@@ -419,7 +445,7 @@ impl MatchStudioApp {
 
     fn top_bar(&mut self, root: &mut egui::Ui) {
         egui::Panel::top("toolbar").show(root, |ui| {
-            ui.horizontal_wrapped(|ui| {
+            ui.horizontal(|ui| {
                 ui.heading(APP_TITLE);
                 ui.separator();
 
@@ -445,13 +471,34 @@ impl MatchStudioApp {
                         .join(", ")
                 ));
 
-                ui.separator();
+                let right_width = ui.available_width();
+                let restart_message = ui
+                    .allocate_ui_with_layout(
+                        egui::vec2(right_width, 30.0),
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            let restart_message = self.runtime.restart_button(ui);
+                            if ui.button("Горячие клавиши").on_hover_text("F1").clicked() {
+                                self.show_shortcuts = true;
+                            }
+                            restart_message
+                        },
+                    )
+                    .inner;
+                if let Some(message) = restart_message {
+                    self.status = message;
+                }
+            });
+
+            ui.separator();
+            ui.horizontal_wrapped(|ui| {
                 ui.selectable_value(&mut self.active_tab, MainTab::Rules, "Правила");
                 ui.selectable_value(
                     &mut self.active_tab,
                     MainTab::Settings,
                     "Настройки rEspanso",
                 );
+                ui.selectable_value(&mut self.active_tab, MainTab::Rhai, "Rhai");
                 ui.separator();
 
                 match self.active_tab {
@@ -531,10 +578,22 @@ impl MatchStudioApp {
                             );
                         }
                     }
-                }
-
-                if ui.button("Горячие клавиши").on_hover_text("F1").clicked() {
-                    self.show_shortcuts = true;
+                    MainTab::Rhai => {
+                        if ui
+                            .button("Скомпилировать")
+                            .on_hover_text("Ctrl+Shift+Enter")
+                            .clicked()
+                        {
+                            self.rhai_lab.compile_current();
+                        }
+                        if ui
+                            .button("Запустить")
+                            .on_hover_text("Ctrl+Enter")
+                            .clicked()
+                        {
+                            self.rhai_lab.run_current();
+                        }
+                    }
                 }
             });
         });
@@ -692,13 +751,22 @@ impl MatchStudioApp {
     }
 
     fn structured_editor(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Условие срабатывания:");
-            ui.selectable_value(&mut self.draft.kind, MatchKind::Trigger, "Обычный триггер");
-            ui.selectable_value(&mut self.draft.kind, MatchKind::Regex, "Гибкий RegExp");
-            ui.separator();
-            ui.checkbox(&mut self.draft.disabled, "Правило временно отключено");
-        });
+        let disabled_changed = ui
+            .horizontal_wrapped(|ui| {
+                ui.label("Условие срабатывания:");
+                ui.selectable_value(&mut self.draft.kind, MatchKind::Trigger, "Обычный триггер");
+                ui.selectable_value(&mut self.draft.kind, MatchKind::Regex, "Гибкий RegExp");
+                ui.separator();
+                ui.checkbox(&mut self.draft.disabled, "Выключить триггер / правило")
+                    .on_hover_text(
+                        "Сразу применяет disabled: true к рабочей копии. Для записи на диск нажмите Ctrl+S",
+                    )
+                    .changed()
+            })
+            .inner;
+        if disabled_changed {
+            self.apply_structured();
+        }
         ui.horizontal(|ui| {
             ui.label("Название правила");
             ui.add(
@@ -1085,6 +1153,8 @@ impl MatchStudioApp {
                             shortcut_row(ui, "Ctrl+Shift+D", "Удалить правило");
                             shortcut_row(ui, "Ctrl+R", "Обновить активную вкладку с диска");
                             shortcut_row(ui, "Ctrl+L", "Показать или скрыть проверку");
+                            shortcut_row(ui, "Ctrl+Enter", "Запустить Rhai-скрипт");
+                            shortcut_row(ui, "Ctrl+Shift+Enter", "Скомпилировать Rhai-скрипт");
                             shortcut_row(ui, "F1", "Открыть эту справку");
                         });
                 });
@@ -1177,6 +1247,9 @@ impl eframe::App for MatchStudioApp {
             MainTab::Settings => {
                 let config_root = self.config_root.clone();
                 self.settings.ui(ui, &config_root, &mut self.status);
+            }
+            MainTab::Rhai => {
+                self.rhai_lab.ui(ui, &mut self.status);
             }
         }
         self.dialogs(ui.ctx());
