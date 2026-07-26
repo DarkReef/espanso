@@ -16,9 +16,8 @@ fn parse_config_root() -> Option<PathBuf> {
 }
 
 fn default_config_root() -> PathBuf {
-    std::env::var_os("ESPANSO_CONFIG_DIR")
-        .map(PathBuf::from)
-        .or_else(portable_config_root)
+    portable_config_root()
+        .or_else(|| std::env::var_os("ESPANSO_CONFIG_DIR").map(PathBuf::from))
         .or_else(|| dirs::config_dir().map(|path| path.join("espanso")))
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."))
