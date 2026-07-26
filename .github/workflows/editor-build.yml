@@ -56,41 +56,83 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-match-studio-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
-      - name: Build Match Studio
-        shell: pwsh
-        run: cargo build -p espanso-editor --release
-      - name: Assemble portable package
+          key: ${{ runner.os }}-match-studio-static-${{ hashFiles('**/Cargo.toml', '**/Cargo.lock') }}
+      - name: Build autonomous Match Studio
         shell: pwsh
         run: |
-          if (-not (Test-Path "target/release/espanso-editor.exe")) { throw "espanso-editor.exe was not built" }
-          $package = "dist/respanso-match-studio-windows-x86_64"
-          New-Item -ItemType Directory -Force -Path "$package/portable/config/match" | Out-Null
-          Copy-Item "target/release/espanso-editor.exe" "$package/rEspanso Match Studio.exe"
+          $env:RUSTFLAGS = "-C target-feature=+crt-static"
+          cargo build -p espanso-editor --release
+      - name: Assemble standalone and portable overlay
+        shell: pwsh
+        run: |
+          $editor = "target/release/espanso-editor.exe"
+          if (-not (Test-Path $editor)) { throw "espanso-editor.exe was not built" }
+
+          $standalone = "dist/respanso-match-studio-windows-x86_64"
+          $overlay = "dist/respanso-match-studio-portable-overlay-windows-x86_64"
+          New-Item -ItemType Directory -Force -Path "$standalone/portable/config/match" | Out-Null
+          New-Item -ItemType Directory -Force -Path $overlay | Out-Null
+          Copy-Item $editor "$standalone/rEspanso Match Studio.exe"
+          Copy-Item $editor "$overlay/rEspanso Match Studio.exe"
+
+          # Дополнительная страховка для систем без установленного Microsoft Visual C++ Runtime.
+          $vcruntime = Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter "vcruntime140.dll" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -like "*\VC\Redist\MSVC\*" -and $_.FullName -like "*\x64\*" } |
+            Select-Object -First 1
+          if ($vcruntime) {
+            $runtimeDirectory = Split-Path $vcruntime.FullName -Parent
+            Get-ChildItem -Path $runtimeDirectory -Filter "*.dll" |
+              Copy-Item -Destination $standalone -Force
+            Get-ChildItem -Path $runtimeDirectory -Filter "*.dll" |
+              Copy-Item -Destination $overlay -Force
+          }
+
           @(
             'matches:',
             '  - label: "Portable-конфигурация готова"',
             '    trigger: ":respanso_example"',
             '    replace: "rEspanso Match Studio готов к работе"',
             '    disabled: true'
-          ) | Set-Content -Path "$package/portable/config/match/base.yml" -Encoding UTF8
-          Set-Content -Path "$package/README.txt" -Encoding UTF8 -Value @'
-          rEspanso Match Studio
+          ) | Set-Content -Path "$standalone/portable/config/match/base.yml" -Encoding UTF8
+
+          Set-Content -Path "$standalone/README.txt" -Encoding UTF8 -Value @'
+          rEspanso Match Studio — автономная сборка
 
           Запустите «rEspanso Match Studio.exe» двойным щелчком.
-          Вспомогательный CMD-файл не требуется.
+          Программа использует portable\config\match рядом с EXE.
 
-          Программа автоматически использует конфигурацию:
-            portable\config
-
-          YAML-файлы правил находятся в:
-            portable\config\match
+          При ошибке появится русское системное окно, а подробности будут записаны
+          в «rEspanso Match Studio.log» рядом с программой.
           '@
-          Compress-Archive -Path $package -DestinationPath "dist/respanso-match-studio-windows-x86_64.zip" -Force
+
+          Set-Content -Path "$overlay/README — Match Studio.txt" -Encoding UTF8 -Value @'
+          rEspanso Match Studio — дополнение к существующему rEspanso Portable
+
+          Распакуйте содержимое этого архива непосредственно в корень portable-сборки,
+          где уже находятся папка «portable» и файл «espansod.exe».
+
+          Запускайте «rEspanso Match Studio.exe» двойным щелчком.
+          Существующие portable\config\match\*.yml не изменяются и не заменяются.
+
+          При ошибке появится русское системное окно, а подробности будут записаны
+          в «rEspanso Match Studio.log» рядом с программой.
+          '@
+
+          $forbidden = Get-ChildItem -Path $standalone,$overlay -Recurse -File |
+            Where-Object { $_.Extension -in ".cmd", ".bat" }
+          if ($forbidden) { throw "CMD/BAT launcher unexpectedly packaged" }
+
+          Compress-Archive -Path $standalone -DestinationPath "dist/respanso-match-studio-windows-x86_64.zip" -Force
+          Compress-Archive -Path "$overlay/*" -DestinationPath "dist/respanso-match-studio-portable-overlay-windows-x86_64.zip" -Force
       - uses: actions/upload-artifact@v4
         with:
           name: respanso-match-studio-windows-x86_64
           path: dist/respanso-match-studio-windows-x86_64.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: respanso-match-studio-portable-overlay-windows-x86_64
+          path: dist/respanso-match-studio-portable-overlay-windows-x86_64.zip
           if-no-files-found: error
 
   linux-release:
