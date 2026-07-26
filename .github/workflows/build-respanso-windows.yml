@@ -56,20 +56,27 @@ jobs:
       - name: Run rEspanso engine tests
         run: cargo test --quiet -p espanso-engine
 
-      - name: Build release binary
+      - name: Run native portable launcher tests
+        run: cargo test --quiet -p espanso --bin respanso-portable
+
+      - name: Build release binaries
         env:
           CARGO_TERM_COLOR: always
-        run: cargo build --quiet --release -p espanso
+        run: cargo build --quiet --release -p espanso --bin espanso --bin respanso-portable
 
-      - name: Verify binary
+      - name: Verify source binaries
         shell: pwsh
         run: |
-          $binary = "target\release\espanso.exe"
-          if (-not (Test-Path $binary)) {
-            throw "Release binary was not produced: $binary"
+          $core = "target\release\espanso.exe"
+          $launcher = "target\release\respanso-portable.exe"
+          if (-not (Test-Path $core)) {
+            throw "Release core binary was not produced: $core"
           }
-          Get-Item $binary | Format-List Name,Length,LastWriteTime
-          & $binary --version
+          if (-not (Test-Path $launcher)) {
+            throw "Portable launcher was not produced: $launcher"
+          }
+          Get-Item $core, $launcher | Format-Table Name,Length,LastWriteTime
+          & $core --version
 
       - name: Prepare portable downloadable package
         shell: pwsh
@@ -83,10 +90,14 @@ jobs:
           $packagesDir = Join-Path $portable "packages"
 
           New-Item -ItemType Directory -Force -Path $out, $matchDir, $calculatorDir, $runtimeDir, $packagesDir | Out-Null
-          Copy-Item "target\release\espanso.exe" "$out\rEspanso.exe"
 
-          # The release binary dynamically links to the Microsoft Visual C++ runtime.
-          # Copy the licensed redistributable DLLs next to the executable so the test
+          # rEspanso.exe is the only user-facing launcher. It discovers and passes
+          # portable/config, portable/runtime and portable/packages automatically.
+          Copy-Item "target\release\respanso-portable.exe" "$out\rEspanso.exe"
+          Copy-Item "target\release\espanso.exe" "$out\rEspanso-core.exe"
+
+          # The release binaries dynamically link to the Microsoft Visual C++ runtime.
+          # Copy the licensed redistributable DLLs next to the executables so the test
           # build works on Windows machines without Visual Studio or VC++ Build Tools.
           $crtRoot = Join-Path $env:VCToolsRedistDir "x64"
           $crtDir = Get-ChildItem -Path $crtRoot -Directory |
@@ -134,14 +145,9 @@ jobs:
           Branch: $env:GITHUB_REF_NAME
           Commit: $env:GITHUB_SHA
 
-          The package intentionally contains no .cmd helper files.
-
           HOW TO START
-          1. Extract the entire ZIP. Do not run the EXE from inside the ZIP.
-          2. Open PowerShell in the extracted folder and run:
-
-             .\rEspanso.exe --config_dir ".\portable\config" --runtime_dir ".\portable\runtime" --package_dir ".\portable\packages" launcher
-
+          1. Extract the entire ZIP. Do not run an EXE from inside the ZIP.
+          2. Double-click rEspanso.exe. It automatically uses the adjacent portable folder.
           3. Type :rinfo to test an informational dialog.
           4. Type :i10_9 normally. If Espanso catches it, the dialog opens immediately.
           5. To test the recovery path, first paste :i10_9 into Notepad with Ctrl+V
@@ -149,18 +155,15 @@ jobs:
              and press Ctrl+Alt+M. The same ordinary match must be executed.
           6. Type :calc_demo to open a visual calculator form. Its result is produced
              by the editable portable\config\medical-calculators\modules\ui-demo.rhai
-             module interpreted inside rEspanso.exe.
+             module interpreted inside rEspanso.
           7. Edit ui-demo.rhai, save it, and run :calc_demo again. No compiler,
              Node.js, Python or PowerShell module is required.
+          8. Stop rEspanso through its tray menu. Advanced CLI fallback:
+             rEspanso.exe service stop
 
-          HOW TO STOP
-          Open PowerShell in the extracted folder and run:
-
-             .\rEspanso.exe --config_dir ".\portable\config" --runtime_dir ".\portable\runtime" --package_dir ".\portable\packages" service stop
-
-          VERSION CHECK
-
-             .\rEspanso.exe --version
+          rEspanso.exe is the user-facing native portable launcher.
+          rEspanso-core.exe is an internal engine file and must remain beside it.
+          No CMD/BAT launcher files are required.
 
           The selected-text hotkey is a recovery path for ordinary Espanso matches;
           it does not require a separate selection-only rule or special match syntax.
@@ -172,6 +175,13 @@ jobs:
           This is an unsigned development build. Windows SmartScreen may require:
           More info -> Run anyway, or file Properties -> Unblock.
           "@ | Set-Content "$out\README-FIRST.txt" -Encoding UTF8
+
+          # Verify that the packaged user-facing EXE can locate the renamed core,
+          # inject portable paths and forward an ordinary CLI command.
+          & "$out\rEspanso.exe" --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Packaged native portable launcher verification failed with exit code $LASTEXITCODE"
+          }
 
       - name: Upload Windows binary
         uses: actions/upload-artifact@v4
