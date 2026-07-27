@@ -56,7 +56,7 @@ DerivedWelcomeFrame::DerivedWelcomeFrame(wxWindow *parent)
         this->tray_bitmap->SetBitmap(trayBitmap);
 #ifdef __WXOSX__
         this->tray_info_label->SetLabel(
-            wxT("Значок rEspanso находится в строке состояния:"));
+            wxT("\u0417\u043D\u0430\u0447\u043E\u043A rEspanso \u043D\u0430\u0445\u043E\u0434\u0438\u0442\u0441\u044F \u0432 \u0441\u0442\u0440\u043E\u043A\u0435 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u044F:"));
 #endif
     } else {
         this->tray_info_label->Hide();
@@ -65,7 +65,8 @@ DerivedWelcomeFrame::DerivedWelcomeFrame(wxWindow *parent)
     this->dont_show_checkbox->Hide();
 
     if (welcome_metadata->already_running) {
-        this->title_label->SetLabel(wxT("rEspanso уже запущен!"));
+        this->title_label->SetLabel(
+            wxT("rEspanso \u0443\u0436\u0435 \u0437\u0430\u043F\u0443\u0449\u0435\u043D!"));
     }
 }
 
