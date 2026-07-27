@@ -23,24 +23,44 @@ jobs:
           fetch-depth: 1
 
       - name: Apply source patch
-        run: python scripts/apply_portable_layout_watcher_fix.py
+        id: patch
+        continue-on-error: true
+        shell: bash
+        run: |
+          python scripts/apply_portable_layout_watcher_fix.py > .github/portable-layout-patch.log 2>&1
+
+      - name: Commit patch diagnostics
+        if: steps.patch.outcome == 'failure'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/portable-layout-patch.log
+          git commit -m "chore: record portable patch failure"
+          git push origin HEAD:${{ github.head_ref }}
+          exit 1
 
       - name: Format Rust sources
+        if: steps.patch.outcome == 'success'
         run: cargo fmt --all
 
       - name: Run focused tests
+        if: steps.patch.outcome == 'success'
         run: |
           cargo test --quiet -p espanso --bin respanso-portable
           cargo test --quiet -p espanso-editor
 
       - name: Remove one-time patch files
+        if: steps.patch.outcome == 'success'
         run: |
           rm -f scripts/apply_portable_layout_watcher_fix.py
           rm -f .github/workflows/apply-portable-layout-watcher-fix.yml
           rm -f .github/portable-layout-watcher-pr-trigger.txt
           rm -f .github/portable-layout-watcher-pr-trigger-2.txt
+          rm -f .github/portable-layout-patch.log
 
       - name: Commit applied fix
+        if: steps.patch.outcome == 'success'
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
