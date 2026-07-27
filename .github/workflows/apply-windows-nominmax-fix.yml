@@ -1,0 +1,49 @@
+name: Apply Windows NOMINMAX fix
+
+on:
+  push:
+    branches:
+      - feature/animated-tray-config-transfer
+    paths:
+      - scripts/apply_windows_nominmax_fix.py
+      - .github/workflows/apply-windows-nominmax-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-test:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/animated-tray-config-transfer
+          fetch-depth: 1
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt
+      - name: Apply Windows header fix
+        run: python scripts/apply_windows_nominmax_fix.py
+      - name: Verify focused native build
+        run: cargo test --quiet -p espanso --bin respanso-portable
+      - name: Remove one-time diagnostics and helpers
+        shell: pwsh
+        run: |
+          Remove-Item -Force -ErrorAction SilentlyContinue scripts/apply_windows_nominmax_fix.py
+          Remove-Item -Force -ErrorAction SilentlyContinue .github/workflows/apply-windows-nominmax-fix.yml
+          Remove-Item -Force -ErrorAction SilentlyContinue .github/workflows/diagnose-animated-tray-windows.yml
+          Remove-Item -Force -ErrorAction SilentlyContinue .github/animated-tray-diagnostic-trigger.txt
+          Remove-Item -Force -ErrorAction SilentlyContinue .github/windows-diagnostic.log
+      - name: Commit verified Windows fix
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: make animated tray compile with Windows headers"
+          git push origin HEAD:feature/animated-tray-config-transfer
