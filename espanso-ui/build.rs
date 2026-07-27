@@ -23,6 +23,7 @@ fn cc_config() {
     println!("cargo:rerun-if-changed=src/win32/native.h");
     cc::Build::new()
         .cpp(true)
+        .define("NOMINMAX", None)
         .include("src/win32/native.h")
         .include("src/win32/json/json.hpp")
         .file("src/win32/native.cpp")
