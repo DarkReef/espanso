@@ -49,12 +49,14 @@ class WelcomeFrame : public wxFrame {
     virtual void on_complete(wxCommandEvent &event) { event.Skip(); }
 
   public:
-    WelcomeFrame(wxWindow *parent, wxWindowID id = wxID_ANY,
-                 const wxString &title = wxT("rEspanso — текстовый экспандер"),
-                 const wxPoint &pos = wxDefaultPosition,
-                 const wxSize &size = wxSize(600, 640),
-                 long style = wxCAPTION | wxCLOSE_BOX | wxSYSTEM_MENU |
-                              wxTAB_TRAVERSAL);
+    WelcomeFrame(
+        wxWindow *parent, wxWindowID id = wxID_ANY,
+        const wxString &title =
+            wxT("rEspanso \u2014 \u0442\u0435\u043A\u0441\u0442\u043E\u0432\u044B\u0439 \u044D\u043A\u0441\u043F\u0430\u043D\u0434\u0435\u0440"),
+        const wxPoint &pos = wxDefaultPosition,
+        const wxSize &size = wxSize(600, 640),
+        long style = wxCAPTION | wxCLOSE_BOX | wxSYSTEM_MENU |
+                     wxTAB_TRAVERSAL);
 
     ~WelcomeFrame();
 };
