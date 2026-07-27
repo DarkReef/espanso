@@ -1,4 +1,5 @@
 pub mod app;
+pub mod config_transfer;
 pub mod file_monitor;
 pub mod rhai_lab;
 #[allow(clippy::pedantic)]

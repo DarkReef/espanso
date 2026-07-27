@@ -1,4 +1,5 @@
 use crate::{
+    config_transfer::{self, PackageSummary},
     file_monitor::FileMonitor,
     rhai_lab::RhaiLab,
     runtime::RuntimeMonitor,
@@ -78,6 +79,13 @@ pub struct MatchStudioApp {
     file_monitor: FileMonitor,
     next_file_check: Instant,
     external_change_pending: bool,
+    show_config_transfer: bool,
+    config_packages: Vec<PathBuf>,
+    selected_config_package: Option<PathBuf>,
+    selected_config_summary: Option<PackageSummary>,
+    config_transfer_status: String,
+    pending_config_import: Option<PathBuf>,
+    confirm_config_import: bool,
 }
 
 impl MatchStudioApp {
@@ -89,6 +97,7 @@ impl MatchStudioApp {
         let settings = SettingsEditor::load(&config_root);
         let rhai_lab = RhaiLab::new(&config_root);
         let file_monitor = FileMonitor::new(&config_root);
+        let config_packages = config_transfer::list_packages(&config_root).unwrap_or_default();
         Self {
             config_root,
             workspace,
@@ -121,6 +130,13 @@ impl MatchStudioApp {
             file_monitor,
             next_file_check: Instant::now() + FILE_CHECK_INTERVAL,
             external_change_pending: false,
+            show_config_transfer: false,
+            config_packages,
+            selected_config_package: None,
+            selected_config_summary: None,
+            config_transfer_status: String::new(),
+            pending_config_import: None,
+            confirm_config_import: false,
         }
     }
 
@@ -160,6 +176,328 @@ impl MatchStudioApp {
         self.external_change_pending = false;
         "Обнаружены изменения YAML-файлов; Studio обновила правила и настройки"
             .clone_into(&mut self.status);
+    }
+
+    fn has_transfer_unsaved_changes(&self) -> bool {
+        self.has_unsaved_changes() || self.rhai_lab.dirty()
+    }
+
+    fn refresh_config_packages(&mut self) {
+        match config_transfer::list_packages(&self.config_root) {
+            Ok(packages) => {
+                self.config_packages = packages;
+                if let Some(selected) = self.selected_config_package.clone() {
+                    if selected.is_file() {
+                        self.select_config_package(selected);
+                    } else {
+                        self.selected_config_package = None;
+                        self.selected_config_summary = None;
+                    }
+                }
+            }
+            Err(error) => self.config_transfer_status = error,
+        }
+    }
+
+    fn select_config_package(&mut self, path: PathBuf) {
+        match config_transfer::inspect_package(&path) {
+            Ok(summary) => {
+                self.selected_config_package = Some(path);
+                self.selected_config_summary = Some(summary);
+                self.config_transfer_status.clear();
+            }
+            Err(error) => {
+                self.selected_config_package = Some(path);
+                self.selected_config_summary = None;
+                self.config_transfer_status = error;
+            }
+        }
+    }
+
+    fn handle_dropped_config_packages(&mut self, context: &egui::Context) {
+        let dropped = context.input(|input| {
+            input
+                .raw
+                .dropped_files
+                .iter()
+                .filter_map(|file| file.path.clone())
+                .collect::<Vec<_>>()
+        });
+        if let Some(path) = dropped
+            .into_iter()
+            .find(|path| config_transfer::is_package_path(path))
+        {
+            self.show_config_transfer = true;
+            self.select_config_package(path);
+            "Пакет конфигурации получен перетаскиванием".clone_into(&mut self.status);
+        }
+    }
+
+    fn export_config_package(&mut self) {
+        if self.has_transfer_unsaved_changes() {
+            "Экспорт остановлен: сначала сохраните изменения правил, настроек и Rhai-скрипта"
+                .clone_into(&mut self.config_transfer_status);
+            return;
+        }
+        match config_transfer::export_current(&self.config_root) {
+            Ok(summary) => {
+                let path = summary.path.clone();
+                self.config_transfer_status = format!(
+                    "Экспортировано файлов: {} · {} КБ · {}",
+                    summary.file_count,
+                    summary.total_bytes.div_ceil(1024),
+                    path.display()
+                );
+                self.status.clone_from(&self.config_transfer_status);
+                self.refresh_config_packages();
+                self.select_config_package(path);
+            }
+            Err(error) => {
+                self.config_transfer_status = format!("Экспорт не выполнен: {error}");
+                self.status.clone_from(&self.config_transfer_status);
+            }
+        }
+    }
+
+    fn perform_config_import(&mut self) {
+        let Some(package) = self.pending_config_import.take() else {
+            self.confirm_config_import = false;
+            return;
+        };
+        match config_transfer::import_package(&self.config_root, &package) {
+            Ok(report) => {
+                let (workspace, load_error) = match MatchWorkspace::load(self.config_root.clone()) {
+                    Ok(workspace) => (Some(workspace), None),
+                    Err(error) => (None, Some(ru_message(&error.to_string()))),
+                };
+                self.workspace = workspace;
+                self.load_error = load_error;
+                self.settings = SettingsEditor::load(&self.config_root);
+                self.rhai_lab = RhaiLab::new(&self.config_root);
+                self.file_monitor = FileMonitor::new(&self.config_root);
+                self.next_file_check = Instant::now() + FILE_CHECK_INTERVAL;
+                self.external_change_pending = false;
+                self.selected = None;
+                self.raw_rule.clear();
+                self.file_filter = None;
+                self.yaml_file_filter.clear();
+                self.refresh_config_packages();
+                self.select_config_package(report.package.clone());
+
+                let warning = if report.cleanup_warnings.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        " Предупреждения очистки: {}",
+                        report.cleanup_warnings.join("; ")
+                    )
+                };
+                self.config_transfer_status = format!(
+                    "Импортировано файлов: {}. Резервная копия: {}. Перезапустите rEspanso.{}",
+                    report.file_count,
+                    report.backup.display(),
+                    warning
+                );
+                self.status.clone_from(&self.config_transfer_status);
+            }
+            Err(error) => {
+                self.config_transfer_status = format!("Импорт отменён: {error}");
+                self.status.clone_from(&self.config_transfer_status);
+            }
+        }
+        self.confirm_config_import = false;
+    }
+
+    fn config_transfer_dialog(&mut self, context: &egui::Context) {
+        if !self.show_config_transfer {
+            return;
+        }
+
+        let mut open = self.show_config_transfer;
+        let packages = self.config_packages.clone();
+        let selected = self.selected_config_package.clone();
+        let summary = self.selected_config_summary.clone();
+        let unsaved = self.has_transfer_unsaved_changes();
+        let mut export = false;
+        let mut refresh = false;
+        let mut open_folder = false;
+        let mut choose = None;
+        let mut request_import = false;
+
+        egui::Window::new("Импорт и экспорт конфигурации")
+            .open(&mut open)
+            .default_width(760.0)
+            .default_height(560.0)
+            .resizable(true)
+            .show(context, |ui| {
+                ui.label(
+                    "Единый пакет .respanso-config включает config/**/*.yml|yaml, match/**/*.yml|yaml и scripts/**/*.rhai.",
+                );
+                ui.label(
+                    egui::RichText::new(format!(
+                        "Папка обмена: {}",
+                        config_transfer::exchange_dir(&self.config_root).display()
+                    ))
+                    .weak(),
+                );
+                ui.label(
+                    egui::RichText::new(
+                        "Можно перетащить пакет из Проводника прямо в окно Studio.",
+                    )
+                    .weak(),
+                );
+
+                if unsaved {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(210, 135, 25),
+                        "Сначала сохраните изменения: экспорт и импорт работают с состоянием на диске.",
+                    );
+                }
+
+                ui.horizontal_wrapped(|ui| {
+                    if ui
+                        .add_enabled(!unsaved, egui::Button::new("Экспортировать пакет"))
+                        .clicked()
+                    {
+                        export = true;
+                    }
+                    if ui.button("Открыть папку обмена").clicked() {
+                        open_folder = true;
+                    }
+                    if ui.button("Обновить список").clicked() {
+                        refresh = true;
+                    }
+                });
+
+                if !self.config_transfer_status.is_empty() {
+                    ui.label(self.config_transfer_status.as_str());
+                }
+                ui.separator();
+                ui.columns(2, |columns| {
+                    columns[0].heading(format!("Пакеты ({})", packages.len()));
+                    egui::ScrollArea::vertical()
+                        .id_salt("config_package_list")
+                        .max_height(360.0)
+                        .show(&mut columns[0], |ui| {
+                            for path in &packages {
+                                let label = path
+                                    .file_name()
+                                    .and_then(|name| name.to_str())
+                                    .unwrap_or("пакет конфигурации");
+                                if ui
+                                    .selectable_label(selected.as_ref() == Some(path), label)
+                                    .clicked()
+                                {
+                                    choose = Some(path.clone());
+                                }
+                            }
+                            if packages.is_empty() {
+                                ui.label("Экспортированных пакетов пока нет");
+                            }
+                        });
+
+                    columns[1].heading("Выбранный пакет");
+                    if let Some(path) = &selected {
+                        columns[1].label(path.display().to_string());
+                    } else {
+                        columns[1].label("Пакет не выбран");
+                    }
+                    if let Some(summary) = &summary {
+                        columns[1].separator();
+                        columns[1].label(format!("Файлов: {}", summary.file_count));
+                        columns[1].label(format!(
+                            "Объём данных: {} КБ",
+                            summary.total_bytes.div_ceil(1024)
+                        ));
+                        columns[1].label(format!(
+                            "Время экспорта (Unix): {}",
+                            summary.exported_at_unix
+                        ));
+                    }
+                    columns[1].add_space(12.0);
+                    if columns[1]
+                        .add_enabled(
+                            !unsaved && summary.is_some(),
+                            egui::Button::new("Импортировать выбранный пакет"),
+                        )
+                        .clicked()
+                    {
+                        request_import = true;
+                    }
+                    columns[1].label(
+                        egui::RichText::new(
+                            "Перед импортом Studio автоматически создаст резервный пакет текущей конфигурации.",
+                        )
+                        .weak(),
+                    );
+                });
+            });
+
+        self.show_config_transfer = open;
+        if open_folder {
+            match config_transfer::open_exchange_dir(&self.config_root) {
+                Ok(()) => "Папка обмена открыта".clone_into(&mut self.config_transfer_status),
+                Err(error) => self.config_transfer_status = error,
+            }
+        }
+        if refresh {
+            self.refresh_config_packages();
+        }
+        if export {
+            self.export_config_package();
+        }
+        if let Some(path) = choose {
+            self.select_config_package(path);
+        }
+        if request_import {
+            self.pending_config_import = selected;
+            self.confirm_config_import = self.pending_config_import.is_some();
+        }
+    }
+
+    fn config_import_confirmation(&mut self, context: &egui::Context) {
+        if !self.confirm_config_import {
+            return;
+        }
+        let mut open = self.confirm_config_import;
+        let package = self.pending_config_import.clone();
+        let mut import = false;
+        let mut cancel = false;
+        egui::Window::new("Импорт конфигурации rEspanso")
+            .open(&mut open)
+            .resizable(false)
+            .collapsible(false)
+            .show(context, |ui| {
+                ui.colored_label(
+                    egui::Color32::from_rgb(210, 105, 35),
+                    "Текущие папки config, match и scripts будут заменены.",
+                );
+                if let Some(path) = &package {
+                    ui.label(format!("Пакет: {}", path.display()));
+                }
+                ui.label(
+                    "Сначала будет создан автоматический резервный пакет. При ошибке исходные папки восстанавливаются.",
+                );
+                ui.horizontal(|ui| {
+                    if ui
+                        .button("Создать резервную копию и импортировать")
+                        .clicked()
+                    {
+                        import = true;
+                    }
+                    if ui.button("Отмена").clicked() {
+                        cancel = true;
+                    }
+                });
+            });
+        if import {
+            self.perform_config_import();
+            open = false;
+        } else if cancel {
+            self.pending_config_import = None;
+            open = false;
+        }
+        self.confirm_config_import = open;
     }
 
     fn request_external_reload(&mut self) {
@@ -619,6 +957,15 @@ impl MatchStudioApp {
                     "Настройки rEspanso",
                 );
                 ui.selectable_value(&mut self.active_tab, MainTab::Rhai, "Rhai");
+                ui.separator();
+                if ui
+                    .button("Импорт / экспорт")
+                    .on_hover_text("Перенос config, match и scripts единым проверяемым пакетом")
+                    .clicked()
+                {
+                    self.show_config_transfer = true;
+                    self.refresh_config_packages();
+                }
                 ui.separator();
 
                 match self.active_tab {
@@ -1389,6 +1736,9 @@ impl MatchStudioApp {
     }
 
     fn dialogs(&mut self, context: &egui::Context) {
+        self.config_transfer_dialog(context);
+        self.config_import_confirmation(context);
+
         if self.show_shortcuts {
             let mut open = self.show_shortcuts;
             egui::Window::new("Горячие клавиши")
@@ -1492,6 +1842,7 @@ impl MatchStudioApp {
 impl eframe::App for MatchStudioApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.runtime.update(ui.ctx());
+        self.handle_dropped_config_packages(ui.ctx());
         self.check_external_file_changes(ui.ctx());
         self.handle_shortcuts(ui.ctx());
         self.top_bar(ui);

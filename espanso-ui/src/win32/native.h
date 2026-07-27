@@ -58,9 +58,10 @@ extern "C" int32_t ui_destroy(void *window);
 // Send a termination event that exits the event loop
 extern "C" void ui_exit(void *window);
 
-// Updates the tray icon to the given one. The method accepts an index that
-// refers to the icon within the UIOptions.icon_paths array.
-extern "C" void ui_update_tray_icon(void *window, int32_t index);
+// Updates the tray state. The index is retained as a fallback icon, while
+// animation_mode selects paused (0), active storm (1), or system-blocked storm (2).
+extern "C" void ui_update_tray_icon(void *window, int32_t index,
+                                    int32_t animation_mode);
 
 // Display the context menu on the tray icon.
 // Payload is passed as JSON as given the complex structure, parsing
