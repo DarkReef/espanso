@@ -40,8 +40,29 @@ jobs:
       - name: Test Match Studio
         run: cargo test --quiet -p espanso-editor
 
-      - name: Lint Match Studio
-        run: cargo clippy -p espanso-editor --all-targets -- --deny warnings
+      - name: Capture Match Studio lint
+        shell: bash
+        run: |
+          set +e
+          cargo clippy -p espanso-editor --all-targets -- --deny warnings > clippy.log 2>&1
+          status=$?
+          echo "$status" > clippy-status.txt
+          cat clippy.log
+          exit 0
+
+      - name: Upload lint diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: rhai-upgrade-clippy-${{ github.sha }}
+          path: |
+            clippy.log
+            clippy-status.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Validate Match Studio lint
+        shell: bash
+        run: test "$(cat clippy-status.txt)" = "0"
 
       - name: Remove one-time upgrade files
         run: |
