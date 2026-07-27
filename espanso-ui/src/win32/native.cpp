@@ -165,6 +165,7 @@ LRESULT CALLBACK ui_window_procedure(HWND window, unsigned int msg, WPARAM wp,
         SetForegroundWindow(window);
         TrackPopupMenu(menu, TPM_BOTTOMALIGN | TPM_LEFTALIGN, pt.x, pt.y, 0,
                        window, NULL);
+        DestroyMenu(menu);
 
         break;
     }
