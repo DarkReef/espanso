@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-time focused fix for the Windows min/max macros used by windows.h.
 path = Path("espanso-ui/src/win32/native.cpp")
 text = path.read_text(encoding="utf-8")
 if "#define NOMINMAX" not in text:
