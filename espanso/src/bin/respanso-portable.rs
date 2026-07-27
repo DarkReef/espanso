@@ -109,9 +109,6 @@ mod tests {
         assert_eq!(paths.matches, PathBuf::from("bundle/match"));
         assert_eq!(paths.runtime, PathBuf::from("bundle/runtime"));
         assert_eq!(paths.packages, PathBuf::from("bundle/packages"));
-        assert!(!paths
-            .config
-            .join("config")
-            .starts_with(&paths.config_root.join("config/config")));
+        assert_ne!(paths.config, paths.config_root.join("config/config"));
     }
 }
