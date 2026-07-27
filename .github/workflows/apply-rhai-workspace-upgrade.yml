@@ -43,42 +43,19 @@ jobs:
       - name: Test Match Studio
         run: cargo test --quiet -p espanso-editor
 
-      - name: Capture Match Studio lint
+      - name: Lint Match Studio
+        run: cargo clippy -p espanso-editor --all-targets -- --deny warnings
+
+      - name: Commit verified source upgrade
         shell: bash
-        run: |
-          set +e
-          cargo clippy -p espanso-editor --all-targets -- --deny warnings > clippy.log 2>&1
-          status=$?
-          echo "$status" > clippy-status.txt
-          cat clippy.log
-          exit 0
-
-      - name: Upload lint diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: rhai-upgrade-clippy-${{ github.sha }}
-          path: |
-            clippy.log
-            clippy-status.txt
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Validate Match Studio lint
-        shell: bash
-        run: test "$(cat clippy-status.txt)" = "0"
-
-      - name: Remove one-time upgrade files
-        run: |
-          rm -rf scripts/.rhai_upgrade_chunks
-          rm -f scripts/apply_rhai_workspace_upgrade_bootstrap.py
-          rm -f scripts/apply_rhai_clippy_fixes.py
-          rm -f .github/workflows/apply-rhai-workspace-upgrade.yml
-          rm -f clippy.log clippy-status.txt
-
-      - name: Commit Rhai IDE upgrade
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add \
+            espanso-editor/src/app.rs \
+            espanso-editor/src/rhai_lab.rs \
+            espanso-editor/src/yaml_imports.rs \
+            scripts/build_windows_native_portable_with_studio.ps1 \
+            .github/workflows/build-respanso-windows.yml
           git commit -m "feat: add file-backed Rhai IDE and linting"
           git push origin HEAD:${{ github.head_ref }}
