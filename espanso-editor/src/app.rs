@@ -1,4 +1,5 @@
 use crate::{
+    file_monitor::FileMonitor,
     rhai_lab::RhaiLab,
     runtime::RuntimeMonitor,
     settings::SettingsEditor,
@@ -9,9 +10,13 @@ use crate::{
     yaml_imports,
 };
 use eframe::egui;
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
 
 const APP_TITLE: &str = "rEspanso Match Studio";
+const FILE_CHECK_INTERVAL: Duration = Duration::from_secs(3);
 
 pub fn run(config_root: PathBuf) -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -68,6 +73,9 @@ pub struct MatchStudioApp {
     show_shortcuts: bool,
     confirm_delete: bool,
     confirm_reload: bool,
+    file_monitor: FileMonitor,
+    next_file_check: Instant,
+    external_change_pending: bool,
 }
 
 impl MatchStudioApp {
@@ -78,6 +86,7 @@ impl MatchStudioApp {
         };
         let settings = SettingsEditor::load(&config_root);
         let rhai_lab = RhaiLab::new();
+        let file_monitor = FileMonitor::new(&config_root);
         Self {
             config_root,
             workspace,
@@ -105,6 +114,9 @@ impl MatchStudioApp {
             show_shortcuts: false,
             confirm_delete: false,
             confirm_reload: false,
+            file_monitor,
+            next_file_check: Instant::now() + FILE_CHECK_INTERVAL,
+            external_change_pending: false,
         }
     }
 
@@ -115,6 +127,8 @@ impl MatchStudioApp {
                 self.load_error = None;
                 self.selected = None;
                 self.raw_rule.clear();
+                self.file_monitor.refresh(&self.config_root);
+                self.external_change_pending = false;
                 "Правила перечитаны с диска".clone_into(&mut self.status);
             }
             Err(error) => {
@@ -123,6 +137,35 @@ impl MatchStudioApp {
                 self.status = format!("Не удалось обновить правила: {message}");
             }
         }
+    }
+
+    fn check_external_file_changes(&mut self, context: &egui::Context) {
+        let now = Instant::now();
+        if now < self.next_file_check {
+            context.request_repaint_after(self.next_file_check.saturating_duration_since(now));
+            return;
+        }
+        self.next_file_check = now + FILE_CHECK_INTERVAL;
+        context.request_repaint_after(FILE_CHECK_INTERVAL);
+
+        if !self.file_monitor.changed(&self.config_root) {
+            return;
+        }
+
+        let unsaved_rules = self
+            .workspace
+            .as_ref()
+            .is_some_and(|workspace| !workspace.dirty_files().is_empty());
+        if unsaved_rules || self.settings.dirty() {
+            self.external_change_pending = true;
+            self.status = "Файлы конфигурации изменились снаружи. Сохраните или отмените локальные изменения, затем обновите с диска".to_owned();
+            return;
+        }
+
+        self.reload();
+        self.settings = SettingsEditor::load(&self.config_root);
+        self.status =
+            "Обнаружены изменения YAML-файлов; Studio автоматически обновила данные".to_owned();
     }
 
     fn request_reload(&mut self) {
@@ -140,6 +183,7 @@ impl MatchStudioApp {
     fn save_settings(&mut self) {
         match self.settings.save() {
             Ok(()) => {
+                self.file_monitor.refresh(&self.config_root);
                 "Настройки rEspanso сохранены. Перезагрузите конфигурацию или перезапустите rEspanso"
                     .clone_into(&mut self.status);
             }
@@ -187,9 +231,11 @@ impl MatchStudioApp {
         };
         match workspace.save_all() {
             Ok(saved) if saved.is_empty() => {
+                self.file_monitor.refresh(&self.config_root);
                 "Нет изменений для сохранения".clone_into(&mut self.status);
             }
             Ok(saved) => {
+                self.file_monitor.refresh(&self.config_root);
                 self.status = format!("Сохранено файлов: {}. Резервные копии созданы", saved.len());
             }
             Err(error) => {
@@ -839,7 +885,7 @@ impl MatchStudioApp {
                     self.config_root.display()
                 ));
                 ui.separator();
-                ui.label("Ожидаемая папка правил: portable\\config\\match");
+                ui.label("Ожидаемая папка правил: rEspanso\\match");
                 return;
             }
             if self.selected.is_none() {
@@ -1354,6 +1400,7 @@ impl MatchStudioApp {
 impl eframe::App for MatchStudioApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.runtime.update(ui.ctx());
+        self.check_external_file_changes(ui.ctx());
         self.handle_shortcuts(ui.ctx());
         self.top_bar(ui);
 
@@ -1365,6 +1412,12 @@ impl eframe::App for MatchStudioApp {
                     egui::RichText::new(format!("Конфигурация: {}", self.config_root.display()))
                         .weak(),
                 );
+                if self.external_change_pending {
+                    ui.separator();
+                    if ui.button("Обновить внешние изменения").clicked() {
+                        self.request_reload();
+                    }
+                }
             });
         });
 

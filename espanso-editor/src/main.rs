@@ -22,7 +22,8 @@ fn launch() -> Result<(), String> {
     let Some(_instance_guard) = acquire_instance_lock()? else {
         return Ok(());
     };
-    let config_root = parse_config_root().unwrap_or_else(default_config_root);
+    let config_root =
+        normalize_config_root(parse_config_root().unwrap_or_else(default_config_root));
     initialize_match_directory(&config_root)?;
 
     append_startup_log(&format!(
@@ -147,20 +148,37 @@ fn portable_config_root() -> Option<PathBuf> {
         return Some(respanso_config);
     }
 
-    let portable_directory = directory.join("portable");
     let is_named_standalone = executable
         .file_stem()
         .and_then(|value| value.to_str())
         .is_some_and(|value| value.eq_ignore_ascii_case("rEspanso Match Studio"));
+    let is_respanso_bundle = directory.join("rEspanso.exe").is_file()
+        || directory.join("rEspanso-core.exe").is_file()
+        || directory.join("config").is_dir()
+        || directory.join("match").is_dir();
 
-    (portable_directory.is_dir() || is_named_standalone).then(|| portable_directory.join("config"))
+    (is_respanso_bundle || is_named_standalone).then(|| directory.to_path_buf())
+}
+
+fn normalize_config_root(mut config_root: PathBuf) -> PathBuf {
+    while config_root
+        .file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("config"))
+        && config_root
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("config"))
+    {
+        config_root.pop();
+    }
+    config_root
 }
 
 #[cfg(test)]
 fn portable_config_for(executable: &Path) -> Option<PathBuf> {
-    executable
-        .parent()
-        .map(|directory| directory.join("portable").join("config"))
+    executable.parent().map(Path::to_path_buf)
 }
 
 fn initialize_match_directory(config_root: &Path) -> Result<(), String> {
@@ -290,7 +308,7 @@ mod tests {
         let executable = Path::new("bundle").join("espanso-editor");
         assert_eq!(
             portable_config_for(&executable),
-            Some(PathBuf::from("bundle/portable/config"))
+            Some(PathBuf::from("bundle"))
         );
     }
 
@@ -299,7 +317,15 @@ mod tests {
         let executable = Path::new("rEspanso Match Studio").join("rEspanso Match Studio.exe");
         assert_eq!(
             portable_config_for(&executable),
-            Some(PathBuf::from("rEspanso Match Studio/portable/config"))
+            Some(PathBuf::from("rEspanso Match Studio"))
+        );
+    }
+
+    #[test]
+    fn collapses_accidental_config_config_root() {
+        assert_eq!(
+            normalize_config_root(PathBuf::from("rEspanso/config/config")),
+            PathBuf::from("rEspanso/config")
         );
     }
 
@@ -308,7 +334,7 @@ mod tests {
         let executable = Path::new("Мои программы").join("rEspanso Match Studio.exe");
         assert_eq!(
             portable_config_for(&executable),
-            Some(PathBuf::from("Мои программы/portable/config"))
+            Some(PathBuf::from("Мои программы"))
         );
     }
 }

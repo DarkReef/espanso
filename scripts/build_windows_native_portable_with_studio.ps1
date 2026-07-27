@@ -2,7 +2,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$packageDir = "target/windows/respanso-native-portable-with-studio"
+$packageDir = "target/windows/rEspanso"
 $archivePath = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
 
 function Resolve-Binary([string]$environmentName, [string]$fallbackPath) {
@@ -45,14 +45,14 @@ foreach ($path in @($packageDir, $archivePath)) {
     }
 }
 
-$portableDir = Join-Path $packageDir "portable"
-$configDir = Join-Path $portableDir "config"
-$matchDir = Join-Path $configDir "match"
-$runtimeDir = Join-Path $portableDir "runtime"
-$packagesDir = Join-Path $portableDir "packages"
+$configDir = Join-Path $packageDir "config"
+$matchDir = Join-Path $packageDir "match"
+$runtimeDir = Join-Path $packageDir "runtime"
+$packagesDir = Join-Path $packageDir "packages"
 $forbiddenNestedConfig = Join-Path $configDir "config"
+$legacyPortable = Join-Path $packageDir "portable"
 
-New-Item -Path $matchDir, $runtimeDir, $packagesDir -ItemType Directory -Force | Out-Null
+New-Item -Path $configDir, $matchDir, $runtimeDir, $packagesDir -ItemType Directory -Force | Out-Null
 
 Copy-Item $launcher (Join-Path $packageDir "rEspanso.exe")
 Copy-Item $core (Join-Path $packageDir "rEspanso-core.exe")
@@ -65,13 +65,9 @@ if (Test-Path "LICENSE") {
     Copy-Item "LICENSE" (Join-Path $packageDir "LICENSE.txt")
 }
 
-@'
-matches:
-  - label: "rEspanso Portable готов"
-    trigger: ":respanso_example"
-    replace: "rEspanso и Match Studio работают из единого portable-комплекта"
-    disabled: true
-'@ | Set-Content -Path (Join-Path $matchDir "respanso-test.yml") -Encoding UTF8
+Copy-Item "espanso/src/res/config/default.yml" (Join-Path $configDir "default.yml")
+Copy-Item "espanso/src/res/config/base.yml" (Join-Path $matchDir "base.yml")
+
 
 @'
 rEspanso Portable + Match Studio
@@ -83,25 +79,26 @@ rEspanso Portable + Match Studio
 Студия: меню rEspanso в трее -> «Открыть студию rEspanso»
 Также студию можно открыть напрямую: rEspanso Match Studio.exe
 
-Общие данные:
-  portable\config
-  portable\runtime
-  portable\packages
+Структура папки rEspanso:
+  config\default.yml
+  match\base.yml
+  runtime\
+  packages\
 
-Рабочая папка правил должна находиться только здесь:
-  portable\config\match
-
-Папка portable\config\config\match является ошибочной и в сборке запрещена.
+Все каталоги находятся непосредственно рядом с rEspanso.exe.
+Папки portable и config\config являются ошибочными и в сборке запрещены.
 
 rEspanso-core.exe является внутренним движком.
 BAT и CMD файлы для запуска не используются и в архив не входят.
 '@ | Set-Content -Path (Join-Path $packageDir "README-FIRST.txt") -Encoding UTF8
 
+
 $required = @(
     (Join-Path $packageDir "rEspanso.exe"),
     (Join-Path $packageDir "rEspanso-core.exe"),
     (Join-Path $packageDir "rEspanso Match Studio.exe"),
-    $matchDir,
+    (Join-Path $configDir "default.yml"),
+    (Join-Path $matchDir "base.yml"),
     $runtimeDir,
     $packagesDir
 )
@@ -112,13 +109,10 @@ foreach ($path in $required) {
 }
 
 if (Test-Path $forbiddenNestedConfig) {
-    throw "Portable package contains forbidden nested configuration directory: $forbiddenNestedConfig"
+    throw "Portable package contains forbidden nested config directory: $forbiddenNestedConfig"
 }
-
-$nestedMatchDirectories = Get-ChildItem -Path $portableDir -Recurse -Directory -Filter "match" |
-    Where-Object { $_.FullName -match "[\\/]config[\\/]config[\\/]match$" }
-if ($nestedMatchDirectories) {
-    throw "Portable package contains nested config/config/match: $($nestedMatchDirectories.FullName -join ', ')"
+if (Test-Path $legacyPortable) {
+    throw "Portable package contains obsolete portable directory: $legacyPortable"
 }
 
 $forbidden = Get-ChildItem -Path $packageDir -Recurse -File |
