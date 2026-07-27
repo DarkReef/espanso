@@ -1,4 +1,5 @@
 use crate::{
+    file_monitor::FileMonitor,
     rhai_lab::RhaiLab,
     runtime::RuntimeMonitor,
     settings::SettingsEditor,
@@ -9,9 +10,13 @@ use crate::{
     yaml_imports,
 };
 use eframe::egui;
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
 
 const APP_TITLE: &str = "rEspanso Match Studio";
+const FILE_CHECK_INTERVAL: Duration = Duration::from_secs(3);
 
 pub fn run(config_root: PathBuf) -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -52,6 +57,7 @@ pub struct MatchStudioApp {
     filter: String,
     focus_filter: bool,
     file_filter: Option<PathBuf>,
+    yaml_file_filter: String,
     selected: Option<RuleId>,
     draft: RuleDraft,
     raw_rule: String,
@@ -68,6 +74,10 @@ pub struct MatchStudioApp {
     show_shortcuts: bool,
     confirm_delete: bool,
     confirm_reload: bool,
+    reload_all_after_confirm: bool,
+    file_monitor: FileMonitor,
+    next_file_check: Instant,
+    external_change_pending: bool,
 }
 
 impl MatchStudioApp {
@@ -77,7 +87,8 @@ impl MatchStudioApp {
             Err(error) => (None, Some(ru_message(&error.to_string()))),
         };
         let settings = SettingsEditor::load(&config_root);
-        let rhai_lab = RhaiLab::new();
+        let rhai_lab = RhaiLab::new(&config_root);
+        let file_monitor = FileMonitor::new(&config_root);
         Self {
             config_root,
             workspace,
@@ -89,6 +100,7 @@ impl MatchStudioApp {
             filter: String::new(),
             focus_filter: false,
             file_filter: None,
+            yaml_file_filter: String::new(),
             selected: None,
             draft: RuleDraft::default(),
             raw_rule: String::new(),
@@ -105,6 +117,10 @@ impl MatchStudioApp {
             show_shortcuts: false,
             confirm_delete: false,
             confirm_reload: false,
+            reload_all_after_confirm: false,
+            file_monitor,
+            next_file_check: Instant::now() + FILE_CHECK_INTERVAL,
+            external_change_pending: false,
         }
     }
 
@@ -115,6 +131,7 @@ impl MatchStudioApp {
                 self.load_error = None;
                 self.selected = None;
                 self.raw_rule.clear();
+                self.file_monitor.refresh(&self.config_root);
                 "Правила перечитаны с диска".clone_into(&mut self.status);
             }
             Err(error) => {
@@ -125,12 +142,65 @@ impl MatchStudioApp {
         }
     }
 
+    fn has_unsaved_changes(&self) -> bool {
+        self.workspace
+            .as_ref()
+            .is_some_and(|workspace| !workspace.dirty_files().is_empty())
+            || self.settings.dirty()
+    }
+
+    fn reload_all_from_disk(&mut self) {
+        self.reload();
+        if self.load_error.is_some() {
+            self.external_change_pending = true;
+            return;
+        }
+        self.settings = SettingsEditor::load(&self.config_root);
+        self.file_monitor.refresh(&self.config_root);
+        self.external_change_pending = false;
+        "Обнаружены изменения YAML-файлов; Studio обновила правила и настройки"
+            .clone_into(&mut self.status);
+    }
+
+    fn request_external_reload(&mut self) {
+        if self.has_unsaved_changes() {
+            self.reload_all_after_confirm = true;
+            self.confirm_reload = true;
+        } else {
+            self.reload_all_from_disk();
+        }
+    }
+
+    fn check_external_file_changes(&mut self, context: &egui::Context) {
+        let now = Instant::now();
+        if now < self.next_file_check {
+            context.request_repaint_after(self.next_file_check.saturating_duration_since(now));
+            return;
+        }
+        self.next_file_check = now + FILE_CHECK_INTERVAL;
+        context.request_repaint_after(FILE_CHECK_INTERVAL);
+
+        if !self.file_monitor.changed(&self.config_root) {
+            return;
+        }
+
+        if self.has_unsaved_changes() {
+            self.external_change_pending = true;
+            "Файлы конфигурации изменились снаружи. Сохраните или отмените локальные изменения, затем обновите с диска"
+                .clone_into(&mut self.status);
+            return;
+        }
+
+        self.reload_all_from_disk();
+    }
+
     fn request_reload(&mut self) {
         let has_unsaved = self
             .workspace
             .as_ref()
             .is_some_and(|workspace| !workspace.dirty_files().is_empty());
         if has_unsaved {
+            self.reload_all_after_confirm = false;
             self.confirm_reload = true;
         } else {
             self.reload();
@@ -140,6 +210,7 @@ impl MatchStudioApp {
     fn save_settings(&mut self) {
         match self.settings.save() {
             Ok(()) => {
+                self.file_monitor.refresh(&self.config_root);
                 "Настройки rEspanso сохранены. Перезагрузите конфигурацию или перезапустите rEspanso"
                     .clone_into(&mut self.status);
             }
@@ -153,7 +224,10 @@ impl MatchStudioApp {
             return;
         }
         match self.settings.reload_selected() {
-            Ok(()) => "Настройки перечитаны с диска".clone_into(&mut self.status),
+            Ok(()) => {
+                self.file_monitor.refresh(&self.config_root);
+                "Настройки перечитаны с диска".clone_into(&mut self.status);
+            }
             Err(error) => self.status = error,
         }
     }
@@ -187,9 +261,11 @@ impl MatchStudioApp {
         };
         match workspace.save_all() {
             Ok(saved) if saved.is_empty() => {
+                self.file_monitor.refresh(&self.config_root);
                 "Нет изменений для сохранения".clone_into(&mut self.status);
             }
             Ok(saved) => {
+                self.file_monitor.refresh(&self.config_root);
                 self.status = format!("Сохранено файлов: {}. Резервные копии созданы", saved.len());
             }
             Err(error) => {
@@ -395,16 +471,38 @@ impl MatchStudioApp {
         self.builder_error = None;
     }
 
+    fn report_rhai_action(&mut self, result: Result<String, String>) {
+        self.status = match result {
+            Ok(message) => message,
+            Err(error) => format!("Rhai: {error}"),
+        };
+    }
+
     fn handle_shortcuts(&mut self, context: &egui::Context) {
         if self.active_tab == MainTab::Rhai {
-            let (run, compile, help) = context.input(|input| {
+            let (run, compile, save, reload, new_script, help) = context.input(|input| {
                 let primary = input.modifiers.ctrl || input.modifiers.command;
                 (
                     primary && !input.modifiers.shift && input.key_pressed(egui::Key::Enter),
                     primary && input.modifiers.shift && input.key_pressed(egui::Key::Enter),
+                    primary && input.key_pressed(egui::Key::S),
+                    primary && input.key_pressed(egui::Key::R),
+                    primary && input.key_pressed(egui::Key::N),
                     input.key_pressed(egui::Key::F1),
                 )
             });
+            if save {
+                let result = self.rhai_lab.save_current();
+                self.report_rhai_action(result);
+            }
+            if reload {
+                let result = self.rhai_lab.reload_current();
+                self.report_rhai_action(result);
+            }
+            if new_script {
+                let result = self.rhai_lab.start_new_script();
+                self.report_rhai_action(result);
+            }
             if compile {
                 self.rhai_lab.compile_current();
             }
@@ -601,6 +699,14 @@ impl MatchStudioApp {
                         }
                     }
                     MainTab::Rhai => {
+                        if ui.button("Новый скрипт").on_hover_text("Ctrl+N").clicked() {
+                            let result = self.rhai_lab.start_new_script();
+                            self.report_rhai_action(result);
+                        }
+                        if ui.button("Сохранить").on_hover_text("Ctrl+S").clicked() {
+                            let result = self.rhai_lab.save_current();
+                            self.report_rhai_action(result);
+                        }
                         if ui
                             .button("Скомпилировать")
                             .on_hover_text("Ctrl+Shift+Enter")
@@ -614,6 +720,12 @@ impl MatchStudioApp {
                             .clicked()
                         {
                             self.rhai_lab.run_current();
+                        }
+                        if self.rhai_lab.dirty() {
+                            ui.colored_label(
+                                egui::Color32::from_rgb(210, 135, 25),
+                                "Скрипт не сохранён",
+                            );
                         }
                     }
                 }
@@ -686,91 +798,104 @@ impl MatchStudioApp {
                 }
 
                 ui.add_space(4.0);
-                ui.group(|ui| {
-                    ui.strong("YAML-файлы");
-                    ui.label(
-                        egui::RichText::new(
-                            "Флажок подключает файл через imports в base.yml; название фильтрует правила",
-                        )
-                        .weak(),
-                    );
-                    if base_file.is_none() {
-                        ui.colored_label(
-                            ui.visuals().error_fg_color,
-                            "Не найден base.yml или base.yaml — подключение файлов недоступно",
+                egui::CollapsingHeader::new(format!("YAML-файлы ({files_count})"))
+                    .id_salt("yaml_files_header")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new(
+                                "Флажок подключает файл через imports в base.yml; название фильтрует правила",
+                            )
+                            .weak(),
                         );
-                    }
-                    if let Some(error) = &import_error {
-                        ui.colored_label(ui.visuals().error_fg_color, error);
-                    }
+                        if base_file.is_none() {
+                            ui.colored_label(
+                                ui.visuals().error_fg_color,
+                                "Не найден base.yml или base.yaml — подключение файлов недоступно",
+                            );
+                        }
+                        if let Some(error) = &import_error {
+                            ui.colored_label(ui.visuals().error_fg_color, error);
+                        }
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.yaml_file_filter)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("Фильтр YAML-файлов…"),
+                        );
 
-                    egui::ScrollArea::vertical()
-                        .id_salt("yaml_file_list")
-                        .max_height(165.0)
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.add_space(24.0);
-                                if ui
-                                    .selectable_label(self.file_filter.is_none(), "Все YAML-файлы")
-                                    .clicked()
-                                {
-                                    self.file_filter = None;
-                                }
-                            });
-
-                            for file in &files {
-                                let is_base = base_file.as_ref() == Some(file);
-                                let mut enabled = if is_base {
-                                    true
-                                } else {
-                                    import_entries.iter().any(|entry| {
-                                        entry.path.as_path() == file.as_path() && entry.enabled
-                                    })
-                                };
-                                let can_toggle = !is_base
-                                    && base_file.is_some()
-                                    && import_error.is_none();
-
+                        let yaml_filter = self.yaml_file_filter.to_lowercase();
+                        egui::ScrollArea::vertical()
+                            .id_salt("yaml_file_list")
+                            .max_height(220.0)
+                            .show(ui, |ui| {
                                 ui.horizontal(|ui| {
-                                    let checkbox = ui.add_enabled(
-                                        can_toggle,
-                                        egui::Checkbox::new(&mut enabled, ""),
-                                    );
-                                    let changed = checkbox.changed();
-                                    if is_base {
-                                        checkbox.on_hover_text(
-                                            "Основной файл: он всегда загружается напрямую",
-                                        );
-                                    } else if can_toggle {
-                                        checkbox.on_hover_text(
-                                            "Добавить или удалить файл из imports в base.yml",
-                                        );
-                                    } else {
-                                        checkbox.on_hover_text(
-                                            "Сначала исправьте base.yml или создайте основной файл",
-                                        );
-                                    }
-                                    if changed {
-                                        pending_import_toggle = Some((file.clone(), enabled));
-                                    }
-
-                                    let selected = self.file_filter.as_ref() == Some(file);
+                                    ui.add_space(24.0);
                                     if ui
-                                        .selectable_label(
-                                            selected,
-                                            relative_display(&config_root, file),
-                                        )
+                                        .selectable_label(self.file_filter.is_none(), "Все YAML-файлы")
                                         .clicked()
                                     {
-                                        self.file_filter = Some(file.clone());
-                                    }
-                                    if is_base {
-                                        ui.label(egui::RichText::new("основной").weak());
+                                        self.file_filter = None;
                                     }
                                 });
-                            }
-                        });
-                });
+
+                                let mut visible_files = 0_usize;
+                                for file in &files {
+                                    let display_name = relative_display(&config_root, file);
+                                    if !yaml_filter.is_empty()
+                                        && !display_name.to_lowercase().contains(&yaml_filter)
+                                    {
+                                        continue;
+                                    }
+                                    visible_files += 1;
+                                    let is_base = base_file.as_ref() == Some(file);
+                                    let mut enabled = if is_base {
+                                        true
+                                    } else {
+                                        import_entries.iter().any(|entry| {
+                                            entry.path.as_path() == file.as_path() && entry.enabled
+                                        })
+                                    };
+                                    let can_toggle = !is_base
+                                        && base_file.is_some()
+                                        && import_error.is_none();
+
+                                    ui.horizontal(|ui| {
+                                        let checkbox = ui.add_enabled(
+                                            can_toggle,
+                                            egui::Checkbox::new(&mut enabled, ""),
+                                        );
+                                        let changed = checkbox.changed();
+                                        if is_base {
+                                            checkbox.on_hover_text(
+                                                "Основной файл: он всегда загружается напрямую",
+                                            );
+                                        } else if can_toggle {
+                                            checkbox.on_hover_text(
+                                                "Добавить или удалить файл из imports в base.yml",
+                                            );
+                                        } else {
+                                            checkbox.on_hover_text(
+                                                "Сначала исправьте base.yml или создайте основной файл",
+                                            );
+                                        }
+                                        if changed {
+                                            pending_import_toggle = Some((file.clone(), enabled));
+                                        }
+
+                                        let selected = self.file_filter.as_ref() == Some(file);
+                                        if ui.selectable_label(selected, display_name).clicked() {
+                                            self.file_filter = Some(file.clone());
+                                        }
+                                        if is_base {
+                                            ui.label(egui::RichText::new("основной").weak());
+                                        }
+                                    });
+                                }
+                                if visible_files == 0 {
+                                    ui.label("YAML-файлы по фильтру не найдены");
+                                }
+                            });
+                    });
                 ui.separator();
 
                 let filter = self.filter.to_lowercase();
@@ -839,7 +964,7 @@ impl MatchStudioApp {
                     self.config_root.display()
                 ));
                 ui.separator();
-                ui.label("Ожидаемая папка правил: portable\\config\\match");
+                ui.label("Ожидаемая папка правил: rEspanso\\match");
                 return;
             }
             if self.selected.is_none() {
@@ -1276,14 +1401,21 @@ impl MatchStudioApp {
                         .striped(true)
                         .show(ui, |ui| {
                             shortcut_row(ui, "Ctrl+S", "Сохранить изменения активной вкладки");
-                            shortcut_row(ui, "Ctrl+N", "Создать правило");
-                            shortcut_row(ui, "Ctrl+Enter", "Применить изменения правила");
+                            shortcut_row(ui, "Ctrl+N", "Создать правило или новый Rhai-скрипт");
+                            shortcut_row(
+                                ui,
+                                "Ctrl+Enter",
+                                "Применить правило или запустить Rhai-скрипт",
+                            );
                             shortcut_row(ui, "Ctrl+F", "Перейти к поиску правил");
                             shortcut_row(ui, "Ctrl+D", "Дублировать правило");
                             shortcut_row(ui, "Ctrl+Shift+D", "Удалить правило");
-                            shortcut_row(ui, "Ctrl+R", "Обновить активную вкладку с диска");
+                            shortcut_row(
+                                ui,
+                                "Ctrl+R",
+                                "Обновить активный YAML или Rhai-файл с диска",
+                            );
                             shortcut_row(ui, "Ctrl+L", "Показать или скрыть проверку");
-                            shortcut_row(ui, "Ctrl+Enter", "Запустить Rhai-скрипт");
                             shortcut_row(ui, "Ctrl+Shift+Enter", "Скомпилировать Rhai-скрипт");
                             shortcut_row(ui, "F1", "Открыть эту справку");
                         });
@@ -1341,9 +1473,15 @@ impl MatchStudioApp {
                     });
                 });
             if reload {
-                self.reload();
+                if self.reload_all_after_confirm {
+                    self.reload_all_from_disk();
+                } else {
+                    self.reload();
+                }
+                self.reload_all_after_confirm = false;
                 open = false;
             } else if cancel {
+                self.reload_all_after_confirm = false;
                 open = false;
             }
             self.confirm_reload = open;
@@ -1354,6 +1492,7 @@ impl MatchStudioApp {
 impl eframe::App for MatchStudioApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.runtime.update(ui.ctx());
+        self.check_external_file_changes(ui.ctx());
         self.handle_shortcuts(ui.ctx());
         self.top_bar(ui);
 
@@ -1365,6 +1504,12 @@ impl eframe::App for MatchStudioApp {
                     egui::RichText::new(format!("Конфигурация: {}", self.config_root.display()))
                         .weak(),
                 );
+                if self.external_change_pending {
+                    ui.separator();
+                    if ui.button("Обновить внешние изменения").clicked() {
+                        self.request_external_reload();
+                    }
+                }
             });
         });
 

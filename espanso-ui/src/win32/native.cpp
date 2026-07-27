@@ -65,13 +65,41 @@ std::wstring utf8_to_wide(const std::string &value) {
 }
 
 
+const wchar_t *builtin_menu_label(uint32_t id) {
+    switch (id) {
+    case 0:
+        return L"\u0412\u044b\u0439\u0442\u0438 \u0438\u0437 rEspanso";
+    case 1:
+        return L"\u041f\u0435\u0440\u0435\u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043a\u043e\u043d\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u044e";
+    case 2:
+        return L"\u0412\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u043f\u043e\u0434\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0438";
+    case 3:
+        return L"\u041e\u0442\u043a\u043b\u044e\u0447\u0438\u0442\u044c \u043f\u043e\u0434\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0438";
+    case 4:
+        return L"\u041f\u043e\u0447\u0435\u043c\u0443 rEspanso \u043d\u0435 \u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442?";
+    case 5:
+        return L"\u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u0430\u0432\u0442\u043e\u0438\u0441\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 SecureInput";
+    case 6:
+        return L"\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043f\u043e\u0438\u0441\u043a";
+    case 7:
+        return L"\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0436\u0443\u0440\u043d\u0430\u043b";
+    case 8:
+        return L"\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043f\u0430\u043f\u043a\u0443 \u043a\u043e\u043d\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u0438";
+    case 9:
+        return L"\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u0441\u0442\u0443\u0434\u0438\u044e rEspanso";
+    default:
+        return nullptr;
+    }
+}
+
+
 #define APPWM_ICON_CLICK (WM_APP + 1)
 #define APPWM_SHOW_CONTEXT_MENU (WM_APP + 2)
 #define APPWM_UPDATE_TRAY_ICON (WM_APP + 3)
 
 #define HEARTBEAT_TIMER_ID 10001
 
-const wchar_t *const ui_winclass = L"EspansoUI";
+const wchar_t *const ui_winclass = L"rEspansoUI";
 
 typedef struct {
     UIOptions options;
@@ -137,6 +165,7 @@ LRESULT CALLBACK ui_window_procedure(HWND window, unsigned int msg, WPARAM wp,
         SetForegroundWindow(window);
         TrackPopupMenu(menu, TPM_BOTTOMALIGN | TPM_LEFTALIGN, pt.x, pt.y, 0,
                        window, NULL);
+        DestroyMenu(menu);
 
         break;
     }
@@ -223,7 +252,7 @@ void *ui_initialize(void *_self, UIOptions _options, int32_t *error_code) {
                // created.
             ui_winclass, // lpClassName: A null-terminated string or a class
                          // atom created by a previous call to the RegisterClass
-            L"Espanso UI Window", // lpWindowName: The window name.
+            L"rEspanso UI Window", // lpWindowName: The window name.
             WS_OVERLAPPEDWINDOW,  // dwStyle: The style of the window being
                                   // created.
             CW_USEDEFAULT, // X: The initial horizontal position of the window.
@@ -339,8 +368,11 @@ void _insert_single_menu(HMENU parent, json item) {
     std::string label = item["label"];
     uint32_t raw_id = item["id"];
 
-    // Labels arrive from Rust as UTF-8 JSON strings.
-    std::wstring wide_label = utf8_to_wide(label);
+    // Built-in tray actions use escaped UTF-16 literals so Windows does not
+    // depend on the active ANSI code page. Dynamic labels still use UTF-8 JSON.
+    const wchar_t *localized_label = builtin_menu_label(raw_id);
+    std::wstring wide_label =
+        localized_label ? std::wstring(localized_label) : utf8_to_wide(label);
 
     InsertMenu(parent, -1, MF_BYPOSITION | MF_STRING, raw_id,
                wide_label.c_str());

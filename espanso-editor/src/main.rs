@@ -22,7 +22,8 @@ fn launch() -> Result<(), String> {
     let Some(_instance_guard) = acquire_instance_lock()? else {
         return Ok(());
     };
-    let config_root = parse_config_root().unwrap_or_else(default_config_root);
+    let config_root =
+        normalize_config_root(parse_config_root().unwrap_or_else(default_config_root));
     initialize_match_directory(&config_root)?;
 
     append_startup_log(&format!(
@@ -142,25 +143,53 @@ fn portable_config_root() -> Option<PathBuf> {
     let executable = std::env::current_exe().ok()?;
     let directory = executable.parent()?;
 
-    let respanso_config = directory.join(".espanso");
-    if respanso_config.is_dir() {
-        return Some(respanso_config);
-    }
-
-    let portable_directory = directory.join("portable");
     let is_named_standalone = executable
         .file_stem()
         .and_then(|value| value.to_str())
         .is_some_and(|value| value.eq_ignore_ascii_case("rEspanso Match Studio"));
+    let is_respanso_bundle = directory.join("rEspanso.exe").is_file()
+        || directory.join("rEspanso-core.exe").is_file()
+        || directory.join("config").is_dir()
+        || directory.join("match").is_dir();
+    if is_respanso_bundle || is_named_standalone {
+        return Some(directory.to_path_buf());
+    }
 
-    (portable_directory.is_dir() || is_named_standalone).then(|| portable_directory.join("config"))
+    let respanso_config = directory.join(".espanso");
+    respanso_config.is_dir().then_some(respanso_config)
+}
+
+fn normalize_config_root(mut config_root: PathBuf) -> PathBuf {
+    loop {
+        let is_config_directory = config_root
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("config"));
+        if !is_config_directory {
+            break;
+        }
+
+        let Some(parent) = config_root.parent() else {
+            break;
+        };
+        let duplicate_config = parent
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("config"));
+        let parent_is_bundle = parent.join("rEspanso.exe").is_file()
+            || parent.join("rEspanso-core.exe").is_file()
+            || parent.join("match").is_dir();
+        if !duplicate_config && !parent_is_bundle {
+            break;
+        }
+        config_root = parent.to_path_buf();
+    }
+    config_root
 }
 
 #[cfg(test)]
 fn portable_config_for(executable: &Path) -> Option<PathBuf> {
-    executable
-        .parent()
-        .map(|directory| directory.join("portable").join("config"))
+    executable.parent().map(Path::to_path_buf)
 }
 
 fn initialize_match_directory(config_root: &Path) -> Result<(), String> {
@@ -290,7 +319,7 @@ mod tests {
         let executable = Path::new("bundle").join("espanso-editor");
         assert_eq!(
             portable_config_for(&executable),
-            Some(PathBuf::from("bundle/portable/config"))
+            Some(PathBuf::from("bundle"))
         );
     }
 
@@ -299,8 +328,25 @@ mod tests {
         let executable = Path::new("rEspanso Match Studio").join("rEspanso Match Studio.exe");
         assert_eq!(
             portable_config_for(&executable),
-            Some(PathBuf::from("rEspanso Match Studio/portable/config"))
+            Some(PathBuf::from("rEspanso Match Studio"))
         );
+    }
+
+    #[test]
+    fn collapses_duplicate_config_segment() {
+        assert_eq!(
+            normalize_config_root(PathBuf::from("rEspanso/config/config")),
+            PathBuf::from("rEspanso/config")
+        );
+    }
+
+    #[test]
+    fn normalizes_config_subdirectory_of_bundle() {
+        let directory = tempdir::TempDir::new("respanso-bundle-root").unwrap();
+        fs::write(directory.path().join("rEspanso.exe"), []).unwrap();
+        let config = directory.path().join("config");
+        fs::create_dir_all(&config).unwrap();
+        assert_eq!(normalize_config_root(config), directory.path());
     }
 
     #[test]
@@ -308,7 +354,7 @@ mod tests {
         let executable = Path::new("Мои программы").join("rEspanso Match Studio.exe");
         assert_eq!(
             portable_config_for(&executable),
-            Some(PathBuf::from("Мои программы/portable/config"))
+            Some(PathBuf::from("Мои программы"))
         );
     }
 }

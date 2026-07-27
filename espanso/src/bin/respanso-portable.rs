@@ -40,7 +40,7 @@ fn run() -> Result<i32, String> {
     command
         .current_dir(root)
         .arg("--config_dir")
-        .arg(&paths.config)
+        .arg(&paths.config_root)
         .arg("--runtime_dir")
         .arg(&paths.runtime)
         .arg("--package_dir")
@@ -70,23 +70,27 @@ fn core_binary_name() -> &'static str {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PortablePaths {
+    config_root: PathBuf,
     config: PathBuf,
+    matches: PathBuf,
     runtime: PathBuf,
     packages: PathBuf,
 }
 
 impl PortablePaths {
     fn new(root: &Path) -> Self {
-        let portable = root.join("portable");
         Self {
-            config: portable.join("config"),
-            runtime: portable.join("runtime"),
-            packages: portable.join("packages"),
+            config_root: root.to_path_buf(),
+            config: root.join("config"),
+            matches: root.join("match"),
+            runtime: root.join("runtime"),
+            packages: root.join("packages"),
         }
     }
 
     fn ensure(&self) -> std::io::Result<()> {
-        fs::create_dir_all(self.config.join("match"))?;
+        fs::create_dir_all(&self.config)?;
+        fs::create_dir_all(&self.matches)?;
         fs::create_dir_all(&self.runtime)?;
         fs::create_dir_all(&self.packages)?;
         Ok(())
@@ -100,8 +104,11 @@ mod tests {
     #[test]
     fn portable_paths_are_relative_to_executable_directory() {
         let paths = PortablePaths::new(Path::new("bundle"));
-        assert_eq!(paths.config, PathBuf::from("bundle/portable/config"));
-        assert_eq!(paths.runtime, PathBuf::from("bundle/portable/runtime"));
-        assert_eq!(paths.packages, PathBuf::from("bundle/portable/packages"));
+        assert_eq!(paths.config_root, PathBuf::from("bundle"));
+        assert_eq!(paths.config, PathBuf::from("bundle/config"));
+        assert_eq!(paths.matches, PathBuf::from("bundle/match"));
+        assert_eq!(paths.runtime, PathBuf::from("bundle/runtime"));
+        assert_eq!(paths.packages, PathBuf::from("bundle/packages"));
+        assert_ne!(paths.config, paths.config_root.join("config/config"));
     }
 }
