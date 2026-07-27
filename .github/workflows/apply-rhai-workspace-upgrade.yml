@@ -1,9 +1,9 @@
 name: Apply Rhai workspace upgrade
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/portable-layout-watcher
+      - rEspanso-feature
     paths:
       - scripts/apply_rhai_workspace_upgrade_bootstrap.py
       - scripts/.rhai_upgrade_chunks/**
@@ -21,7 +21,7 @@ jobs:
       - name: Checkout upgrade branch
         uses: actions/checkout@v4
         with:
-          ref: fix/portable-layout-watcher
+          ref: ${{ github.head_ref }}
           fetch-depth: 1
 
       - name: Apply source changes
@@ -55,4 +55,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "feat: add file-backed Rhai IDE and linting"
-          git push origin HEAD:fix/portable-layout-watcher
+          git push origin HEAD:${{ github.head_ref }}
