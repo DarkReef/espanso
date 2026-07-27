@@ -37,21 +37,21 @@ impl<'a> NotificationManager<'a> {
     }
 
     pub fn notify_start(&self) {
-        self.notify("Espanso is running!");
+        self.notify("rEspanso запущен!");
     }
 
     pub fn notify_config_reloaded(&self, is_manual_restart: bool) {
         if is_manual_restart {
-            self.notify("Configuration reloaded!");
+            self.notify("Конфигурация rEspanso перезагружена!");
         } else {
             self.notify(
-        "Configuration reloaded! Espanso automatically loads new changes as soon as you save them.",
-      );
+                "Конфигурация rEspanso обновлена. Изменения применяются автоматически после сохранения.",
+            );
         }
     }
 
     pub fn notify_keyboard_layout_reloaded(&self) {
-        self.notify("Updated keyboard layout!");
+        self.notify("Раскладка клавиатуры обновлена!");
     }
 }
 
@@ -63,15 +63,13 @@ impl espanso_engine::process::NotificationManager for NotificationManager<'_> {
         }
 
         if enabled {
-            self.notify("rEspanso enabled!");
+            self.notify("Подстановки rEspanso включены!");
         } else {
-            self.notify("rEspanso disabled!");
+            self.notify("Подстановки rEspanso отключены!");
         }
     }
 
     fn notify_rendering_error(&self) {
-        self.notify(
-            "An error occurred during rendering, please examine the logs for more information.",
-        );
+        self.notify("Ошибка подстановки rEspanso. Подробности доступны в журнале.");
     }
 }
