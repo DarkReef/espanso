@@ -143,11 +143,6 @@ fn portable_config_root() -> Option<PathBuf> {
     let executable = std::env::current_exe().ok()?;
     let directory = executable.parent()?;
 
-    let respanso_config = directory.join(".espanso");
-    if respanso_config.is_dir() {
-        return Some(respanso_config);
-    }
-
     let is_named_standalone = executable
         .file_stem()
         .and_then(|value| value.to_str())
@@ -156,22 +151,38 @@ fn portable_config_root() -> Option<PathBuf> {
         || directory.join("rEspanso-core.exe").is_file()
         || directory.join("config").is_dir()
         || directory.join("match").is_dir();
+    if is_respanso_bundle || is_named_standalone {
+        return Some(directory.to_path_buf());
+    }
 
-    (is_respanso_bundle || is_named_standalone).then(|| directory.to_path_buf())
+    let respanso_config = directory.join(".espanso");
+    respanso_config.is_dir().then_some(respanso_config)
 }
 
 fn normalize_config_root(mut config_root: PathBuf) -> PathBuf {
-    while config_root
-        .file_name()
-        .and_then(|value| value.to_str())
-        .is_some_and(|value| value.eq_ignore_ascii_case("config"))
-        && config_root
-            .parent()
-            .and_then(Path::file_name)
+    loop {
+        let is_config_directory = config_root
+            .file_name()
             .and_then(|value| value.to_str())
-            .is_some_and(|value| value.eq_ignore_ascii_case("config"))
-    {
-        config_root.pop();
+            .is_some_and(|value| value.eq_ignore_ascii_case("config"));
+        if !is_config_directory {
+            break;
+        }
+
+        let Some(parent) = config_root.parent() else {
+            break;
+        };
+        let duplicate_config = parent
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("config"));
+        let parent_is_bundle = parent.join("rEspanso.exe").is_file()
+            || parent.join("rEspanso-core.exe").is_file()
+            || parent.join("match").is_dir();
+        if !duplicate_config && !parent_is_bundle {
+            break;
+        }
+        config_root = parent.to_path_buf();
     }
     config_root
 }
@@ -322,11 +333,20 @@ mod tests {
     }
 
     #[test]
-    fn collapses_accidental_config_config_root() {
+    fn collapses_duplicate_config_segment() {
         assert_eq!(
             normalize_config_root(PathBuf::from("rEspanso/config/config")),
             PathBuf::from("rEspanso/config")
         );
+    }
+
+    #[test]
+    fn normalizes_config_subdirectory_of_bundle() {
+        let directory = tempdir::TempDir::new("respanso-bundle-root").unwrap();
+        fs::write(directory.path().join("rEspanso.exe"), []).unwrap();
+        let config = directory.path().join("config");
+        fs::create_dir_all(&config).unwrap();
+        assert_eq!(normalize_config_root(config), directory.path());
     }
 
     #[test]

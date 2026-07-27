@@ -73,6 +73,7 @@ pub struct MatchStudioApp {
     show_shortcuts: bool,
     confirm_delete: bool,
     confirm_reload: bool,
+    reload_all_after_confirm: bool,
     file_monitor: FileMonitor,
     next_file_check: Instant,
     external_change_pending: bool,
@@ -114,6 +115,7 @@ impl MatchStudioApp {
             show_shortcuts: false,
             confirm_delete: false,
             confirm_reload: false,
+            reload_all_after_confirm: false,
             file_monitor,
             next_file_check: Instant::now() + FILE_CHECK_INTERVAL,
             external_change_pending: false,
@@ -128,7 +130,6 @@ impl MatchStudioApp {
                 self.selected = None;
                 self.raw_rule.clear();
                 self.file_monitor.refresh(&self.config_root);
-                self.external_change_pending = false;
                 "Правила перечитаны с диска".clone_into(&mut self.status);
             }
             Err(error) => {
@@ -136,6 +137,30 @@ impl MatchStudioApp {
                 self.load_error = Some(message.clone());
                 self.status = format!("Не удалось обновить правила: {message}");
             }
+        }
+    }
+
+    fn has_unsaved_changes(&self) -> bool {
+        self.workspace
+            .as_ref()
+            .is_some_and(|workspace| !workspace.dirty_files().is_empty())
+            || self.settings.dirty()
+    }
+
+    fn reload_all_from_disk(&mut self) {
+        self.reload();
+        self.settings = SettingsEditor::load(&self.config_root);
+        self.external_change_pending = false;
+        self.status =
+            "Обнаружены изменения YAML-файлов; Studio обновила правила и настройки".to_owned();
+    }
+
+    fn request_external_reload(&mut self) {
+        if self.has_unsaved_changes() {
+            self.reload_all_after_confirm = true;
+            self.confirm_reload = true;
+        } else {
+            self.reload_all_from_disk();
         }
     }
 
@@ -152,20 +177,13 @@ impl MatchStudioApp {
             return;
         }
 
-        let unsaved_rules = self
-            .workspace
-            .as_ref()
-            .is_some_and(|workspace| !workspace.dirty_files().is_empty());
-        if unsaved_rules || self.settings.dirty() {
+        if self.has_unsaved_changes() {
             self.external_change_pending = true;
             self.status = "Файлы конфигурации изменились снаружи. Сохраните или отмените локальные изменения, затем обновите с диска".to_owned();
             return;
         }
 
-        self.reload();
-        self.settings = SettingsEditor::load(&self.config_root);
-        self.status =
-            "Обнаружены изменения YAML-файлов; Studio автоматически обновила данные".to_owned();
+        self.reload_all_from_disk();
     }
 
     fn request_reload(&mut self) {
@@ -174,6 +192,7 @@ impl MatchStudioApp {
             .as_ref()
             .is_some_and(|workspace| !workspace.dirty_files().is_empty());
         if has_unsaved {
+            self.reload_all_after_confirm = false;
             self.confirm_reload = true;
         } else {
             self.reload();
@@ -1387,9 +1406,15 @@ impl MatchStudioApp {
                     });
                 });
             if reload {
-                self.reload();
+                if self.reload_all_after_confirm {
+                    self.reload_all_from_disk();
+                } else {
+                    self.reload();
+                }
+                self.reload_all_after_confirm = false;
                 open = false;
             } else if cancel {
+                self.reload_all_after_confirm = false;
                 open = false;
             }
             self.confirm_reload = open;
@@ -1415,7 +1440,7 @@ impl eframe::App for MatchStudioApp {
                 if self.external_change_pending {
                     ui.separator();
                     if ui.button("Обновить внешние изменения").clicked() {
-                        self.request_reload();
+                        self.request_external_reload();
                     }
                 }
             });
