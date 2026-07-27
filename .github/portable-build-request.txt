@@ -1,0 +1,1 @@
+Portable build requested for rEspanso-feature snapshot b8892024d021493e3a8aa8dad0d46507bb7e7ea9.
