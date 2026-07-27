@@ -11,7 +11,7 @@ on:
       - .github/portable-layout-watcher-pr-trigger*.txt
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   apply-fix:
@@ -30,23 +30,37 @@ jobs:
       - name: Format Rust sources
         run: cargo fmt --all
 
-      - name: Package patched files
+      - name: Diagnose commit and push
         shell: bash
         run: |
+          set +e
           {
-            git diff --name-only
-            git ls-files --others --exclude-standard
-          } | sort -u > patched-files.txt
-          git diff --binary > patched-source.diff
-          tar -czf patched-files.tar.gz -T patched-files.txt
+            echo '=== STATUS BEFORE ==='
+            git status --short
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            echo '=== ADD ==='
+            git add -A
+            echo "add_status=$?"
+            echo '=== COMMIT ==='
+            git commit -m "fix: flatten portable layout and watch Studio files"
+            commit_status=$?
+            echo "commit_status=$commit_status"
+            echo '=== PUSH ==='
+            git push origin HEAD:${{ github.head_ref }}
+            push_status=$?
+            echo "push_status=$push_status"
+            echo '=== STATUS AFTER ==='
+            git status --short
+            echo '=== HEAD ==='
+            git log -1 --oneline
+          } > commit-push.log 2>&1
+          exit 0
 
-      - name: Upload patched source bundle
+      - name: Upload commit diagnostics
         uses: actions/upload-artifact@v4
         with:
-          name: portable-layout-patched-source-${{ github.sha }}
-          path: |
-            patched-files.txt
-            patched-source.diff
-            patched-files.tar.gz
+          name: portable-layout-commit-diagnostics-${{ github.sha }}
+          path: commit-push.log
           if-no-files-found: error
           retention-days: 7
