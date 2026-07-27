@@ -101,4 +101,18 @@ mod tests {
         fs::remove_file(file).unwrap();
         assert!(monitor.changed(directory.path()));
     }
+
+    #[test]
+    fn watches_settings_yaml_and_ignores_unrelated_files() {
+        let directory = tempdir::TempDir::new("respanso-settings-monitor").unwrap();
+        let config_dir = directory.path().join("config");
+        fs::create_dir_all(&config_dir).unwrap();
+        let mut monitor = FileMonitor::new(directory.path());
+
+        fs::write(config_dir.join("notes.txt"), "not configuration").unwrap();
+        assert!(!monitor.changed(directory.path()));
+
+        fs::write(config_dir.join("default.yaml"), "enable: true\n").unwrap();
+        assert!(monitor.changed(directory.path()));
+    }
 }
