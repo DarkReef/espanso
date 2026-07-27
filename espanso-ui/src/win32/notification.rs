@@ -55,7 +55,9 @@ pub fn initialize_notification_thread(notification_icon_path: PathBuf) -> Result
                 if is_espanso_app_user_model_id_set() {
                     ESPANSO_APP_USER_MODEL_ID
                 } else {
-                    warn!("unable to find rEspanso AppUserModelID in the list of registered ones, falling back to Powershell");
+                    warn!(
+                        "unable to find rEspanso AppUserModelID in the list of registered ones, falling back to Powershell"
+                    );
                     Toast::POWERSHELL_APP_ID
                 }
             });
