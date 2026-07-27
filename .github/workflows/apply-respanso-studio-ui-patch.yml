@@ -1,0 +1,46 @@
+name: Apply rEspanso Studio UI patch
+
+on:
+  push:
+    branches:
+      - rEspanso-feature
+    paths:
+      - .github/workflows/apply-respanso-studio-ui-patch.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout rEspanso-feature
+        uses: actions/checkout@v4
+        with:
+          ref: rEspanso-feature
+          fetch-depth: 0
+
+      - name: Apply Studio and tray changes
+        run: python scripts/apply_respanso_studio_ui_patch.py
+
+      - name: Format changed Rust crates
+        run: |
+          cargo fmt --package espanso-editor
+          cargo fmt --package espanso-engine
+
+      - name: Test Studio YAML import management
+        run: cargo test --package espanso-editor yaml_imports --lib
+
+      - name: Remove one-time patch machinery
+        run: |
+          rm scripts/apply_respanso_studio_ui_patch.py
+          rm .github/workflows/apply-respanso-studio-ui-patch.yml
+
+      - name: Commit changes to rEspanso-feature
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(studio): manage base YAML imports and localize tray"
+          git push origin HEAD:rEspanso-feature
