@@ -30,37 +30,12 @@ jobs:
       - name: Format Rust sources
         run: cargo fmt --all
 
-      - name: Diagnose commit and push
+      - name: Commit non-workflow source changes
         shell: bash
         run: |
-          set +e
-          {
-            echo '=== STATUS BEFORE ==='
-            git status --short
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            echo '=== ADD ==='
-            git add -A
-            echo "add_status=$?"
-            echo '=== COMMIT ==='
-            git commit -m "fix: flatten portable layout and watch Studio files"
-            commit_status=$?
-            echo "commit_status=$commit_status"
-            echo '=== PUSH ==='
-            git push origin HEAD:${{ github.head_ref }}
-            push_status=$?
-            echo "push_status=$push_status"
-            echo '=== STATUS AFTER ==='
-            git status --short
-            echo '=== HEAD ==='
-            git log -1 --oneline
-          } > commit-push.log 2>&1
-          exit 0
-
-      - name: Upload commit diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: portable-layout-commit-diagnostics-${{ github.sha }}
-          path: commit-push.log
-          if-no-files-found: error
-          retention-days: 7
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git reset .github/workflows/build-respanso-windows.yml
+          git commit -m "fix: flatten portable layout and watch Studio files"
+          git push origin HEAD:${{ github.head_ref }}
