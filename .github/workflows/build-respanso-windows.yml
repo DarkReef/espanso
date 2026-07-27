@@ -109,14 +109,15 @@ jobs:
           $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
           & "./scripts/build_windows_native_portable_with_studio.ps1"
 
-          $package = "target/windows/respanso-native-portable-with-studio"
+          $package = "target/windows/rEspanso"
           $required = @(
             "$package/rEspanso.exe",
             "$package/rEspanso-core.exe",
             "$package/rEspanso Match Studio.exe",
-            "$package/portable/config/match",
-            "$package/portable/runtime",
-            "$package/portable/packages"
+            "$package/config/default.yml",
+            "$package/match/base.yml",
+            "$package/runtime",
+            "$package/packages"
           )
           foreach ($path in $required) {
             if (-not (Test-Path $path)) {
@@ -124,9 +125,13 @@ jobs:
             }
           }
 
-          $forbiddenNestedConfig = "$package/portable/config/config"
-          if (Test-Path $forbiddenNestedConfig) {
-            throw "Unified portable package contains forbidden nested config directory: $forbiddenNestedConfig"
+          $nestedConfig = "$package/config/config"
+          $legacyPortable = "$package/portable"
+          if (Test-Path $nestedConfig) {
+            throw "Unified portable package contains nested config/config: $nestedConfig"
+          }
+          if (Test-Path $legacyPortable) {
+            throw "Unified portable package contains obsolete portable directory: $legacyPortable"
           }
 
           $forbidden = Get-ChildItem $package -Recurse -File |
