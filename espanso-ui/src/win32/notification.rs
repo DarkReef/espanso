@@ -47,30 +47,32 @@ pub fn initialize_notification_thread(notification_icon_path: PathBuf) -> Result
         *lock = Some(sender);
     }
 
-    std::thread::Builder::new().name("notification-thread".to_string()).spawn(move || {
-    // First determine which AppUserModelID we can use
-      static APP_USER_MODEL_ID: LazyLock<&'static str> = LazyLock::new(||
-      if is_espanso_app_user_model_id_set() {
-        ESPANSO_APP_USER_MODEL_ID
-      } else {
-        warn!("unable to find rEspanso AppUserModelID in the list of registered ones, falling back to Powershell");
-        Toast::POWERSHELL_APP_ID
-      }
-    );
+    std::thread::Builder::new()
+        .name("notification-thread".to_string())
+        .spawn(move || {
+            // First determine which AppUserModelID we can use
+            static APP_USER_MODEL_ID: LazyLock<&'static str> = LazyLock::new(|| {
+                if is_espanso_app_user_model_id_set() {
+                    ESPANSO_APP_USER_MODEL_ID
+                } else {
+                    warn!("unable to find rEspanso AppUserModelID in the list of registered ones, falling back to Powershell");
+                    Toast::POWERSHELL_APP_ID
+                }
+            });
 
-
-    while let Ok(message) = receiver.recv() {
-      if let Err(err) = Toast::new(&APP_USER_MODEL_ID)
-        .icon(&notification_icon_path, IconCrop::Square, "rEspanso")
-        .title("rEspanso")
-        .text1(&message)
-        .sound(None)
-        .show()
-        .map_err(|e| anyhow!("failed to show notification: {}", e)) {
-          error!("unable to show notification: {}", err);
-      }
-    }
-  })?;
+            while let Ok(message) = receiver.recv() {
+                if let Err(err) = Toast::new(&APP_USER_MODEL_ID)
+                    .icon(&notification_icon_path, IconCrop::Square, "rEspanso")
+                    .title("rEspanso")
+                    .text1(&message)
+                    .sound(None)
+                    .show()
+                    .map_err(|e| anyhow!("failed to show notification: {}", e))
+                {
+                    error!("unable to show notification: {}", err);
+                }
+            }
+        })?;
 
     Ok(())
 }
