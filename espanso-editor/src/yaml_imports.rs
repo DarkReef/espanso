@@ -149,9 +149,8 @@ fn replace_imports_section(content: &str, imports: &[String]) -> String {
         }
         None if imports.is_empty() => content.to_owned(),
         None => {
-            let insertion = top_level_section(content, "matches")
-                .map(|(start, _)| start)
-                .unwrap_or(content.len());
+            let insertion =
+                top_level_section(content, "matches").map_or(content.len(), |(start, _)| start);
             let mut result = String::with_capacity(content.len() + rendered.len() + newline.len());
             result.push_str(&content[..insertion]);
             let prefix = &content[..insertion];

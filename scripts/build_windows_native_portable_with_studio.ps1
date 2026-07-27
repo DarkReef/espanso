@@ -49,10 +49,11 @@ $configDir = Join-Path $packageDir "config"
 $matchDir = Join-Path $packageDir "match"
 $runtimeDir = Join-Path $packageDir "runtime"
 $packagesDir = Join-Path $packageDir "packages"
+$scriptsDir = Join-Path $packageDir "scripts"
 $forbiddenNestedConfig = Join-Path $configDir "config"
 $legacyPortable = Join-Path $packageDir "portable"
 
-New-Item -Path $configDir, $matchDir, $runtimeDir, $packagesDir -ItemType Directory -Force | Out-Null
+New-Item -Path $configDir, $matchDir, $runtimeDir, $packagesDir, $scriptsDir -ItemType Directory -Force | Out-Null
 
 Copy-Item $launcher (Join-Path $packageDir "rEspanso.exe")
 Copy-Item $core (Join-Path $packageDir "rEspanso-core.exe")
@@ -67,6 +68,14 @@ if (Test-Path "LICENSE") {
 
 Copy-Item "espanso/src/res/config/default.yml" (Join-Path $configDir "default.yml")
 Copy-Item "espanso/src/res/config/base.yml" (Join-Path $matchDir "base.yml")
+@'
+let length = input.len;
+if length > 0 {
+    `Триггер ${trigger}: получено ${length} символов`
+} else {
+    "Пустая строка"
+}
+'@ | Set-Content -Path (Join-Path $scriptsDir "example.rhai") -Encoding utf8NoBOM
 
 
 @'
@@ -84,6 +93,7 @@ rEspanso Portable + Match Studio
   match\base.yml
   runtime\
   packages\
+  scripts\example.rhai
 
 Все каталоги находятся непосредственно рядом с rEspanso.exe.
 Папки portable и config\config являются ошибочными и в сборке запрещены.
@@ -100,7 +110,8 @@ $required = @(
     (Join-Path $configDir "default.yml"),
     (Join-Path $matchDir "base.yml"),
     $runtimeDir,
-    $packagesDir
+    $packagesDir,
+    (Join-Path $scriptsDir "example.rhai")
 )
 foreach ($path in $required) {
     if (-not (Test-Path $path)) {
