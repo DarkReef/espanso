@@ -30,22 +30,18 @@ jobs:
       - name: Format Rust sources
         run: cargo fmt --all
 
-      - name: Remove one-time patch files
-        shell: bash
-        run: |
-          rm -f scripts/apply_portable_layout_watcher_fix.py
-          rm -rf scripts/.portable_patch_chunks
-          rm -f .github/workflows/apply-portable-layout-watcher-fix.yml
-          rm -f .github/portable-layout-watcher-pr-trigger.txt
-          rm -f .github/portable-layout-watcher-pr-trigger-2.txt
-          rm -f .github/portable-layout-patch.log
-          rm -f .github/portable-layout-test.log
-
-      - name: Commit applied fix
+      - name: Commit applied source changes
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
+          git reset .github/workflows/apply-portable-layout-watcher-fix.yml
+          git reset scripts/apply_portable_layout_watcher_fix.py
+          git reset scripts/.portable_patch_chunks
+          git reset .github/portable-layout-patch.log || true
+          git reset .github/portable-layout-test.log || true
+          git reset .github/portable-layout-watcher-pr-trigger.txt || true
+          git reset .github/portable-layout-watcher-pr-trigger-2.txt || true
           git commit -m "fix: flatten portable layout and watch Studio files"
           git push origin HEAD:${{ github.head_ref }}
