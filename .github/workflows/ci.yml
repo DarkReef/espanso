@@ -128,8 +128,10 @@ jobs:
       - uses: actions/checkout@main
       - name: Format
         run: cargo fmt --all -- --check
-      - name: Build native rEspanso and Match Studio
-        run: cargo build --release -p espanso --bin espanso --bin respanso-portable -p espanso-editor
+      - name: Build native rEspanso core and launcher
+        run: cargo build --release -p espanso --bin espanso --bin respanso-portable
+      - name: Build Match Studio
+        run: cargo build --release -p espanso-editor
       - name: Test native portable launcher
         run: cargo test -p espanso --bin respanso-portable
       - name: Test Match Studio
