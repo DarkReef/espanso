@@ -6,6 +6,7 @@ on:
       - rEspanso-feature
     paths:
       - scripts/apply_portable_layout_watcher_fix.py
+      - scripts/.portable_patch_chunks/**
       - .github/workflows/apply-portable-layout-watcher-fix.yml
       - .github/portable-layout-watcher-pr-trigger*.txt
 
@@ -54,6 +55,7 @@ jobs:
         if: steps.patch.outcome == 'success'
         run: |
           rm -f scripts/apply_portable_layout_watcher_fix.py
+          rm -rf scripts/.portable_patch_chunks
           rm -f .github/workflows/apply-portable-layout-watcher-fix.yml
           rm -f .github/portable-layout-watcher-pr-trigger.txt
           rm -f .github/portable-layout-watcher-pr-trigger-2.txt
