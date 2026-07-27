@@ -149,7 +149,12 @@ impl MatchStudioApp {
 
     fn reload_all_from_disk(&mut self) {
         self.reload();
+        if self.load_error.is_some() {
+            self.external_change_pending = true;
+            return;
+        }
         self.settings = SettingsEditor::load(&self.config_root);
+        self.file_monitor.refresh(&self.config_root);
         self.external_change_pending = false;
         self.status =
             "Обнаружены изменения YAML-файлов; Studio обновила правила и настройки".to_owned();
@@ -216,7 +221,10 @@ impl MatchStudioApp {
             return;
         }
         match self.settings.reload_selected() {
-            Ok(()) => "Настройки перечитаны с диска".clone_into(&mut self.status),
+            Ok(()) => {
+                self.file_monitor.refresh(&self.config_root);
+                "Настройки перечитаны с диска".clone_into(&mut self.status);
+            }
             Err(error) => self.status = error,
         }
     }
