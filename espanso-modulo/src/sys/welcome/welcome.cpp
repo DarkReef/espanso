@@ -56,7 +56,7 @@ DerivedWelcomeFrame::DerivedWelcomeFrame(wxWindow *parent)
         this->tray_bitmap->SetBitmap(trayBitmap);
 #ifdef __WXOSX__
         this->tray_info_label->SetLabel(
-            "You should see the espanso icon on the status bar:");
+            wxT("Значок rEspanso находится в строке состояния:"));
 #endif
     } else {
         this->tray_info_label->Hide();
@@ -65,7 +65,7 @@ DerivedWelcomeFrame::DerivedWelcomeFrame(wxWindow *parent)
     this->dont_show_checkbox->Hide();
 
     if (welcome_metadata->already_running) {
-        this->title_label->SetLabel("Espanso is already running!");
+        this->title_label->SetLabel(wxT("rEspanso уже запущен!"));
     }
 }
 
