@@ -50,9 +50,9 @@ class WelcomeFrame : public wxFrame {
 
   public:
     WelcomeFrame(wxWindow *parent, wxWindowID id = wxID_ANY,
-                 const wxString &title = wxT("Espanso is running!"),
+                 const wxString &title = wxT("rEspanso — текстовый экспандер"),
                  const wxPoint &pos = wxDefaultPosition,
-                 const wxSize &size = wxSize(521, 597),
+                 const wxSize &size = wxSize(600, 640),
                  long style = wxCAPTION | wxCLOSE_BOX | wxSYSTEM_MENU |
                               wxTAB_TRAVERSAL);
 
