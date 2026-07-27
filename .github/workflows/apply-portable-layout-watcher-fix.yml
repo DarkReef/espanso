@@ -11,7 +11,7 @@ on:
       - .github/portable-layout-watcher-pr-trigger*.txt
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   apply-fix:
@@ -30,11 +30,20 @@ jobs:
       - name: Format Rust sources
         run: cargo fmt --all
 
-      - name: Commit applied source changes
+      - name: Package patched files
         shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "fix: flatten portable layout and watch Studio files"
-          git push origin HEAD:${{ github.head_ref }}
+          git diff --name-only > patched-files.txt
+          git diff --binary > patched-source.diff
+          tar -czf patched-files.tar.gz -T patched-files.txt
+
+      - name: Upload patched source bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable-layout-patched-source-${{ github.sha }}
+          path: |
+            patched-files.txt
+            patched-source.diff
+            patched-files.tar.gz
+          if-no-files-found: error
+          retention-days: 7
