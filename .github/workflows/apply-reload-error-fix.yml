@@ -1,0 +1,32 @@
+name: Apply reload error handling fix
+
+on:
+  push:
+    branches:
+      - fix/portable-layout-watcher
+    paths:
+      - scripts/apply_reload_error_fix.py
+      - .github/workflows/apply-reload-error-fix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/portable-layout-watcher
+          fetch-depth: 1
+      - run: python scripts/apply_reload_error_fix.py
+      - run: cargo fmt --all
+      - name: Commit source correction
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add espanso-editor/src/app.rs
+          git commit -m "fix: preserve external-change warning on reload errors"
+          git push origin HEAD:fix/portable-layout-watcher
