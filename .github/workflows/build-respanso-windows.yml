@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - rEspanso-feature
-      - fix/native-portable-with-studio
   pull_request:
     branches:
       - dev
@@ -41,6 +40,15 @@ jobs:
           targets: x86_64-pc-windows-msvc
           components: rustfmt, clippy
 
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-native-studio-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Show build environment
         shell: pwsh
         run: |
@@ -52,10 +60,30 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Build release binaries
+      - name: Run embedded runtime tests
+        run: cargo test --quiet -p espanso-render
+
+      - name: Run rEspanso engine tests
+        run: cargo test --quiet -p espanso-engine
+
+      - name: Run native portable launcher tests
+        run: cargo test --quiet -p espanso --bin respanso-portable
+
+      - name: Run Match Studio tests
+        run: cargo test --quiet -p espanso-editor
+
+      - name: Build rEspanso core and native launcher
         env:
           CARGO_TERM_COLOR: always
-        run: cargo build --quiet --release -p espanso -p espanso-editor
+        run: cargo build --quiet --release -p espanso --bin espanso --bin respanso-portable
+
+      - name: Build Match Studio
+        env:
+          CARGO_TERM_COLOR: always
+        run: cargo build --quiet --release -p espanso-editor
+
+      - name: Run strict Clippy
+        run: cargo clippy -p espanso -p espanso-editor --all-targets -- --deny warnings
 
       - name: Verify source binaries
         shell: pwsh
