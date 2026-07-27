@@ -5,6 +5,7 @@ pub mod runtime;
 #[allow(clippy::pedantic)]
 pub mod settings;
 pub mod workspace;
+pub mod yaml_imports;
 
 use std::path::PathBuf;
 
