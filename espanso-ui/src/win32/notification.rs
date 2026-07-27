@@ -53,7 +53,7 @@ pub fn initialize_notification_thread(notification_icon_path: PathBuf) -> Result
       if is_espanso_app_user_model_id_set() {
         ESPANSO_APP_USER_MODEL_ID
       } else {
-        warn!("unable to find espanso AppUserModelID in the list of registered ones, falling back to Powershell");
+        warn!("unable to find rEspanso AppUserModelID in the list of registered ones, falling back to Powershell");
         Toast::POWERSHELL_APP_ID
       }
     );
@@ -61,13 +61,13 @@ pub fn initialize_notification_thread(notification_icon_path: PathBuf) -> Result
 
     while let Ok(message) = receiver.recv() {
       if let Err(err) = Toast::new(&APP_USER_MODEL_ID)
-        .icon(&notification_icon_path, IconCrop::Square, "Espanso")
-        .title("Espanso")
+        .icon(&notification_icon_path, IconCrop::Square, "rEspanso")
+        .title("rEspanso")
         .text1(&message)
         .sound(None)
         .show()
-        .map_err(|e| anyhow!("failed to show notification: {}", e)) {    
-          error!("unable to show notification: {}", err); 
+        .map_err(|e| anyhow!("failed to show notification: {}", e)) {
+          error!("unable to show notification: {}", err);
       }
     }
   })?;
@@ -96,7 +96,7 @@ fn is_espanso_app_user_model_id_set() -> bool {
     {
         Ok(output) => {
             let output_str = String::from_utf8_lossy(&output.stdout);
-            // Check if espanso is present
+            // Check if the registered AppUserModelID is present
             output_str
                 .lines()
                 .any(|line| line.contains(ESPANSO_APP_USER_MODEL_ID))
