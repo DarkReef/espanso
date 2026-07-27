@@ -35,14 +35,13 @@ jobs:
   linux-x11:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/cache@main
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions/checkout@main
+          key: ${{ runner.os }}-x11-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Format
         run: cargo fmt --all -- --check
       - name: Install Linux X11 and Studio dependencies
@@ -64,14 +63,13 @@ jobs:
   linux-wayland:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/cache@main
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions/checkout@main
+          key: ${{ runner.os }}-wayland-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Format
         run: cargo fmt --all -- --check
       - name: Install Linux Wayland and Studio dependencies
@@ -93,14 +91,13 @@ jobs:
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/cache@main
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions/checkout@main
       - name: Format
         run: cargo fmt --all -- --check
       - name: Build
@@ -118,14 +115,13 @@ jobs:
   windows-portable:
     runs-on: windows-latest
     steps:
-      - uses: actions/cache@main
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - uses: actions/checkout@main
+          key: ${{ runner.os }}-portable-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Format
         run: cargo fmt --all -- --check
       - name: Build native rEspanso core and launcher
@@ -146,7 +142,11 @@ jobs:
           $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
           & "./scripts/build_windows_native_portable_with_studio.ps1"
 
-          $forbidden = Get-ChildItem "target/windows/respanso-native-portable-with-studio" -Recurse -File |
+          $package = "target/windows/rEspanso"
+          if (-not (Test-Path $package -PathType Container)) {
+            throw "Portable package directory is missing: $package"
+          }
+          $forbidden = Get-ChildItem $package -Recurse -File |
             Where-Object { $_.Extension -in @(".bat", ".cmd") }
           if ($forbidden) {
             throw "Portable artifact contains BAT/CMD files: $($forbidden.FullName -join ', ')"
