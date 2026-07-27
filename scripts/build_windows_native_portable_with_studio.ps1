@@ -45,9 +45,13 @@ foreach ($path in @($packageDir, $archivePath)) {
     }
 }
 
-$matchDir = Join-Path $packageDir "portable/config/match"
-$runtimeDir = Join-Path $packageDir "portable/runtime"
-$packagesDir = Join-Path $packageDir "portable/packages"
+$portableDir = Join-Path $packageDir "portable"
+$configDir = Join-Path $portableDir "config"
+$matchDir = Join-Path $configDir "match"
+$runtimeDir = Join-Path $portableDir "runtime"
+$packagesDir = Join-Path $portableDir "packages"
+$forbiddenNestedConfig = Join-Path $configDir "config"
+
 New-Item -Path $matchDir, $runtimeDir, $packagesDir -ItemType Directory -Force | Out-Null
 
 Copy-Item $launcher (Join-Path $packageDir "rEspanso.exe")
@@ -72,14 +76,22 @@ matches:
 @'
 rEspanso Portable + Match Studio
 
+Автор форка: Куцин Иван Юрьевич
+Почта: imaganate.dark@gmail.com
+
 Запуск: rEspanso.exe
-Studio: меню rEspanso в трее -> «Открыть rEspanso Studio»
-Также Studio можно открыть напрямую: rEspanso Match Studio.exe
+Студия: меню rEspanso в трее -> «Открыть студию rEspanso»
+Также студию можно открыть напрямую: rEspanso Match Studio.exe
 
 Общие данные:
   portable\config
   portable\runtime
   portable\packages
+
+Рабочая папка правил должна находиться только здесь:
+  portable\config\match
+
+Папка portable\config\config\match является ошибочной и в сборке запрещена.
 
 rEspanso-core.exe является внутренним движком.
 BAT и CMD файлы для запуска не используются и в архив не входят.
@@ -97,6 +109,16 @@ foreach ($path in $required) {
     if (-not (Test-Path $path)) {
         throw "Portable package is missing required item: $path"
     }
+}
+
+if (Test-Path $forbiddenNestedConfig) {
+    throw "Portable package contains forbidden nested configuration directory: $forbiddenNestedConfig"
+}
+
+$nestedMatchDirectories = Get-ChildItem -Path $portableDir -Recurse -Directory -Filter "match" |
+    Where-Object { $_.FullName -match "[\\/]config[\\/]config[\\/]match$" }
+if ($nestedMatchDirectories) {
+    throw "Portable package contains nested config/config/match: $($nestedMatchDirectories.FullName -join ', ')"
 }
 
 $forbidden = Get-ChildItem -Path $packageDir -Recurse -File |
