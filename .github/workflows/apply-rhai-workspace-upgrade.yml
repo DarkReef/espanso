@@ -1,0 +1,58 @@
+name: Apply Rhai workspace upgrade
+
+on:
+  push:
+    branches:
+      - fix/portable-layout-watcher
+    paths:
+      - scripts/apply_rhai_workspace_upgrade_bootstrap.py
+      - scripts/.rhai_upgrade_chunks/**
+      - .github/workflows/apply-rhai-workspace-upgrade.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-upgrade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout upgrade branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/portable-layout-watcher
+          fetch-depth: 1
+
+      - name: Apply source changes
+        run: python scripts/apply_rhai_workspace_upgrade_bootstrap.py
+
+      - name: Format Rust sources
+        run: cargo fmt --all
+
+      - name: Install Studio dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config libdbus-1-dev libssl-dev \
+            libx11-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev libxtst-dev
+
+      - name: Test Match Studio
+        run: cargo test --quiet -p espanso-editor
+
+      - name: Lint Match Studio
+        run: cargo clippy -p espanso-editor --all-targets -- --deny warnings
+
+      - name: Remove one-time upgrade files
+        run: |
+          rm -rf scripts/.rhai_upgrade_chunks
+          rm -f scripts/apply_rhai_workspace_upgrade_bootstrap.py
+          rm -f .github/workflows/apply-rhai-workspace-upgrade.yml
+
+      - name: Commit Rhai IDE upgrade
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: add file-backed Rhai IDE and linting"
+          git push origin HEAD:fix/portable-layout-watcher
