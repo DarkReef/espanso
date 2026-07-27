@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "/home/runner/work/espanso/espanso/scripts/apply_portable_layout_watcher_fix.py", line 6, in <module>
-    exec(compile(gzip.decompress(base64.b64decode(PAYLOAD)), __file__, "exec"))
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3.12/gzip.py", line 632, in decompress
-    decompressed = do.decompress(data[fp.tell():])
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-zlib.error: Error -3 while decompressing data: invalid distance too far back
