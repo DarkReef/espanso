@@ -116,7 +116,8 @@ jobs:
             "$package/config/default.yml",
             "$package/match/base.yml",
             "$package/runtime",
-            "$package/packages"
+            "$package/packages",
+            "$package/scripts/example.rhai"
           )
           foreach ($path in $required) {
             if (-not (Test-Path $path)) {
