@@ -115,4 +115,11 @@ mod tests {
         fs::write(config_dir.join("default.yaml"), "enable: true\n").unwrap();
         assert!(monitor.changed(directory.path()));
     }
+
+    #[test]
+    fn recognizes_yaml_extensions_case_insensitively() {
+        assert!(is_yaml(Path::new("rules.YML")));
+        assert!(is_yaml(Path::new("settings.YaMl")));
+        assert!(!is_yaml(Path::new("notes.txt")));
+    }
 }
