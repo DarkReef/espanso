@@ -6,6 +6,7 @@ on:
       - rEspanso-feature
     paths:
       - scripts/apply_rhai_workspace_upgrade_bootstrap.py
+      - scripts/apply_rhai_clippy_fixes.py
       - scripts/.rhai_upgrade_chunks/**
       - .github/workflows/apply-rhai-workspace-upgrade.yml
   workflow_dispatch:
@@ -25,7 +26,9 @@ jobs:
           fetch-depth: 1
 
       - name: Apply source changes
-        run: python scripts/apply_rhai_workspace_upgrade_bootstrap.py
+        run: |
+          python scripts/apply_rhai_workspace_upgrade_bootstrap.py
+          python scripts/apply_rhai_clippy_fixes.py
 
       - name: Format Rust sources
         run: cargo fmt --all
@@ -68,7 +71,9 @@ jobs:
         run: |
           rm -rf scripts/.rhai_upgrade_chunks
           rm -f scripts/apply_rhai_workspace_upgrade_bootstrap.py
+          rm -f scripts/apply_rhai_clippy_fixes.py
           rm -f .github/workflows/apply-rhai-workspace-upgrade.yml
+          rm -f clippy.log clippy-status.txt
 
       - name: Commit Rhai IDE upgrade
         run: |
