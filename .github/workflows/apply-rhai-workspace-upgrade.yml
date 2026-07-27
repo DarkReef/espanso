@@ -46,57 +46,15 @@ jobs:
       - name: Lint Match Studio
         run: cargo clippy -p espanso-editor --all-targets -- --deny warnings
 
-      - name: Package verified source files
+      - name: Commit verified source upgrade
         shell: bash
         run: |
-          mkdir -p verified-source/espanso-editor/src
-          mkdir -p verified-source/scripts
-          mkdir -p verified-source/.github/workflows
-          cp espanso-editor/src/app.rs verified-source/espanso-editor/src/app.rs
-          cp espanso-editor/src/rhai_lab.rs verified-source/espanso-editor/src/rhai_lab.rs
-          cp espanso-editor/src/yaml_imports.rs verified-source/espanso-editor/src/yaml_imports.rs
-          cp scripts/build_windows_native_portable_with_studio.ps1 verified-source/scripts/build_windows_native_portable_with_studio.ps1
-          cp .github/workflows/build-respanso-windows.yml verified-source/.github/workflows/build-respanso-windows.yml
-
-      - name: Upload verified source files
-        uses: actions/upload-artifact@v4
-        with:
-          name: verified-rhai-upgrade-source-${{ github.sha }}
-          path: verified-source
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Capture commit and push diagnostics
-        shell: bash
-        run: |
-          set +e
-          {
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            echo '=== STATUS BEFORE ==='
-            git status --short
-            git add \
-              espanso-editor/src/app.rs \
-              espanso-editor/src/rhai_lab.rs \
-              espanso-editor/src/yaml_imports.rs \
-              scripts/build_windows_native_portable_with_studio.ps1 \
-              .github/workflows/build-respanso-windows.yml
-            echo '=== STATUS STAGED ==='
-            git status --short
-            git commit -m "feat: add file-backed Rhai IDE and linting"
-            commit_status=$?
-            echo "commit_status=$commit_status"
-            git push origin HEAD:${{ github.head_ref }}
-            push_status=$?
-            echo "push_status=$push_status"
-          } > commit-push.log 2>&1
-          cat commit-push.log
-          exit 0
-
-      - name: Upload commit diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: rhai-upgrade-commit-${{ github.sha }}
-          path: commit-push.log
-          if-no-files-found: error
-          retention-days: 7
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            espanso-editor/src/app.rs \
+            espanso-editor/src/rhai_lab.rs \
+            espanso-editor/src/yaml_imports.rs \
+            scripts/build_windows_native_portable_with_studio.ps1
+          git commit -m "feat: add file-backed Rhai IDE and linting"
+          git push origin HEAD:${{ github.head_ref }}
