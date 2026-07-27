@@ -6,6 +6,7 @@ use crate::{
         DiagnosticLevel, MatchKind, MatchWorkspace, PlaygroundResult, RegexBuilderSpec,
         RegexExampleResult, RuleDraft, RuleId,
     },
+    yaml_imports,
 };
 use eframe::egui;
 use std::path::{Path, PathBuf};
@@ -195,6 +196,45 @@ impl MatchStudioApp {
                 self.status = format!("Сохранение остановлено: {}", ru_message(&error.to_string()));
             }
         }
+    }
+
+    fn set_file_import_enabled(&mut self, file: PathBuf, enabled: bool) {
+        let display_name = relative_display(&self.config_root, &file);
+        let result = (|| -> Result<String, String> {
+            let workspace = self
+                .workspace
+                .as_mut()
+                .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+            let files = workspace.files();
+            let base_file = yaml_imports::find_base_file(&files, workspace.match_root())
+                .ok_or_else(|| "Не найден match/base.yml или match/base.yaml".to_owned())?;
+            let base_content = workspace
+                .raw_file(&base_file)
+                .map_err(|error| ru_message(&error.to_string()))?
+                .to_owned();
+            let updated = yaml_imports::update_import(&base_content, &base_file, &file, enabled)?;
+
+            if updated != base_content {
+                workspace
+                    .set_raw_file(&base_file, updated)
+                    .map_err(|error| ru_message(&error.to_string()))?;
+            }
+
+            Ok(if enabled {
+                format!(
+                    "Файл {display_name} подключён через base.yml. Сохраните изменения (Ctrl+S)"
+                )
+            } else {
+                format!(
+                    "Файл {display_name} исключён из imports base.yml. Сохраните изменения (Ctrl+S)"
+                )
+            })
+        })();
+
+        self.status = match result {
+            Ok(message) => message,
+            Err(error) => format!("Не удалось изменить imports base.yml: {error}"),
+        };
     }
 
     fn create_rule(&mut self) {
@@ -470,28 +510,10 @@ impl MatchStudioApp {
                         .collect::<Vec<_>>()
                         .join(", ")
                 ));
-
-                let right_width = ui.available_width();
-                let restart_message = ui
-                    .allocate_ui_with_layout(
-                        egui::vec2(right_width, 30.0),
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            let restart_message = self.runtime.restart_button(ui);
-                            if ui.button("Горячие клавиши").on_hover_text("F1").clicked() {
-                                self.show_shortcuts = true;
-                            }
-                            restart_message
-                        },
-                    )
-                    .inner;
-                if let Some(message) = restart_message {
-                    self.status = message;
-                }
             });
 
             ui.separator();
-            ui.horizontal_wrapped(|ui| {
+            ui.horizontal(|ui| {
                 ui.selectable_value(&mut self.active_tab, MainTab::Rules, "Правила");
                 ui.selectable_value(
                     &mut self.active_tab,
@@ -595,6 +617,24 @@ impl MatchStudioApp {
                         }
                     }
                 }
+
+                let right_width = ui.available_width();
+                let restart_message = ui
+                    .allocate_ui_with_layout(
+                        egui::vec2(right_width, 30.0),
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            let restart_message = self.runtime.restart_button(ui);
+                            if ui.button("Горячие клавиши").on_hover_text("F1").clicked() {
+                                self.show_shortcuts = true;
+                            }
+                            restart_message
+                        },
+                    )
+                    .inner;
+                if let Some(message) = restart_message {
+                    self.status = message;
+                }
             });
         });
     }
@@ -606,8 +646,23 @@ impl MatchStudioApp {
         let files = workspace.files();
         let rules = workspace.rules();
         let config_root = workspace.config_root().to_path_buf();
+        let match_root = workspace.match_root().to_path_buf();
         let files_count = files.len();
         let rules_count = rules.len();
+        let base_file = yaml_imports::find_base_file(&files, &match_root);
+        let (import_entries, import_error) = match base_file.as_ref() {
+            Some(base_file) => match workspace.raw_file(base_file) {
+                Ok(base_content) => {
+                    match yaml_imports::import_entries(&files, base_file, base_content) {
+                        Ok(entries) => (entries, None),
+                        Err(error) => (Vec::new(), Some(error)),
+                    }
+                }
+                Err(error) => (Vec::new(), Some(ru_message(&error.to_string()))),
+            },
+            None => (Vec::new(), None),
+        };
+        let mut pending_import_toggle = None;
 
         egui::Panel::left("rules")
             .resizable(true)
@@ -629,22 +684,93 @@ impl MatchStudioApp {
                     search.request_focus();
                     self.focus_filter = false;
                 }
-                egui::ComboBox::from_id_salt("file_filter")
-                    .width(ui.available_width())
-                    .selected_text(self.file_filter.as_ref().map_or_else(
-                        || "Все YAML-файлы".to_owned(),
-                        |path| relative_display(&config_root, path),
-                    ))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut self.file_filter, None, "Все YAML-файлы");
-                        for file in &files {
-                            ui.selectable_value(
-                                &mut self.file_filter,
-                                Some(file.clone()),
-                                relative_display(&config_root, file),
-                            );
-                        }
-                    });
+
+                ui.add_space(4.0);
+                ui.group(|ui| {
+                    ui.strong("YAML-файлы");
+                    ui.label(
+                        egui::RichText::new(
+                            "Флажок подключает файл через imports в base.yml; название фильтрует правила",
+                        )
+                        .weak(),
+                    );
+                    if base_file.is_none() {
+                        ui.colored_label(
+                            ui.visuals().error_fg_color,
+                            "Не найден base.yml или base.yaml — подключение файлов недоступно",
+                        );
+                    }
+                    if let Some(error) = &import_error {
+                        ui.colored_label(ui.visuals().error_fg_color, error);
+                    }
+
+                    egui::ScrollArea::vertical()
+                        .id_salt("yaml_file_list")
+                        .max_height(165.0)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.add_space(24.0);
+                                if ui
+                                    .selectable_label(self.file_filter.is_none(), "Все YAML-файлы")
+                                    .clicked()
+                                {
+                                    self.file_filter = None;
+                                }
+                            });
+
+                            for file in &files {
+                                let is_base = base_file.as_ref() == Some(file);
+                                let mut enabled = if is_base {
+                                    true
+                                } else {
+                                    import_entries.iter().any(|entry| {
+                                        entry.path.as_path() == file.as_path() && entry.enabled
+                                    })
+                                };
+                                let can_toggle = !is_base
+                                    && base_file.is_some()
+                                    && import_error.is_none();
+
+                                ui.horizontal(|ui| {
+                                    let checkbox = ui.add_enabled(
+                                        can_toggle,
+                                        egui::Checkbox::new(&mut enabled, ""),
+                                    );
+                                    let changed = checkbox.changed();
+                                    if is_base {
+                                        checkbox.on_hover_text(
+                                            "Основной файл: он всегда загружается напрямую",
+                                        );
+                                    } else if can_toggle {
+                                        checkbox.on_hover_text(
+                                            "Добавить или удалить файл из imports в base.yml",
+                                        );
+                                    } else {
+                                        checkbox.on_hover_text(
+                                            "Сначала исправьте base.yml или создайте основной файл",
+                                        );
+                                    }
+                                    if changed {
+                                        pending_import_toggle = Some((file.clone(), enabled));
+                                    }
+
+                                    let selected = self.file_filter.as_ref() == Some(file);
+                                    if ui
+                                        .selectable_label(
+                                            selected,
+                                            relative_display(&config_root, file),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.file_filter = Some(file.clone());
+                                    }
+                                    if is_base {
+                                        ui.label(egui::RichText::new("основной").weak());
+                                    }
+                                });
+                            }
+                        });
+                });
                 ui.separator();
 
                 let filter = self.filter.to_lowercase();
@@ -697,6 +823,10 @@ impl MatchStudioApp {
                     }
                 });
             });
+
+        if let Some((file, enabled)) = pending_import_toggle {
+            self.set_file_import_enabled(file, enabled);
+        }
     }
 
     fn central_editor(&mut self, root: &mut egui::Ui) {

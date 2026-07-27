@@ -46,6 +46,25 @@
 #include "json/json.hpp"
 using json = nlohmann::json;
 
+std::wstring utf8_to_wide(const std::string &value) {
+    if (value.empty()) {
+        return std::wstring();
+    }
+
+    int length = MultiByteToWideChar(
+        CP_UTF8, MB_ERR_INVALID_CHARS, value.c_str(),
+        static_cast<int>(value.size()), nullptr, 0);
+    if (length <= 0) {
+        return std::wstring();
+    }
+
+    std::wstring result(static_cast<size_t>(length), L'\0');
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.c_str(),
+                        static_cast<int>(value.size()), result.data(), length);
+    return result;
+}
+
+
 #define APPWM_ICON_CLICK (WM_APP + 1)
 #define APPWM_SHOW_CONTEXT_MENU (WM_APP + 2)
 #define APPWM_UPDATE_TRAY_ICON (WM_APP + 3)
@@ -252,7 +271,7 @@ void *ui_initialize(void *_self, UIOptions _options, int32_t *error_code) {
             variables->nid.uCallbackMessage = APPWM_ICON_CLICK;
             variables->nid.hIcon = variables->g_icons[0];
             StringCchCopyW(variables->nid.szTip,
-                           ARRAYSIZE(variables->nid.szTip), L"espanso");
+                           ARRAYSIZE(variables->nid.szTip), L"rEspanso");
 
             // Show the tray icon
             if (variables->options.show_icon) {
@@ -320,9 +339,8 @@ void _insert_single_menu(HMENU parent, json item) {
     std::string label = item["label"];
     uint32_t raw_id = item["id"];
 
-    // Convert to wide chars
-    std::wstring wide_label(label.length(), L'#');
-    mbstowcs(&wide_label[0], label.c_str(), label.length());
+    // Labels arrive from Rust as UTF-8 JSON strings.
+    std::wstring wide_label = utf8_to_wide(label);
 
     InsertMenu(parent, -1, MF_BYPOSITION | MF_STRING, raw_id,
                wide_label.c_str());

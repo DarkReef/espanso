@@ -65,7 +65,9 @@ pub fn update_import(
     enabled: bool,
 ) -> Result<String, String> {
     if same_path(base_file, target_file) {
-        return Err("base.yml является основным файлом и не может импортировать сам себя".to_owned());
+        return Err(
+            "base.yml является основным файлом и не может импортировать сам себя".to_owned(),
+        );
     }
 
     let shape = parse_imports(base_content)?;
@@ -129,7 +131,11 @@ fn relative_import_path(base_file: &Path, target_file: &Path) -> Result<String, 
 }
 
 fn replace_imports_section(content: &str, imports: &[String]) -> String {
-    let newline = if content.contains("\r\n") { "\r\n" } else { "\n" };
+    let newline = if content.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
     let section = top_level_section(content, "imports");
     let rendered = render_imports(imports, newline);
 
@@ -148,7 +154,8 @@ fn replace_imports_section(content: &str, imports: &[String]) -> String {
                 .unwrap_or(content.len());
             let mut result = String::with_capacity(content.len() + rendered.len() + newline.len());
             result.push_str(&content[..insertion]);
-            if insertion > 0 && !content[..insertion].ends_with(['\n', '\r']) {
+            let prefix = &content[..insertion];
+            if insertion > 0 && !prefix.ends_with('\n') && !prefix.ends_with('\r') {
                 result.push_str(newline);
             }
             result.push_str(&rendered);
@@ -262,9 +269,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 }
 
 fn path_key(path: &Path) -> String {
-    let key = normalize_path(path)
-        .to_string_lossy()
-        .replace('\\', "/");
+    let key = normalize_path(path).to_string_lossy().replace('\\', "/");
     if cfg!(windows) {
         key.to_lowercase()
     } else {
@@ -289,12 +294,8 @@ mod tests {
             root.join("medical.yml"),
             root.join("sub/tools.yaml"),
         ];
-        let entries = import_entries(
-            &files,
-            &base,
-            "imports:\n  - medical.yml\nmatches: []\n",
-        )
-        .unwrap();
+        let entries =
+            import_entries(&files, &base, "imports:\n  - medical.yml\nmatches: []\n").unwrap();
 
         assert_eq!(entries.len(), 2);
         assert!(entries[0].enabled);
@@ -329,7 +330,7 @@ mod tests {
     fn preserves_crlf_when_rendering_imports() {
         let base = PathBuf::from("config/match/base.yml");
         let target = PathBuf::from("config/match/sub/tools.yaml");
-        let updated = update_import("matches:\r\n  []\r\n", &base, &target, true).unwrap();
+        let updated = update_import("matches: []\r\n", &base, &target, true).unwrap();
 
         assert!(updated.contains("imports:\r\n  - \"sub/tools.yaml\"\r\n\r\n"));
     }
