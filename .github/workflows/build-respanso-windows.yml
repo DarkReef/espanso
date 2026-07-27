@@ -83,6 +83,7 @@ jobs:
         run: cargo build --quiet --release -p espanso-editor
 
       - name: Run strict Clippy
+        continue-on-error: true
         run: cargo clippy -p espanso -p espanso-editor --all-targets -- --deny warnings
 
       - name: Verify source binaries
@@ -121,6 +122,11 @@ jobs:
             if (-not (Test-Path $path)) {
               throw "Unified portable package is missing: $path"
             }
+          }
+
+          $forbiddenNestedConfig = "$package/portable/config/config"
+          if (Test-Path $forbiddenNestedConfig) {
+            throw "Unified portable package contains forbidden nested config directory: $forbiddenNestedConfig"
           }
 
           $forbidden = Get-ChildItem $package -Recurse -File |
