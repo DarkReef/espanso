@@ -60,7 +60,7 @@ std::wstring utf8_to_wide(const std::string &value) {
 
     std::wstring result(static_cast<size_t>(length), L'\0');
     MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.c_str(),
-                        static_cast<int>(value.size()), result.data(), length);
+                        static_cast<int>(value.size()), &result[0], length);
     return result;
 }
 
@@ -356,9 +356,8 @@ void _insert_sub_menu(HMENU parent, json items) {
             HMENU subMenu = CreatePopupMenu();
             std::string label = item["label"];
 
-            // Convert to wide chars
-            std::wstring wide_label(label.length(), L'#');
-            mbstowcs(&wide_label[0], label.c_str(), label.length());
+            // Labels arrive from Rust as UTF-8 JSON strings.
+            std::wstring wide_label = utf8_to_wide(label);
 
             InsertMenu(parent, -1, MF_BYPOSITION | MF_POPUP, (UINT_PTR)subMenu,
                        wide_label.c_str());
