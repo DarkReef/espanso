@@ -23,6 +23,7 @@ fn cc_config() {
     println!("cargo:rerun-if-changed=src/win32/native.h");
     cc::Build::new()
         .cpp(true)
+        .define("NOMINMAX", None)
         .include("src/win32/native.h")
         .include("src/win32/json/json.hpp")
         .file("src/win32/native.cpp")
@@ -33,9 +34,9 @@ fn cc_config() {
     #[cfg(target_env = "gnu")]
     println!("cargo:rustc-link-lib=dylib=stdc++");
 
+    println!("cargo:rustc-link-lib=dylib=gdi32");
     if cfg!(not(feature = "avoid-gdi")) {
         println!("cargo:rustc-link-lib=dylib=gdiplus");
-        println!("cargo:rustc-link-lib=dylib=gdi32");
     }
 }
 

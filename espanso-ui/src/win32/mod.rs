@@ -77,7 +77,7 @@ extern "C" {
     ) -> i32;
     pub fn ui_destroy(window_handle: *const c_void) -> i32;
     pub fn ui_exit(window_handle: *const c_void) -> i32;
-    pub fn ui_update_tray_icon(window_handle: *const c_void, index: i32);
+    pub fn ui_update_tray_icon(window_handle: *const c_void, index: i32, animation_mode: i32);
     pub fn ui_show_context_menu(window_handle: *const c_void, payload: *const c_char);
 }
 
@@ -284,8 +284,13 @@ impl UIRemote for Win32Remote {
             return;
         }
 
+        let animation_mode = match &icon {
+            TrayIcon::Disabled => 0,
+            TrayIcon::Normal => 1,
+            TrayIcon::SystemDisabled => 2,
+        };
         if let Some(index) = self.icon_indexes.get(&icon) {
-            unsafe { ui_update_tray_icon(handle, (*index) as i32) }
+            unsafe { ui_update_tray_icon(handle, (*index) as i32, animation_mode) }
         } else {
             error!("Unable to update tray icon, invalid icon id");
         }
