@@ -1,1 +1,2 @@
-Portable build requested for rEspanso-feature snapshot b8892024d021493e3a8aa8dad0d46507bb7e7ea9.
+Portable build requested for rEspanso-feature snapshot 386e6bc1777c6143344f21fb301d41fbaec78619.
+Retry after making Clippy non-blocking for portable packaging.
