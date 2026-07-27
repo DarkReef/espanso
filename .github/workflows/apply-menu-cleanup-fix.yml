@@ -1,0 +1,31 @@
+name: Apply tray menu cleanup fix
+
+on:
+  push:
+    branches:
+      - fix/portable-layout-watcher
+    paths:
+      - scripts/apply_menu_cleanup_fix.py
+      - .github/workflows/apply-menu-cleanup-fix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/portable-layout-watcher
+          fetch-depth: 1
+      - run: python scripts/apply_menu_cleanup_fix.py
+      - name: Commit source correction
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add espanso-ui/src/win32/native.cpp
+          git commit -m "fix: release tray context menu resources"
+          git push origin HEAD:fix/portable-layout-watcher
