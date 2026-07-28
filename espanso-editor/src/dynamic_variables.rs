@@ -33,9 +33,9 @@ pub struct DynamicVariableDialog {
 impl Default for DynamicVariableDialog {
     fn default() -> Self {
         Self {
-            name: "my_date".to_owned(),
-            variable_type: "date".to_owned(),
-            params_yaml: "format: \"%d.%m.%Y\"".to_owned(),
+            name: "doc".to_owned(),
+            variable_type: "string".to_owned(),
+            params_yaml: "Куцин Иван Юрьевич".to_owned(),
             error: None,
         }
     }
@@ -138,17 +138,32 @@ impl DynamicVariableDialog {
                         ui.add(
                             egui::TextEdit::singleline(&mut self.variable_type)
                                 .desired_width(360.0)
-                                .hint_text("date, clipboard, shell, script, random…"),
+                                .hint_text("date, time, string, clipboard, echo, choice, form, random, rhai, script, shell"),
                         );
                         ui.end_row();
                     });
-                ui.label("Параметры YAML без строки params: (можно оставить пустыми)");
+                ui.label(
+                    egui::RichText::new(
+                        "Типы: date, time, string, clipboard, echo, choice, form, random, rhai, script, shell",
+                    )
+                    .weak(),
+                );
+                let string_type = self.variable_type.trim().eq_ignore_ascii_case("string");
+                ui.label(if string_type {
+                    "Значение строки"
+                } else {
+                    "Параметры YAML без строки params: (можно оставить пустыми)"
+                });
                 ui.add(
                     egui::TextEdit::multiline(&mut self.params_yaml)
                         .code_editor()
                         .desired_rows(5)
                         .desired_width(f32::INFINITY)
-                        .hint_text("format: \"%d.%m.%Y\""),
+                        .hint_text(if string_type {
+                            "Например: Куцин Иван Юрьевич"
+                        } else {
+                            "Например: format: \"%d.%m.%Y\""
+                        }),
                 );
                 ui.monospace(format!("Шаблон: {{{{{}}}}}", self.name.trim()));
 
@@ -209,11 +224,44 @@ fn preset_action(
     }
 }
 
+pub fn builtin_definitions_in(replacement: &str) -> Vec<VariableDefinition> {
+    let mut definitions = Vec::new();
+    if replacement.contains("{{date}}") {
+        definitions.push(VariableDefinition {
+            name: "date".to_owned(),
+            variable_type: "date".to_owned(),
+            params_yaml: "format: \"%d.%m.%Y\"".to_owned(),
+        });
+    }
+    if replacement.contains("{{time}}") {
+        definitions.push(VariableDefinition {
+            name: "time".to_owned(),
+            variable_type: "time".to_owned(),
+            params_yaml: String::new(),
+        });
+    }
+    if replacement.contains("{{weekday}}") {
+        definitions.push(VariableDefinition {
+            name: "weekday".to_owned(),
+            variable_type: "date".to_owned(),
+            params_yaml: "format: \"%A\"\nlocale: \"ru-RU\"".to_owned(),
+        });
+    }
+    if replacement.contains("{{clipboard}}") {
+        definitions.push(VariableDefinition {
+            name: "clipboard".to_owned(),
+            variable_type: "clipboard".to_owned(),
+            params_yaml: String::new(),
+        });
+    }
+    definitions
+}
 pub fn upsert_rule_variable(
     raw_rule: &str,
     definition: &VariableDefinition,
 ) -> Result<(String, bool), String> {
-    validate_definition(definition)?;
+    let definition = canonical_definition(definition)?;
+    validate_definition(&definition)?;
     let params = normalized_params(&definition.params_yaml)?;
     let rule_indent = raw_rule
         .lines()
@@ -243,7 +291,7 @@ pub fn upsert_rule_variable(
                 None
             }
         });
-    let item = render_variable(definition, params.as_deref(), child_indent + 2);
+    let item = render_variable(&definition, params.as_deref(), child_indent + 2);
 
     let updated = if let Some((line_index, vars_start, vars_line_end, vars_text)) = vars_line {
         let suffix = vars_text.strip_prefix("vars:").unwrap_or_default().trim();
@@ -303,6 +351,35 @@ pub fn upsert_rule_variable(
     Ok((updated, true))
 }
 
+fn canonical_definition(definition: &VariableDefinition) -> Result<VariableDefinition, String> {
+    let variable_type = definition.variable_type.trim().to_ascii_lowercase();
+    let mut canonical = definition.clone();
+    canonical.name = canonical.name.trim().to_owned();
+    canonical.variable_type = variable_type.clone();
+    canonical.params_yaml = canonical.params_yaml.trim().to_owned();
+
+    match variable_type.as_str() {
+        "time" => {
+            canonical.variable_type = "date".to_owned();
+            if canonical.params_yaml.is_empty() {
+                canonical.params_yaml = "format: \"%H:%M\"".to_owned();
+            }
+        }
+        "string" => {
+            if canonical.params_yaml.is_empty() {
+                return Err("Для типа string укажите значение строки".to_owned());
+            }
+            canonical.variable_type = "echo".to_owned();
+            canonical.params_yaml = format!(
+                "echo: {}",
+                serde_json::to_string(&canonical.params_yaml)
+                    .map_err(|error| format!("Не удалось подготовить строку: {error}"))?
+            );
+        }
+        _ => {}
+    }
+    Ok(canonical)
+}
 fn validate_definition(definition: &VariableDefinition) -> Result<(), String> {
     let mut characters = definition.name.chars();
     let Some(first) = characters.next() else {
@@ -470,5 +547,48 @@ mod tests {
         assert!(
             upsert_rule_variable("  - trigger: \":x\"\n    replace: \"X\"\n", &definition).is_err()
         );
+    }
+    #[test]
+    fn time_alias_uses_date_extension() {
+        let definition = VariableDefinition {
+            name: "time".to_owned(),
+            variable_type: "time".to_owned(),
+            params_yaml: String::new(),
+        };
+        let (updated, added) = upsert_rule_variable(
+            "  - trigger: \":x\"\n    replace: \"{{time}}\"\n",
+            &definition,
+        )
+        .unwrap();
+        assert!(added);
+        assert!(updated.contains("type: \"date\""));
+        assert!(updated.contains("%H:%M"));
+    }
+
+    #[test]
+    fn string_alias_uses_echo_extension() {
+        let definition = VariableDefinition {
+            name: "doc".to_owned(),
+            variable_type: "string".to_owned(),
+            params_yaml: "Куцин Иван Юрьевич".to_owned(),
+        };
+        let (updated, added) = upsert_rule_variable(
+            "  - trigger: \":doc\"\n    replace: \"{{doc}}\"\n",
+            &definition,
+        )
+        .unwrap();
+        assert!(added);
+        assert!(updated.contains("type: \"echo\""));
+        assert!(updated.contains("Куцин Иван Юрьевич"));
+    }
+
+    #[test]
+    fn detects_manually_typed_builtin_placeholders() {
+        let definitions = builtin_definitions_in("{{date}} {{time}} {{clipboard}}");
+        let names = definitions
+            .iter()
+            .map(|definition| definition.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["date", "time", "clipboard"]);
     }
 }
