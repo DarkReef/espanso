@@ -51,14 +51,8 @@ jobs:
 
           ensure_replaced(
               "espanso-editor/src/app.rs",
-              '''            if create && self.create_yaml_file() {
-                  open = false;
-              } else if cancel {
-                  open = false;
-              }''',
-              '''            if (create && self.create_yaml_file()) || cancel {
-                  open = false;
-              }''',
+              "            if create && self.create_yaml_file() {\n                open = false;\n            } else if cancel {\n                open = false;\n            }",
+              "            if (create && self.create_yaml_file()) || cancel {\n                open = false;\n            }",
               "create YAML dialog close condition",
           )
           ensure_replaced(
