@@ -1,17 +1,18 @@
 name: Finalize rEspanso branch
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/manual-build-dynamic-vars
+      - rEspanso-feature
     paths:
       - .github/workflows/apply-manual-build-dynamic-vars.yml
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: finalize-respanso-${{ github.ref }}
+  group: finalize-respanso-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
