@@ -76,7 +76,6 @@ jobs:
           Remove-Item -Force scripts/finalize_patch_a.py
           Remove-Item -Force scripts/finalize_patch_b.py
           Remove-Item -Force scripts/generate_respanso_icon.py
-          Remove-Item -Force .github/workflows/apply-finalize-respanso.yml
           Remove-Item -Force .github/finalize-apply.log
 
       - name: Commit applied finalization
