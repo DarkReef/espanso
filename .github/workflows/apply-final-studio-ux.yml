@@ -1,4 +1,4 @@
-name: Apply final Match Studio UX
+name: Diagnose final Match Studio Clippy
 
 on:
   pull_request:
@@ -10,111 +10,54 @@ on:
       - scripts/.patch_chunks/**
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch-build-package:
+  diagnose-clippy:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: windows-2022
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
-      - name: Checkout feature branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: feature/finalize-studio-ux
           fetch-depth: 1
-
-      - name: Set up Visual Studio C++ environment
-        uses: ilammy/msvc-dev-cmd@v1
+      - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-
-      - name: Install stable Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
           components: rustfmt, clippy
-
-      - name: Cache Cargo downloads
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
           key: final-studio-ux-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Apply Studio UX patch and clean workflows
-        id: patch
+      - name: Apply Studio UX patch
+        shell: pwsh
+        run: python scripts/apply_final_studio_ux.py
+      - name: Format Rust sources
+        shell: pwsh
+        run: cargo fmt --all
+      - name: Capture strict editor Clippy
+        id: clippy
         continue-on-error: true
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
-          python scripts/apply_final_studio_ux.py *>&1 | Tee-Object -FilePath patch.log
+          cargo clippy -p espanso-editor --all-targets -- --deny warnings *>&1 | Tee-Object -FilePath clippy.log
           if ($LASTEXITCODE -ne 0) { exit 1 }
-
-      - name: Upload patch log
-        if: steps.patch.outcome == 'failure'
+      - name: Upload Clippy log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: final-studio-ux-patch-log-${{ github.sha }}
-          path: patch.log
-          if-no-files-found: warn
+          name: final-studio-ux-clippy-log-${{ github.sha }}
+          path: clippy.log
+          if-no-files-found: error
           retention-days: 3
-
-      - name: Preserve patch failure
-        if: steps.patch.outcome == 'failure'
+      - name: Preserve Clippy failure
+        if: steps.clippy.outcome == 'failure'
         shell: pwsh
         run: exit 1
-
-      - name: Format Rust sources
-        shell: pwsh
-        run: cargo fmt --all
-
-      - name: Test rendering engine
-        shell: pwsh
-        run: cargo test --quiet -p espanso-render
-
-      - name: Test rEspanso engine
-        shell: pwsh
-        run: cargo test --quiet -p espanso-engine
-
-      - name: Test portable launcher
-        shell: pwsh
-        run: cargo test --quiet -p espanso --bin respanso-portable
-
-      - name: Test Match Studio
-        shell: pwsh
-        run: cargo test --quiet -p espanso-editor
-
-      - name: Build rEspanso core and launcher
-        shell: pwsh
-        run: cargo build --quiet --release -p espanso --bin espanso --bin respanso-portable
-
-      - name: Build Match Studio
-        shell: pwsh
-        run: cargo build --quiet --release -p espanso-editor
-
-      - name: Run strict Clippy
-        shell: pwsh
-        run: cargo clippy -p espanso -p espanso-editor --all-targets -- --deny warnings
-
-      - name: Assemble final Windows portable package
-        shell: pwsh
-        run: ./scripts/build_windows_native_portable_with_studio.ps1
-
-      - name: Commit finished source and CI cleanup
-        shell: pwsh
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "feat: refine Match Studio editing and variables"
-          git push origin HEAD:feature/finalize-studio-ux
-
-      - name: Upload final portable package
-        uses: actions/upload-artifact@v4
-        with:
-          name: rEspanso-final-studio-ux-windows-x64-${{ github.sha }}
-          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
-          if-no-files-found: error
-          retention-days: 14
