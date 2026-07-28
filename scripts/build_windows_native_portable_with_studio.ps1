@@ -38,6 +38,8 @@ function Resolve-VcRuntimeDirectory {
 $core = Resolve-Binary "EXEC_PATH" "target/release/espanso.exe"
 $launcher = Resolve-Binary "LAUNCHER_PATH" "target/release/respanso-portable.exe"
 $studio = Resolve-Binary "EDITOR_PATH" "target/release/espanso-editor.exe"
+$iconPath = (Resolve-Path "assets/respanso.ico").Path
+$iconEmbedder = (Resolve-Path "scripts/embed_windows_icon.ps1").Path
 
 foreach ($path in @($packageDir, $archivePath)) {
     if (Test-Path $path) {
@@ -50,14 +52,22 @@ $matchDir = Join-Path $packageDir "match"
 $runtimeDir = Join-Path $packageDir "runtime"
 $packagesDir = Join-Path $packageDir "packages"
 $scriptsDir = Join-Path $packageDir "scripts"
+$docsDir = Join-Path $packageDir "docs"
 $forbiddenNestedConfig = Join-Path $configDir "config"
 $legacyPortable = Join-Path $packageDir "portable"
+$portableLauncher = Join-Path $packageDir "rEspanso.exe"
+$portableCore = Join-Path $packageDir "rEspanso-core.exe"
+$portableStudio = Join-Path $packageDir "rEspanso Match Studio.exe"
 
-New-Item -Path $configDir, $matchDir, $runtimeDir, $packagesDir, $scriptsDir -ItemType Directory -Force | Out-Null
+New-Item -Path $configDir, $matchDir, $runtimeDir, $packagesDir, $scriptsDir, $docsDir -ItemType Directory -Force | Out-Null
 
-Copy-Item $launcher (Join-Path $packageDir "rEspanso.exe")
-Copy-Item $core (Join-Path $packageDir "rEspanso-core.exe")
-Copy-Item $studio (Join-Path $packageDir "rEspanso Match Studio.exe")
+Copy-Item $launcher $portableLauncher
+Copy-Item $core $portableCore
+Copy-Item $studio $portableStudio
+
+foreach ($executable in @($portableLauncher, $portableCore, $portableStudio)) {
+    & $iconEmbedder -Executable $executable -Icon $iconPath
+}
 
 $vcRuntime = Resolve-VcRuntimeDirectory
 Get-ChildItem -Path $vcRuntime -Filter "*.dll" | Copy-Item -Destination $packageDir
@@ -65,6 +75,7 @@ Get-ChildItem -Path $vcRuntime -Filter "*.dll" | Copy-Item -Destination $package
 if (Test-Path "LICENSE") {
     Copy-Item "LICENSE" (Join-Path $packageDir "LICENSE.txt")
 }
+Copy-Item "docs/respanso/*" $docsDir -Recurse -Force
 
 Copy-Item "espanso/src/res/config/default.yml" (Join-Path $configDir "default.yml")
 Copy-Item "espanso/src/res/config/base.yml" (Join-Path $matchDir "base.yml")
@@ -94,6 +105,7 @@ rEspanso Portable + Match Studio
   runtime\
   packages\
   scripts\example.rhai
+  docs\README.ru.md
 
 Все каталоги находятся непосредственно рядом с rEspanso.exe.
 Папки portable и config\config являются ошибочными и в сборке запрещены.
@@ -104,14 +116,16 @@ BAT и CMD файлы для запуска не используются и в 
 
 
 $required = @(
-    (Join-Path $packageDir "rEspanso.exe"),
-    (Join-Path $packageDir "rEspanso-core.exe"),
-    (Join-Path $packageDir "rEspanso Match Studio.exe"),
+    $portableLauncher,
+    $portableCore,
+    $portableStudio,
     (Join-Path $configDir "default.yml"),
     (Join-Path $matchDir "base.yml"),
     $runtimeDir,
     $packagesDir,
-    (Join-Path $scriptsDir "example.rhai")
+    (Join-Path $scriptsDir "example.rhai"),
+    (Join-Path $docsDir "README.ru.md"),
+    (Join-Path $docsDir "RHAI_PROMPT.ru.md")
 )
 foreach ($path in $required) {
     if (-not (Test-Path $path)) {

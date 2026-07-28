@@ -1,11 +1,13 @@
 pub mod app;
 pub mod config_transfer;
+pub mod diagnostics;
 pub mod file_monitor;
 pub mod rhai_lab;
 #[allow(clippy::pedantic)]
 pub mod runtime;
 #[allow(clippy::pedantic)]
 pub mod settings;
+pub mod storm_logo;
 pub mod workspace;
 pub mod yaml_imports;
 
