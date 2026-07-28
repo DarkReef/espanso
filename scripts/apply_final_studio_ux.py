@@ -49,12 +49,14 @@ try:
     workspace = workspace.replace(
         '''        result.push_str(&format!(
             "{field_indent}type: {}\\n",
-            serde_json::to_string(variable.var_type.trim()).unwrap_or_else(|_| "\\\"\\\"".to_owned())
+            serde_json::to_string(variable.var_type.trim())
+                .unwrap_or_else(|_| "\\\"\\\"".to_owned())
         ));''',
         '''        let _ = writeln!(
             result,
             "{field_indent}type: {}",
-            serde_json::to_string(variable.var_type.trim()).unwrap_or_else(|_| "\\\"\\\"".to_owned())
+            serde_json::to_string(variable.var_type.trim())
+                .unwrap_or_else(|_| "\\\"\\\"".to_owned())
         );''',
     )
     workspace = workspace.replace(
