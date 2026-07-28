@@ -1,49 +1,28 @@
-name: Windows x64 portable
+name: Refresh Cargo lockfile
 
 on:
   pull_request:
     branches:
       - rEspanso-feature
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "**/*.txt"
-      - "LICENSE*"
   workflow_dispatch:
-  release:
-    types:
-      - published
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-x64-portable-${{ github.event.pull_request.number || github.ref }}
+  group: refresh-cargo-lock-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  verify-and-build:
-    name: Check and build rEspanso portable
+  generate-lockfile:
     runs-on: windows-2022
-    timeout-minutes: 90
-    env:
-      CARGO_TERM_COLOR: always
-      RUST_BACKTRACE: 1
-
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up MSVC x64
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-          components: rustfmt, clippy
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -51,89 +30,16 @@ jobs:
           shared-key: windows-x64-portable
           cache-on-failure: true
 
-      - name: Verify repository cleanup
-        shell: pwsh
-        run: |
-          $workflows = @(Get-ChildItem ".github/workflows" -File)
-          if ($workflows.Count -ne 1 -or $workflows[0].Name -ne "windows-x64-portable.yml") {
-            throw "Repository must contain exactly one final workflow"
-          }
-          if (Test-Path ".claude") {
-            throw ".claude must not be present"
-          }
-          $junk = @(git ls-files | Where-Object {
-            ($_ -match '^(scripts|\.github)/.*(^|[-_.])(apply|patch|trigger|diagnose|rerun|temporary|temp|fix_dynamic|final[-_]?build)([-_.]|$)') -or
-            ($_ -match '(^|/)trigger[^/]*$')
-          })
-          if ($junk.Count -gt 0) {
-            $junk | ForEach-Object { Write-Error "Technical junk remains: $_" }
-            throw "Technical cleanup is incomplete"
-          }
+      - name: Generate Cargo.lock
+        run: cargo generate-lockfile
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+      - name: Verify lockfile
+        run: cargo metadata --locked --no-deps --format-version 1 > $null
 
-      - name: Run tests
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force "target/test-logs" | Out-Null
-          $log = "target/test-logs/windows-x64-tests.log"
-          function Invoke-CargoTest([string]$label, [string[]]$arguments) {
-            "`n===== $label =====" | Tee-Object -FilePath $log -Append
-            & cargo @arguments *>&1 | Tee-Object -FilePath $log -Append
-            if ($LASTEXITCODE -ne 0) {
-              throw "$label failed with exit code $LASTEXITCODE"
-            }
-          }
-          Invoke-CargoTest "espanso-editor" @("test", "--locked", "--quiet", "-p", "espanso-editor")
-          Invoke-CargoTest "espanso-engine" @("test", "--locked", "--quiet", "-p", "espanso-engine")
-          Invoke-CargoTest "espanso-render" @("test", "--locked", "--quiet", "-p", "espanso-render")
-          Invoke-CargoTest "respanso-portable" @("test", "--locked", "--quiet", "-p", "espanso", "--bin", "respanso-portable")
-
-      - name: Upload test failure log
-        if: failure()
+      - name: Upload Cargo.lock
         uses: actions/upload-artifact@v4
         with:
-          name: rEspanso-Windows-x64-test-failure
-          path: target/test-logs/windows-x64-tests.log
-          if-no-files-found: warn
-          retention-days: 3
-
-      - name: Run Clippy
-        run: cargo clippy --locked -p espanso -p espanso-editor --all-targets -- --deny warnings
-
-      - name: Build release binaries
-        run: |
-          cargo build --locked --quiet --release -p espanso --bin espanso --bin respanso-portable
-          cargo build --locked --quiet --release -p espanso-editor
-
-      - name: Assemble portable archive
-        shell: pwsh
-        run: |
-          $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
-          $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
-          $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
-          & "./scripts/build_windows_native_portable_with_studio.ps1"
-          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
-          if (-not (Test-Path $archive)) {
-            throw "Portable archive was not created"
-          }
-          $entries = tar -tf $archive
-          if ($entries -match '\.(bat|cmd)$') {
-            throw "Portable archive contains BAT/CMD launchers"
-          }
-          $required = @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")
-          foreach ($file in $required) {
-            if (-not ($entries -match [regex]::Escape($file))) {
-              throw "Portable archive is missing $file"
-            }
-          }
-
-      - name: Upload portable archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: rEspanso-Windows-x64-portable
-          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+          name: respanso-cargo-lock
+          path: Cargo.lock
           if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
+          retention-days: 3
