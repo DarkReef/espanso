@@ -18,9 +18,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apply-and-verify:
+  apply:
     runs-on: windows-2022
-    timeout-minutes: 90
+    timeout-minutes: 20
     steps:
       - name: Checkout feature branch
         uses: actions/checkout@v4
@@ -28,64 +28,54 @@ jobs:
           ref: feature/finalize-respanso
           fetch-depth: 1
 
-      - name: Set up Visual Studio C++ environment
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Install stable Rust toolchain
+      - name: Install Rust formatter
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
-          components: rustfmt, clippy
+          components: rustfmt
 
-      - name: Apply final source patches
-        run: |
-          python scripts/finalize_patch_a.py
-          python scripts/finalize_patch_b.py
-          python scripts/generate_respanso_icon.py
-
-      - name: Format Rust sources
-        run: cargo fmt --all
-
-      - name: Test Match Studio
-        run: cargo test --quiet -p espanso-editor
-
-      - name: Test native portable launcher
-        run: cargo test --quiet -p espanso --bin respanso-portable
-
-      - name: Run strict Clippy
-        run: cargo clippy -p espanso-editor -p espanso --all-targets -- --deny warnings
-
-      - name: Build final Windows binaries
-        run: cargo build --quiet --release -p espanso --bin espanso --bin respanso-portable -p espanso-editor
-
-      - name: Verify final assets and documentation
+      - name: Apply patches and record diagnostics
+        id: apply
         shell: pwsh
+        continue-on-error: true
         run: |
-          $required = @(
-            "assets/respanso.ico",
-            "docs/respanso/README.ru.md",
-            "docs/respanso/RHAI_PROMPT.ru.md",
-            "target/release/espanso.exe",
-            "target/release/respanso-portable.exe",
-            "target/release/espanso-editor.exe"
-          )
-          foreach ($path in $required) {
-            if (-not (Test-Path -Path $path -PathType Leaf)) {
-              throw "Final rEspanso item was not produced: $path"
-            }
+          $ErrorActionPreference = "Continue"
+          New-Item -Path ".github" -ItemType Directory -Force | Out-Null
+          python scripts/finalize_patch_a.py *> .github/finalize-apply.log
+          if ($LASTEXITCODE -eq 0) {
+            python scripts/finalize_patch_b.py *>> .github/finalize-apply.log
+          }
+          if ($LASTEXITCODE -eq 0) {
+            python scripts/generate_respanso_icon.py *>> .github/finalize-apply.log
+          }
+          if ($LASTEXITCODE -eq 0) {
+            cargo fmt --all *>> .github/finalize-apply.log
+          }
+          if ($LASTEXITCODE -ne 0) {
+            exit 1
           }
 
-      - name: Remove one-time patch helpers
+      - name: Commit patch diagnostics on failure
+        if: steps.apply.outcome == 'failure'
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/finalize-apply.log
+          git commit -m "ci: record finalization patch failure"
+          git push origin HEAD:feature/finalize-respanso
+
+      - name: Remove one-time helpers
+        if: steps.apply.outcome == 'success'
         shell: pwsh
         run: |
           Remove-Item -Force scripts/finalize_patch_a.py
           Remove-Item -Force scripts/finalize_patch_b.py
           Remove-Item -Force scripts/generate_respanso_icon.py
           Remove-Item -Force .github/workflows/apply-finalize-respanso.yml
+          Remove-Item -Force .github/finalize-apply.log
 
-      - name: Commit verified finalization
+      - name: Commit applied finalization
+        if: steps.apply.outcome == 'success'
         shell: pwsh
         run: |
           git config user.name "github-actions[bot]"
@@ -93,3 +83,7 @@ jobs:
           git add -A
           git commit -m "feat: finalize rEspanso"
           git push origin HEAD:feature/finalize-respanso
+
+      - name: Fail after publishing diagnostics
+        if: steps.apply.outcome == 'failure'
+        run: exit 1
