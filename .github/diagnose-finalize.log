@@ -1,1 +1,6 @@
-yaml file dialog initialization: expected one occurrence, found 0
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "C:\hostedtoolcache\windows\Python\3.12.10\x64\Lib\base64.py", line 88, in b64decode
+    return binascii.a2b_base64(s, strict_mode=validate)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+binascii.Error: Invalid base64-encoded string: number of data characters (13305) cannot be 1 more than a multiple of 4
