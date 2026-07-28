@@ -14,6 +14,16 @@ try:
         "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub enum MatchKind",
         1,
     )
+    source = source.replace(
+        "'''            match rule.draft.kind {\n                MatchKind::Trigger => {\n''',",
+        "'''        for rule in &rules {\n            match rule.draft.kind {\n                MatchKind::Trigger => {\n''',",
+        1,
+    )
+    source = source.replace(
+        "'''            let mut variable_names = HashSet::new();",
+        "'''        for rule in &rules {\n            let mut variable_names = HashSet::new();",
+        1,
+    )
     exec(compile(source, str(Path(__file__)), "exec"))
 finally:
     shutil.rmtree(chunks, ignore_errors=True)
