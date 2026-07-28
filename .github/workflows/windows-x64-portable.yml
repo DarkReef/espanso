@@ -100,7 +100,24 @@ jobs:
           retention-days: 3
 
       - name: Run Clippy
-        run: cargo clippy --locked -p espanso -p espanso-editor --all-targets -- --deny warnings
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/clippy-logs" | Out-Null
+          $log = "target/clippy-logs/windows-x64-clippy.log"
+          & cargo clippy --locked -p espanso -p espanso-editor --all-targets -- --deny warnings *>&1 |
+            Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            throw "Clippy failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Upload Clippy failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-clippy-failure
+          path: target/clippy-logs/windows-x64-clippy.log
+          if-no-files-found: warn
+          retention-days: 3
 
       - name: Build release binaries
         run: |
