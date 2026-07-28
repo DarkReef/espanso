@@ -89,9 +89,6 @@ espanso-mac-utils = { path = "../espanso-mac-utils" }
 caps = "0.5.2"
 const_format = "0.2.14"
 
-[build-dependencies]
-winres = "0.1.12"
-
 [package.metadata.deb]
 maintainer = "Куцин Иван Юрьевич"
 depends = "$auto"
