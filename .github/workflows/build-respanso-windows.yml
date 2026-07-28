@@ -110,13 +110,6 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- \
-            "espanso-editor/src/app.rs" \
-            "espanso-editor/src/lib.rs" \
-            "espanso-editor/src/dynamic_variables.rs" \
-            "docs/respanso/MATCH_STUDIO.ru.md" \
-            "scripts/apply_requested_update.py" \
-            "scripts/fix_dynamic_variable_test.py" \
-            "scripts/final-build-respanso-windows.yml"
+          git add -- "espanso-editor/src/app.rs" "espanso-editor/src/lib.rs" "espanso-editor/src/dynamic_variables.rs" "docs/respanso/MATCH_STUDIO.ru.md" "scripts/apply_requested_update.py" "scripts/fix_dynamic_variable_test.py" "scripts/final-build-respanso-windows.yml"
           git commit -m "feat: add dynamic variable helper"
           git push origin HEAD:feature/manual-build-dynamic-vars
