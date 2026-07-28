@@ -115,12 +115,27 @@ jobs:
       - name: Build rEspanso core and launcher
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force "target/build-logs" | Out-Null
+          $log = "target/build-logs/windows-x64-core-build.jsonl"
           $previousColor = $env:CARGO_TERM_COLOR
           $env:CARGO_TERM_COLOR = "never"
           try {
-            $messages = @(& cargo build --locked --release -p espanso --bin espanso --bin respanso-portable --message-format=json)
-            if ($LASTEXITCODE -ne 0) {
-              throw "rEspanso core or launcher build failed with exit code $LASTEXITCODE"
+            & cargo build --locked --release -p espanso --bin espanso --bin respanso-portable --message-format=json-diagnostic-rendered-ansi *>&1 |
+              Tee-Object -FilePath $log
+            $exitCode = $LASTEXITCODE
+            $messages = @(Get-Content -Path $log)
+            if ($exitCode -ne 0) {
+              foreach ($line in $messages) {
+                try {
+                  $message = $line | ConvertFrom-Json -ErrorAction Stop
+                  if ($message.reason -eq "compiler-message" -and $message.message.rendered) {
+                    Write-Host $message.message.rendered
+                  }
+                } catch {
+                  continue
+                }
+              }
+              throw "rEspanso core or launcher build failed with exit code $exitCode"
             }
 
             function Get-CargoExecutable([string]$binary) {
@@ -152,6 +167,15 @@ jobs:
           } finally {
             $env:CARGO_TERM_COLOR = $previousColor
           }
+
+      - name: Upload core build failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-core-build-failure
+          path: target/build-logs/windows-x64-core-build.jsonl
+          if-no-files-found: warn
+          retention-days: 3
 
       - name: Build Match Studio
         shell: pwsh
