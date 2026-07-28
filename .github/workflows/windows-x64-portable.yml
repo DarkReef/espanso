@@ -20,24 +20,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Trace Windows import-library dependencies
+      - name: Trace core Windows dependencies
         shell: bash
         run: |
           mkdir -p target/dependency-tree
+          cargo tree --locked --target x86_64-pc-windows-msvc -p espanso -e features \
+            > target/dependency-tree/espanso-windows-features.txt
           {
-            echo '===== windows-sys 0.52.0 reverse tree ====='
-            cargo tree --locked --target x86_64-pc-windows-msvc -i windows-sys@0.52.0 -e features || true
+            echo '===== GDI+ feature references in espanso core ====='
+            grep -n -B 12 -A 18 -E 'GdiPlus|gdiplus' target/dependency-tree/espanso-windows-features.txt || true
             echo
-            echo '===== windows-sys 0.59.0 reverse tree ====='
-            cargo tree --locked --target x86_64-pc-windows-msvc -i windows-sys@0.59.0 -e features || true
+            echo '===== windows-targets 0.52.6 reverse tree for espanso core ====='
+            cargo tree --locked --target x86_64-pc-windows-msvc -p espanso -i windows-targets@0.52.6 -e features || true
             echo
-            echo '===== windows-targets 0.52.6 reverse tree ====='
-            cargo tree --locked --target x86_64-pc-windows-msvc -i windows-targets@0.52.6 -e features || true
-          } | tee target/dependency-tree/windows-gdiplus-tree.txt
+            echo '===== windows-sys 0.52.0 reverse tree for espanso core ====='
+            cargo tree --locked --target x86_64-pc-windows-msvc -p espanso -i windows-sys@0.52.0 -e features || true
+          } | tee target/dependency-tree/windows-gdiplus-core-trace.txt
       - name: Upload dependency trace
         uses: actions/upload-artifact@v4
         with:
-          name: rEspanso-Windows-GDIPlus-dependency-trace
-          path: target/dependency-tree/windows-gdiplus-tree.txt
+          name: rEspanso-Windows-GDIPlus-core-trace
+          path: target/dependency-tree/
           if-no-files-found: error
           retention-days: 3
