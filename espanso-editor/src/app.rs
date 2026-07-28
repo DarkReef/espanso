@@ -524,7 +524,7 @@ impl MatchStudioApp {
     }
 
     fn request_external_reload(&mut self) {
-        if self.has_unsaved_changes() {
+        if self.has_unsaved_changes() || self.rhai_lab.dirty() {
             self.reload_all_after_confirm = true;
             self.confirm_reload = true;
         } else {
@@ -1108,8 +1108,7 @@ impl MatchStudioApp {
                             self.report_rhai_action(result);
                         }
                         if ui.button("Сохранить").on_hover_text("Ctrl+S").clicked() {
-                            let result = self.rhai_lab.save_current();
-                            self.report_rhai_action(result);
+                            self.save_rhai_current();
                         }
                         if ui
                             .button("Скомпилировать")
