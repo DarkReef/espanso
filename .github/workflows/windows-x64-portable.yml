@@ -2,11 +2,9 @@ name: Refresh Windows dependency lock
 
 # One-time lock refresh. Replaced by the final manual Windows workflow afterward.
 on:
-  push:
+  pull_request:
     branches:
-      - feature/manual-build-dynamic-vars
-    paths:
-      - ".github/workflows/windows-x64-portable.yml"
+      - rEspanso-feature
 
 permissions:
   contents: write
