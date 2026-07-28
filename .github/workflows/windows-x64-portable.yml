@@ -1,5 +1,6 @@
 name: Windows x64 portable
 
+# Manual-only final verification. Run explicitly from the Actions tab.
 on:
   workflow_dispatch:
 
