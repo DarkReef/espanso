@@ -1,4 +1,4 @@
-name: Commit final rEspanso source
+name: Stage final rEspanso source
 
 on:
   pull_request:
@@ -12,11 +12,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: commit-final-respanso-${{ github.event.pull_request.number || github.ref }}
+  group: stage-final-respanso-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  finalize-source:
+  stage-source:
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
@@ -45,7 +45,7 @@ jobs:
             [System.Text.UTF8Encoding]::new($false)
           )
 
-      - name: Restore workflows and commit source cleanup
+      - name: Commit source cleanup to staging branch
         shell: pwsh
         run: |
           git checkout HEAD -- .github/workflows
@@ -55,8 +55,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          if (git diff --cached --quiet) {
-            throw "Finalization produced no source changes"
-          }
           git commit -m "feat: finalize rEspanso Studio source"
-          git push origin HEAD:feature/manual-build-dynamic-vars
+          git push --force origin HEAD:refs/heads/automation/finalize-respanso-source
