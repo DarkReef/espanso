@@ -1,24 +1,13 @@
 name: Windows x64 portable
 
 on:
-  pull_request:
-    branches:
-      - rEspanso-feature
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "**/*.txt"
-      - "LICENSE*"
   workflow_dispatch:
-  release:
-    types:
-      - published
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-x64-portable-${{ github.event.pull_request.number || github.ref }}
+  group: windows-x64-portable-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -119,59 +108,52 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
-      - name: Build release binaries
+      - name: Build rEspanso core and launcher
+        shell: pwsh
         run: |
-          cargo build --locked --quiet --release -p espanso --bin espanso --bin respanso-portable
-          cargo build --locked --quiet --release -p espanso-editor --bin espanso-editor
+          & cargo build --locked --quiet --release -p espanso --bin espanso --bin respanso-portable
+          if ($LASTEXITCODE -ne 0) {
+            throw "rEspanso core or launcher build failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Build Match Studio
+        shell: pwsh
+        run: |
+          & cargo build --locked --quiet --release -p espanso-editor --bin espanso-editor
+          if ($LASTEXITCODE -ne 0) {
+            throw "Match Studio build failed with exit code $LASTEXITCODE"
+          }
 
       - name: Assemble portable archive
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force "target/package-logs" | Out-Null
           $log = "target/package-logs/windows-x64-package.log"
-          function Resolve-CargoBinary([string]$package, [string]$binary) {
-            $previousColor = $env:CARGO_TERM_COLOR
-            $env:CARGO_TERM_COLOR = "never"
-            try {
-              $messages = @(& cargo build --locked --release -p $package --bin $binary --message-format=json)
-              if ($LASTEXITCODE -ne 0) {
-                throw "Cargo could not resolve $package/$binary (exit code $LASTEXITCODE)"
-              }
-              $paths = foreach ($line in $messages) {
-                try {
-                  $message = $line | ConvertFrom-Json -ErrorAction Stop
-                } catch {
-                  continue
-                }
-                if (
-                  $message.reason -eq "compiler-artifact" -and
-                  $message.target.name -eq $binary -and
-                  -not [string]::IsNullOrWhiteSpace([string]$message.executable)
-                ) {
-                  [string]$message.executable
-                }
-              }
-              $resolved = @($paths) | Select-Object -Last 1
-              if ([string]::IsNullOrWhiteSpace([string]$resolved) -or -not (Test-Path $resolved)) {
-                throw "Cargo did not report an existing executable for $package/$binary"
-              }
-              return (Resolve-Path $resolved).Path
-            } finally {
-              $env:CARGO_TERM_COLOR = $previousColor
-            }
-          }
           try {
-            $env:EXEC_PATH = Resolve-CargoBinary "espanso" "espanso"
-            $env:LAUNCHER_PATH = Resolve-CargoBinary "espanso" "respanso-portable"
-            $env:EDITOR_PATH = Resolve-CargoBinary "espanso-editor" "espanso-editor"
+            $requiredBinaries = @(
+              "target/release/espanso.exe",
+              "target/release/respanso-portable.exe",
+              "target/release/espanso-editor.exe"
+            )
+            foreach ($binary in $requiredBinaries) {
+              if (-not (Test-Path -Path $binary -PathType Leaf)) {
+                throw "Release binary was not produced: $binary"
+              }
+            }
+
+            $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
+            $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
+            $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
             "EXEC_PATH=$env:EXEC_PATH" | Tee-Object -FilePath $log -Append
             "LAUNCHER_PATH=$env:LAUNCHER_PATH" | Tee-Object -FilePath $log -Append
             "EDITOR_PATH=$env:EDITOR_PATH" | Tee-Object -FilePath $log -Append
+
             & "./scripts/build_windows_native_portable_with_studio.ps1" *>&1 |
               Tee-Object -FilePath $log -Append
             if ($LASTEXITCODE -ne 0) {
               throw "Portable assembly script failed with exit code $LASTEXITCODE"
             }
+
             $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
             if (-not (Test-Path $archive)) {
               throw "Portable archive was not created"
