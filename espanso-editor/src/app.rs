@@ -753,7 +753,7 @@ impl MatchStudioApp {
             file: path,
             ordinal: 0,
         });
-        self.new_yaml_file_name = "rules.yml".to_owned();
+        "rules.yml".clone_into(&mut self.new_yaml_file_name);
         self.status = format!("Создан match\\{name}. Добавьте правила и сохраните их Ctrl+S");
         true
     }
