@@ -38,6 +38,8 @@ function Resolve-VcRuntimeDirectory {
 $core = Resolve-Binary "EXEC_PATH" "target/release/espanso.exe"
 $launcher = Resolve-Binary "LAUNCHER_PATH" "target/release/respanso-portable.exe"
 $studio = Resolve-Binary "EDITOR_PATH" "target/release/espanso-editor.exe"
+$iconPath = (Resolve-Path "assets/respanso.ico").Path
+$iconEmbedder = (Resolve-Path "scripts/embed_windows_icon.ps1").Path
 
 foreach ($path in @($packageDir, $archivePath)) {
     if (Test-Path $path) {
@@ -53,12 +55,19 @@ $scriptsDir = Join-Path $packageDir "scripts"
 $docsDir = Join-Path $packageDir "docs"
 $forbiddenNestedConfig = Join-Path $configDir "config"
 $legacyPortable = Join-Path $packageDir "portable"
+$portableLauncher = Join-Path $packageDir "rEspanso.exe"
+$portableCore = Join-Path $packageDir "rEspanso-core.exe"
+$portableStudio = Join-Path $packageDir "rEspanso Match Studio.exe"
 
 New-Item -Path $configDir, $matchDir, $runtimeDir, $packagesDir, $scriptsDir, $docsDir -ItemType Directory -Force | Out-Null
 
-Copy-Item $launcher (Join-Path $packageDir "rEspanso.exe")
-Copy-Item $core (Join-Path $packageDir "rEspanso-core.exe")
-Copy-Item $studio (Join-Path $packageDir "rEspanso Match Studio.exe")
+Copy-Item $launcher $portableLauncher
+Copy-Item $core $portableCore
+Copy-Item $studio $portableStudio
+
+foreach ($executable in @($portableLauncher, $portableCore, $portableStudio)) {
+    & $iconEmbedder -Executable $executable -Icon $iconPath
+}
 
 $vcRuntime = Resolve-VcRuntimeDirectory
 Get-ChildItem -Path $vcRuntime -Filter "*.dll" | Copy-Item -Destination $packageDir
@@ -107,9 +116,9 @@ BAT и CMD файлы для запуска не используются и в 
 
 
 $required = @(
-    (Join-Path $packageDir "rEspanso.exe"),
-    (Join-Path $packageDir "rEspanso-core.exe"),
-    (Join-Path $packageDir "rEspanso Match Studio.exe"),
+    $portableLauncher,
+    $portableCore,
+    $portableStudio,
     (Join-Path $configDir "default.yml"),
     (Join-Path $matchDir "base.yml"),
     $runtimeDir,
