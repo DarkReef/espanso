@@ -4,6 +4,8 @@ on:
   pull_request:
     branches:
       - rEspanso-feature
+    paths:
+      - .github/workflows/build-respanso-windows.yml
   workflow_dispatch:
 
 permissions:
@@ -77,23 +79,10 @@ jobs:
           $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
           $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
           & "./scripts/build_windows_native_portable_with_studio.ps1"
-
-      - name: Finalize manual-only workflows and commit
-        shell: pwsh
-        run: |
-          Copy-Item "scripts/final-build-respanso-windows.yml" ".github/workflows/build-respanso-windows.yml" -Force
-          Get-ChildItem ".github/workflows" -File | Where-Object {
-            $_.Name -ne "build-respanso-windows.yml"
-          } | Remove-Item -Force
-          Remove-Item "scripts/apply_requested_update.py" -Force
-          Remove-Item "scripts/fix_dynamic_variable_test.py" -Force
-          Remove-Item "scripts/final-build-respanso-windows.yml" -Force
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "feat: add dynamic variable helper and manual-only builds"
-          git push origin HEAD:feature/manual-build-dynamic-vars
+          Get-ChildItem ".github/workflows" -File |
+            Sort-Object Name |
+            ForEach-Object { $_.Name } |
+            Set-Content "target/workflows-before-cleanup.txt" -Encoding utf8NoBOM
 
       - name: Upload requested Windows build
         uses: actions/upload-artifact@v4
@@ -103,3 +92,31 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+
+      - name: Upload workflow inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: respanso-workflow-inventory
+          path: target/workflows-before-cleanup.txt
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Commit source update
+        shell: pwsh
+        run: |
+          Remove-Item "scripts/apply_requested_update.py" -Force
+          Remove-Item "scripts/fix_dynamic_variable_test.py" -Force
+          Remove-Item "scripts/final-build-respanso-windows.yml" -Force
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            "espanso-editor/src/app.rs" \
+            "espanso-editor/src/lib.rs" \
+            "espanso-editor/src/dynamic_variables.rs" \
+            "docs/respanso/MATCH_STUDIO.ru.md" \
+            "scripts/apply_requested_update.py" \
+            "scripts/fix_dynamic_variable_test.py" \
+            "scripts/final-build-respanso-windows.yml"
+          git commit -m "feat: add dynamic variable helper"
+          git push origin HEAD:feature/manual-build-dynamic-vars
