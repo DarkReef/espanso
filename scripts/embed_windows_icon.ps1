@@ -26,16 +26,16 @@ using System.Runtime.InteropServices;
 
 namespace RExpanso
 {
-    internal static class NativeResource
+    public static class NativeResource
     {
-        internal const uint LOAD_LIBRARY_AS_DATAFILE = 0x00000002;
+        public const uint LOAD_LIBRARY_AS_DATAFILE = 0x00000002;
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        internal static extern IntPtr BeginUpdateResourceW(string fileName, bool deleteExistingResources);
+        public static extern IntPtr BeginUpdateResourceW(string fileName, bool deleteExistingResources);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool UpdateResourceW(
+        public static extern bool UpdateResourceW(
             IntPtr updateHandle,
             IntPtr type,
             IntPtr name,
@@ -45,13 +45,13 @@ namespace RExpanso
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool EndUpdateResourceW(IntPtr updateHandle, bool discard);
+        public static extern bool EndUpdateResourceW(IntPtr updateHandle, bool discard);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        internal static extern IntPtr LoadLibraryExW(string fileName, IntPtr file, uint flags);
+        public static extern IntPtr LoadLibraryExW(string fileName, IntPtr file, uint flags);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        internal static extern IntPtr FindResourceExW(
+        public static extern IntPtr FindResourceExW(
             IntPtr module,
             IntPtr type,
             IntPtr name,
@@ -59,14 +59,14 @@ namespace RExpanso
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool FreeLibrary(IntPtr module);
+        public static extern bool FreeLibrary(IntPtr module);
 
-        internal static IntPtr ResourceId(int value)
+        public static IntPtr ResourceId(int value)
         {
             return new IntPtr(value);
         }
 
-        internal static Win32Exception LastError(string operation)
+        public static Win32Exception LastError(string operation)
         {
             return new Win32Exception(Marshal.GetLastWin32Error(), operation);
         }
