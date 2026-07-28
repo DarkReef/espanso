@@ -1,9 +1,13 @@
 name: Apply final rEspanso polish
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/finalize-respanso
+      - rEspanso-feature
+    types:
+      - opened
+      - reopened
+      - synchronize
     paths:
       - scripts/finalize_patch_a.py
       - scripts/finalize_patch_b.py
@@ -19,6 +23,7 @@ concurrency:
 
 jobs:
   apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
