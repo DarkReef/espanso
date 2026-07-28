@@ -112,17 +112,77 @@ jobs:
       - name: Build rEspanso core and launcher
         shell: pwsh
         run: |
-          & cargo build --locked --quiet --release -p espanso --bin espanso --bin respanso-portable
-          if ($LASTEXITCODE -ne 0) {
-            throw "rEspanso core or launcher build failed with exit code $LASTEXITCODE"
+          $previousColor = $env:CARGO_TERM_COLOR
+          $env:CARGO_TERM_COLOR = "never"
+          try {
+            $messages = @(& cargo build --locked --release -p espanso --bin espanso --bin respanso-portable --message-format=json)
+            if ($LASTEXITCODE -ne 0) {
+              throw "rEspanso core or launcher build failed with exit code $LASTEXITCODE"
+            }
+
+            function Get-CargoExecutable([string]$binary) {
+              $paths = foreach ($line in $messages) {
+                try {
+                  $message = $line | ConvertFrom-Json -ErrorAction Stop
+                } catch {
+                  continue
+                }
+                if (
+                  $message.reason -eq "compiler-artifact" -and
+                  $message.target.name -eq $binary -and
+                  -not [string]::IsNullOrWhiteSpace([string]$message.executable)
+                ) {
+                  [string]$message.executable
+                }
+              }
+              $path = @($paths) | Select-Object -Last 1
+              if ([string]::IsNullOrWhiteSpace([string]$path) -or -not (Test-Path -Path $path -PathType Leaf)) {
+                throw "Cargo did not report an existing executable for $binary"
+              }
+              return (Resolve-Path $path).Path
+            }
+
+            $execPath = Get-CargoExecutable "espanso"
+            $launcherPath = Get-CargoExecutable "respanso-portable"
+            "EXEC_PATH=$execPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "LAUNCHER_PATH=$launcherPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } finally {
+            $env:CARGO_TERM_COLOR = $previousColor
           }
 
       - name: Build Match Studio
         shell: pwsh
         run: |
-          & cargo build --locked --quiet --release -p espanso-editor --bin espanso-editor
-          if ($LASTEXITCODE -ne 0) {
-            throw "Match Studio build failed with exit code $LASTEXITCODE"
+          $previousColor = $env:CARGO_TERM_COLOR
+          $env:CARGO_TERM_COLOR = "never"
+          try {
+            $messages = @(& cargo build --locked --release -p espanso-editor --bin espanso-editor --message-format=json)
+            if ($LASTEXITCODE -ne 0) {
+              throw "Match Studio build failed with exit code $LASTEXITCODE"
+            }
+
+            $paths = foreach ($line in $messages) {
+              try {
+                $message = $line | ConvertFrom-Json -ErrorAction Stop
+              } catch {
+                continue
+              }
+              if (
+                $message.reason -eq "compiler-artifact" -and
+                $message.target.name -eq "espanso-editor" -and
+                -not [string]::IsNullOrWhiteSpace([string]$message.executable)
+              ) {
+                [string]$message.executable
+              }
+            }
+            $editorPath = @($paths) | Select-Object -Last 1
+            if ([string]::IsNullOrWhiteSpace([string]$editorPath) -or -not (Test-Path -Path $editorPath -PathType Leaf)) {
+              throw "Cargo did not report an existing executable for espanso-editor"
+            }
+            $editorPath = (Resolve-Path $editorPath).Path
+            "EDITOR_PATH=$editorPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } finally {
+            $env:CARGO_TERM_COLOR = $previousColor
           }
 
       - name: Assemble portable archive
@@ -132,19 +192,16 @@ jobs:
           $log = "target/package-logs/windows-x64-package.log"
           try {
             $requiredBinaries = @(
-              "target/release/espanso.exe",
-              "target/release/respanso-portable.exe",
-              "target/release/espanso-editor.exe"
+              $env:EXEC_PATH,
+              $env:LAUNCHER_PATH,
+              $env:EDITOR_PATH
             )
             foreach ($binary in $requiredBinaries) {
-              if (-not (Test-Path -Path $binary -PathType Leaf)) {
-                throw "Release binary was not produced: $binary"
+              if ([string]::IsNullOrWhiteSpace([string]$binary) -or -not (Test-Path -Path $binary -PathType Leaf)) {
+                throw "Release binary path is missing or invalid: $binary"
               }
             }
 
-            $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
-            $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
-            $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
             "EXEC_PATH=$env:EXEC_PATH" | Tee-Object -FilePath $log -Append
             "LAUNCHER_PATH=$env:LAUNCHER_PATH" | Tee-Object -FilePath $log -Append
             "EDITOR_PATH=$env:EDITOR_PATH" | Tee-Object -FilePath $log -Append
