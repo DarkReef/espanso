@@ -76,8 +76,11 @@ jobs:
           )
           '@ | Set-Content -Path stage_fixes.py -Encoding utf8NoBOM
           python stage_fixes.py
+          if ($LASTEXITCODE -ne 0) { throw "Patch script failed" }
           cargo fmt --all
+          if ($LASTEXITCODE -ne 0) { throw "cargo fmt failed" }
           git diff --check
+          if ($LASTEXITCODE -ne 0) { throw "git diff --check failed" }
 
       - name: Commit and push staging ref
         shell: pwsh
@@ -86,15 +89,25 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- espanso-editor/src/app.rs espanso-editor/src/dynamic_variables.rs
-          if (git diff --cached --quiet) {
-            throw "No remaining Clippy fixes were produced"
+          git diff --cached --stat
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            throw "No remaining Clippy fixes were staged"
           }
-          git commit -m "fix: resolve remaining Studio Clippy warnings"
+          $parent = (git rev-parse HEAD).Trim()
+          git commit --no-verify -m "fix: resolve remaining Studio Clippy warnings"
+          if ($LASTEXITCODE -ne 0) {
+            throw "git commit failed"
+          }
+          $commit = (git rev-parse HEAD).Trim()
+          if ($commit -eq $parent) {
+            throw "Commit SHA did not advance"
+          }
           git push --force origin HEAD:refs/heads/automation/clippy-fixes
           if ($LASTEXITCODE -ne 0) {
             throw "Unable to push staging ref"
           }
-          git rev-parse HEAD | Set-Content staged-commit.txt -Encoding ascii
+          $commit | Set-Content staged-commit.txt -Encoding ascii
 
       - name: Upload staged commit
         uses: actions/upload-artifact@v4
