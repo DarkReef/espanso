@@ -1,17 +1,20 @@
 name: Apply final Match Studio UX
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/finalize-studio-ux
+      - rEspanso-feature
     paths:
       - .github/workflows/apply-final-studio-ux.yml
+      - scripts/apply_final_studio_ux.py
+      - scripts/.patch_chunks/**
 
 permissions:
   contents: write
 
 jobs:
   patch-build-package:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: windows-2022
     timeout-minutes: 120
     steps:
