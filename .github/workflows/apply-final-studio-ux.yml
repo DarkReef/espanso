@@ -44,8 +44,27 @@ jobs:
           key: final-studio-ux-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Apply Studio UX patch and clean workflows
+        id: patch
+        continue-on-error: true
         shell: pwsh
-        run: python scripts/apply_final_studio_ux.py
+        run: |
+          $ErrorActionPreference = "Continue"
+          python scripts/apply_final_studio_ux.py *>&1 | Tee-Object -FilePath patch.log
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Upload patch log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-studio-ux-patch-log-${{ github.sha }}
+          path: patch.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Preserve patch failure
+        if: steps.patch.outcome == 'failure'
+        shell: pwsh
+        run: exit 1
 
       - name: Format Rust sources
         shell: pwsh
