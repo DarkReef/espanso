@@ -2038,9 +2038,7 @@ impl MatchStudioApp {
                         }
                     });
                 });
-            if create && self.create_yaml_file() {
-                open = false;
-            } else if cancel {
+            if (create && self.create_yaml_file()) || cancel {
                 open = false;
             }
             self.show_create_yaml_file = open;

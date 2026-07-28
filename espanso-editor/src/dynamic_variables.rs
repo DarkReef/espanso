@@ -355,21 +355,21 @@ fn canonical_definition(definition: &VariableDefinition) -> Result<VariableDefin
     let variable_type = definition.variable_type.trim().to_ascii_lowercase();
     let mut canonical = definition.clone();
     canonical.name = canonical.name.trim().to_owned();
-    canonical.variable_type = variable_type.clone();
+    canonical.variable_type.clone_from(&variable_type);
     canonical.params_yaml = canonical.params_yaml.trim().to_owned();
 
     match variable_type.as_str() {
         "time" => {
-            canonical.variable_type = "date".to_owned();
+            "date".clone_into(&mut canonical.variable_type);
             if canonical.params_yaml.is_empty() {
-                canonical.params_yaml = "format: \"%H:%M\"".to_owned();
+                "format: \"%H:%M\"".clone_into(&mut canonical.params_yaml);
             }
         }
         "string" => {
             if canonical.params_yaml.is_empty() {
                 return Err("Для типа string укажите значение строки".to_owned());
             }
-            canonical.variable_type = "echo".to_owned();
+            "echo".clone_into(&mut canonical.variable_type);
             canonical.params_yaml = format!(
                 "echo: {}",
                 serde_json::to_string(&canonical.params_yaml)
