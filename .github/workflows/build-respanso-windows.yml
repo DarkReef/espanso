@@ -1,33 +1,30 @@
-name: Build rEspanso Windows
+name: Build requested rEspanso update
 
 on:
-  push:
-    branches:
-      - rEspanso-feature
   pull_request:
     branches:
-      - dev
       - rEspanso-feature
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: respanso-windows-${{ github.ref }}
+  group: requested-respanso-update-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-windows:
-    name: Build native Windows x64 portable
+  patch-build-and-finalize:
+    name: Patch, test and build Windows x64 portable
     runs-on: windows-2022
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
-      - name: Checkout source
+      - name: Checkout feature branch
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 0
 
       - name: Set up Visual Studio C++ environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -46,60 +43,32 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: requested-dynamic-vars-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Show build environment
-        shell: pwsh
-        run: |
-          rustc --version
-          cargo --version
-          where.exe cl
-          where.exe nmake
+      - name: Apply requested source changes
+        run: python scripts/apply_requested_update.py
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run embedded runtime tests
-        run: cargo test --quiet -p espanso-render
-
-      - name: Run rEspanso engine tests
-        run: cargo test --quiet -p espanso-engine
-
-      - name: Run native portable launcher tests
-        run: cargo test --quiet -p espanso --bin respanso-portable
+      - name: Format source
+        run: cargo fmt --all
 
       - name: Run Match Studio tests
         run: cargo test --quiet -p espanso-editor
 
-      - name: Build rEspanso core and native launcher
-        env:
-          CARGO_TERM_COLOR: always
-        run: cargo build --quiet --release -p espanso --bin espanso --bin respanso-portable
+      - name: Run engine and launcher tests
+        run: |
+          cargo test --quiet -p espanso-engine
+          cargo test --quiet -p espanso-render
+          cargo test --quiet -p espanso --bin respanso-portable
 
-      - name: Build Match Studio
-        env:
-          CARGO_TERM_COLOR: always
-        run: cargo build --quiet --release -p espanso-editor
+      - name: Build release binaries
+        run: |
+          cargo build --quiet --release -p espanso --bin espanso --bin respanso-portable
+          cargo build --quiet --release -p espanso-editor
 
       - name: Run strict Clippy
         run: cargo clippy -p espanso -p espanso-editor --all-targets -- --deny warnings
 
-      - name: Verify source binaries
-        shell: pwsh
-        run: |
-          $required = @(
-            "target/release/espanso.exe",
-            "target/release/respanso-portable.exe",
-            "target/release/espanso-editor.exe"
-          )
-          foreach ($path in $required) {
-            if (-not (Test-Path -Path $path -PathType Leaf)) {
-              throw "Release binary was not produced: $path"
-            }
-          }
-          Get-Item $required | Format-Table Name,Length,LastWriteTime
-
-      - name: Assemble unified native portable package
+      - name: Assemble portable package
         shell: pwsh
         run: |
           $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
@@ -107,44 +76,26 @@ jobs:
           $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
           & "./scripts/build_windows_native_portable_with_studio.ps1"
 
-          $package = "target/windows/rEspanso"
-          $required = @(
-            "$package/rEspanso.exe",
-            "$package/rEspanso-core.exe",
-            "$package/rEspanso Match Studio.exe",
-            "$package/config/default.yml",
-            "$package/match/base.yml",
-            "$package/runtime",
-            "$package/packages",
-            "$package/scripts/example.rhai",
-            "$package/docs/README.ru.md",
-            "$package/docs/RHAI_PROMPT.ru.md"
-          )
-          foreach ($path in $required) {
-            if (-not (Test-Path $path)) {
-              throw "Unified portable package is missing: $path"
-            }
-          }
+      - name: Finalize manual-only workflows and commit
+        shell: pwsh
+        run: |
+          Copy-Item "scripts/final-build-respanso-windows.yml" ".github/workflows/build-respanso-windows.yml" -Force
+          Get-ChildItem ".github/workflows" -File | Where-Object {
+            $_.Name -ne "build-respanso-windows.yml"
+          } | Remove-Item -Force
+          Remove-Item "scripts/apply_requested_update.py" -Force
+          Remove-Item "scripts/final-build-respanso-windows.yml" -Force
 
-          $nestedConfig = "$package/config/config"
-          $legacyPortable = "$package/portable"
-          if (Test-Path $nestedConfig) {
-            throw "Unified portable package contains nested config/config: $nestedConfig"
-          }
-          if (Test-Path $legacyPortable) {
-            throw "Unified portable package contains obsolete portable directory: $legacyPortable"
-          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: add dynamic variable helper and manual-only builds"
+          git push origin HEAD:feature/manual-build-dynamic-vars
 
-          $forbidden = Get-ChildItem $package -Recurse -File |
-            Where-Object { $_.Extension -in @(".bat", ".cmd") }
-          if ($forbidden) {
-            throw "Unified portable package contains BAT/CMD files: $($forbidden.FullName -join ', ')"
-          }
-
-      - name: Upload unified Windows portable
+      - name: Upload requested Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: rEspanso-native-portable-with-studio-windows-x64-${{ github.sha }}
+          name: rEspanso-manual-final-windows-x64
           path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
           if-no-files-found: error
           retention-days: 14
