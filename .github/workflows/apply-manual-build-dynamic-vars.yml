@@ -1,4 +1,4 @@
-name: Finalize rEspanso branch
+name: Prepare final rEspanso patch
 
 on:
   pull_request:
@@ -9,14 +9,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: finalize-respanso-${{ github.event.pull_request.number || github.ref }}
+  group: prepare-final-respanso-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  finalize:
+  prepare:
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
@@ -31,40 +31,29 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Apply final source and repository cleanup v3
+      - name: Apply final source and repository cleanup
         shell: pwsh
         run: |
           python -c "from pathlib import Path; Path('finalize.py').write_text(''.join(Path(f'.github/finalize.part{i}.py').read_text(encoding='utf-8') for i in range(1, 5)), encoding='utf-8')"
-          python finalize.py *>&1 | Tee-Object -FilePath finalize.log
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
-          }
+          python finalize.py
+          cargo fmt --all
 
-      - name: Persist diagnostic on failure
-        if: failure()
+      - name: Package exact final result
         shell: pwsh
         run: |
-          Copy-Item finalize.log .github/diagnose-finalize.log -Force
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f .github/diagnose-finalize.log
-          git commit -m "chore: capture finalization diagnostic"
-          git push origin HEAD:feature/manual-build-dynamic-vars
+          New-Item -ItemType Directory -Force "target/finalization" | Out-Null
+          Copy-Item "espanso-editor/src/app.rs" "target/finalization/app.rs"
+          Copy-Item "espanso-editor/src/dynamic_variables.rs" "target/finalization/dynamic_variables.rs"
+          Copy-Item "docs/respanso/MATCH_STUDIO.ru.md" "target/finalization/MATCH_STUDIO.ru.md"
+          Copy-Item ".github/workflows/windows-x64-portable.yml" "target/finalization/windows-x64-portable.yml"
+          cmd /c "git diff --binary > target\finalization\finalization.patch"
+          git status --short | Set-Content "target/finalization/status.txt" -Encoding utf8NoBOM
+          git ls-files | Set-Content "target/finalization/tracked-files.txt" -Encoding utf8NoBOM
 
-      - name: Format Rust
-        run: cargo fmt --all
-
-      - name: Commit finalized branch
-        shell: pwsh
-        run: |
-          Remove-Item ".github/finalize.part*.py" -Force
-          Remove-Item "finalize.py" -Force
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if (git diff --cached --quiet) {
-            throw "Finalization produced no changes"
-          }
-          git commit -m "feat: finalize rEspanso Studio and Windows CI"
-          git push origin HEAD:feature/manual-build-dynamic-vars
+      - name: Upload finalization preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: respanso-finalization-preview
+          path: target/finalization
+          if-no-files-found: error
+          retention-days: 3
