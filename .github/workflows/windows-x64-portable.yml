@@ -1,36 +1,73 @@
-name: Restore compatible Cargo lock
+name: Refresh Windows dependency lock
 
-# Temporary helper run; replaced by the final Windows workflow after the lock is restored.
+# One-time lock refresh. Replaced by the final manual Windows workflow afterward.
 on:
-  pull_request:
+  push:
     branches:
-      - rEspanso-feature
+      - feature/manual-build-dynamic-vars
+    paths:
+      - ".github/workflows/windows-x64-portable.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: restore-cargo-lock-${{ github.ref }}
+  group: windows-lock-refresh-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  export-base-lock:
+  refresh-lock:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout working branch
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-      - name: Export compatible base lock
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Resolve compatible dependency versions
         shell: bash
         run: |
-          git show origin/rEspanso-feature:Cargo.lock > Cargo.lock.compatible
-          test -s Cargo.lock.compatible
-          grep -A 3 'name = "socket2"' Cargo.lock.compatible | head -4
-      - name: Upload compatible lock
+          cargo update -p colored@2.2.0 --precise 2.1.0
+          cargo update -p reqwest@0.11.27 --precise 0.11.17
+          cargo update -p hyper@0.14.32 --precise 0.14.26
+          cargo metadata --locked --no-deps --format-version 1 >/dev/null
+
+      - name: Verify core no longer uses windows-targets 0.52
+        shell: bash
+        run: |
+          mkdir -p target/dependency-tree
+          cargo tree --locked -p espanso --target x86_64-pc-windows-msvc \
+            -i windows-targets@0.52.6 -e normal \
+            > target/dependency-tree/core-windows-targets-0.52.txt 2>&1 || true
+          cat target/dependency-tree/core-windows-targets-0.52.txt
+          if grep -Eq 'espanso v2\.4\.0|espanso-package v0\.1\.0|socket2 v0\.5|colored v2\.2' \
+            target/dependency-tree/core-windows-targets-0.52.txt; then
+            echo "Core still resolves the conflicting Windows import library" >&2
+            exit 1
+          fi
+
+      - name: Commit refreshed lock
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git diff --cached --check
+          git commit -m "fix(windows): restore wxWidgets-compatible dependency lock [skip ci]"
+          git push origin HEAD:feature/manual-build-dynamic-vars
+
+      - name: Upload dependency verification
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rEspanso-compatible-Cargo-lock
-          path: Cargo.lock.compatible
-          if-no-files-found: error
+          name: rEspanso-Windows-compatible-dependency-tree
+          path: target/dependency-tree/core-windows-targets-0.52.txt
+          if-no-files-found: warn
           retention-days: 3
