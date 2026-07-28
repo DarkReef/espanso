@@ -35,15 +35,21 @@ jobs:
           @'
           from pathlib import Path
 
-          def replace_exact(path: str, old: str, new: str) -> None:
+          def ensure_replaced(path: str, old: str, new: str, label: str) -> None:
               file = Path(path)
               text = file.read_text(encoding="utf-8")
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected one occurrence, found {count}")
-              file.write_text(text.replace(old, new), encoding="utf-8")
+              old_count = text.count(old)
+              new_count = text.count(new)
+              if old_count == 1 and new_count == 0:
+                  file.write_text(text.replace(old, new), encoding="utf-8")
+                  return
+              if old_count == 0 and new_count == 1:
+                  return
+              raise SystemExit(
+                  f"{label}: expected old=1/new=0 or old=0/new=1, got old={old_count}, new={new_count}"
+              )
 
-          replace_exact(
+          ensure_replaced(
               "espanso-editor/src/app.rs",
               '''            if create && self.create_yaml_file() {
                   open = false;
@@ -53,26 +59,31 @@ jobs:
               '''            if (create && self.create_yaml_file()) || cancel {
                   open = false;
               }''',
+              "create YAML dialog close condition",
           )
-          replace_exact(
+          ensure_replaced(
               "espanso-editor/src/dynamic_variables.rs",
               "    canonical.variable_type = variable_type.clone();",
               "    canonical.variable_type.clone_from(&variable_type);",
+              "canonical variable type clone",
           )
-          replace_exact(
+          ensure_replaced(
               "espanso-editor/src/dynamic_variables.rs",
               '            canonical.variable_type = "date".to_owned();',
               '            "date".clone_into(&mut canonical.variable_type);',
+              "time canonical type",
           )
-          replace_exact(
+          ensure_replaced(
               "espanso-editor/src/dynamic_variables.rs",
-              '                canonical.params_yaml = "format: \\"%H:%M\\"".to_owned();',
-              '                "format: \\"%H:%M\\"".clone_into(&mut canonical.params_yaml);',
+              r'                canonical.params_yaml = "format: \"%H:%M\"".to_owned();',
+              r'                "format: \"%H:%M\"".clone_into(&mut canonical.params_yaml);',
+              "time default format",
           )
-          replace_exact(
+          ensure_replaced(
               "espanso-editor/src/dynamic_variables.rs",
               '            canonical.variable_type = "echo".to_owned();',
               '            "echo".clone_into(&mut canonical.variable_type);',
+              "string canonical type",
           )
           '@ | Set-Content -Path stage_fixes.py -Encoding utf8NoBOM
           python stage_fixes.py
