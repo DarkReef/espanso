@@ -10,6 +10,7 @@ pub mod runtime;
 pub mod settings;
 pub mod storm_logo;
 pub mod workspace;
+mod workspace_cleanup;
 pub mod yaml_imports;
 
 use std::path::PathBuf;
