@@ -24,8 +24,5 @@ windows.workspace = true
 [dev-dependencies]
 tempdir.workspace = true
 
-[build-dependencies]
-winres = "0.1.12"
-
 [lints]
 workspace = true
