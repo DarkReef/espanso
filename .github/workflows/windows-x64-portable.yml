@@ -74,11 +74,30 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run tests
+        shell: pwsh
         run: |
-          cargo test --locked --quiet -p espanso-editor
-          cargo test --locked --quiet -p espanso-engine
-          cargo test --locked --quiet -p espanso-render
-          cargo test --locked --quiet -p espanso --bin respanso-portable
+          New-Item -ItemType Directory -Force "target/test-logs" | Out-Null
+          $log = "target/test-logs/windows-x64-tests.log"
+          function Invoke-CargoTest([string]$label, [string[]]$arguments) {
+            "`n===== $label =====" | Tee-Object -FilePath $log -Append
+            & cargo @arguments *>&1 | Tee-Object -FilePath $log -Append
+            if ($LASTEXITCODE -ne 0) {
+              throw "$label failed with exit code $LASTEXITCODE"
+            }
+          }
+          Invoke-CargoTest "espanso-editor" @("test", "--locked", "--quiet", "-p", "espanso-editor")
+          Invoke-CargoTest "espanso-engine" @("test", "--locked", "--quiet", "-p", "espanso-engine")
+          Invoke-CargoTest "espanso-render" @("test", "--locked", "--quiet", "-p", "espanso-render")
+          Invoke-CargoTest "respanso-portable" @("test", "--locked", "--quiet", "-p", "espanso", "--bin", "respanso-portable")
+
+      - name: Upload test failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-test-failure
+          path: target/test-logs/windows-x64-tests.log
+          if-no-files-found: warn
+          retention-days: 3
 
       - name: Run Clippy
         run: cargo clippy --locked -p espanso -p espanso-editor --all-targets -- --deny warnings
