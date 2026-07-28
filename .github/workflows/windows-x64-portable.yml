@@ -129,10 +129,32 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force "target/package-logs" | Out-Null
           $log = "target/package-logs/windows-x64-package.log"
+          function Resolve-ReleaseBinary([string]$name) {
+            $expected = @(
+              "target/release/$name.exe",
+              "target/x86_64-pc-windows-msvc/release/$name.exe"
+            )
+            foreach ($candidate in $expected) {
+              if (Test-Path $candidate) {
+                return (Resolve-Path $candidate).Path
+              }
+            }
+            $fallback = Get-ChildItem "target" -Recurse -File -Filter "$name.exe" |
+              Where-Object { $_.FullName -notmatch '\\(deps|incremental|build)\\' } |
+              Sort-Object LastWriteTimeUtc -Descending |
+              Select-Object -First 1
+            if ($null -eq $fallback) {
+              throw "Release binary not found: $name.exe"
+            }
+            return $fallback.FullName
+          }
           try {
-            $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
-            $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
-            $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
+            $env:EXEC_PATH = Resolve-ReleaseBinary "espanso"
+            $env:LAUNCHER_PATH = Resolve-ReleaseBinary "respanso-portable"
+            $env:EDITOR_PATH = Resolve-ReleaseBinary "espanso-editor"
+            "EXEC_PATH=$env:EXEC_PATH" | Tee-Object -FilePath $log -Append
+            "LAUNCHER_PATH=$env:LAUNCHER_PATH" | Tee-Object -FilePath $log -Append
+            "EDITOR_PATH=$env:EDITOR_PATH" | Tee-Object -FilePath $log -Append
             & "./scripts/build_windows_native_portable_with_studio.ps1" *>&1 |
               Tee-Object -FilePath $log -Append
             if ($LASTEXITCODE -ne 0) {
