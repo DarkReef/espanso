@@ -1,6 +1,6 @@
-name: Windows dependency trace
+name: Restore compatible Cargo lock
 
-# Temporary diagnostic run; restored to the final Windows build after tracing.
+# Temporary helper run; replaced by the final Windows workflow after the lock is restored.
 on:
   pull_request:
     branches:
@@ -10,36 +10,27 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-dependency-trace-${{ github.ref }}
+  group: restore-cargo-lock-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  trace-windows-dependencies:
+  export-base-lock:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Trace core Windows dependencies
+        with:
+          fetch-depth: 0
+      - name: Export compatible base lock
         shell: bash
         run: |
-          mkdir -p target/dependency-tree
-          cargo tree --locked --target x86_64-pc-windows-msvc -p espanso -e features \
-            > target/dependency-tree/espanso-windows-features.txt
-          {
-            echo '===== GDI+ feature references in espanso core ====='
-            grep -n -B 12 -A 18 -E 'GdiPlus|gdiplus' target/dependency-tree/espanso-windows-features.txt || true
-            echo
-            echo '===== windows-targets 0.52.6 reverse tree for espanso core ====='
-            cargo tree --locked --target x86_64-pc-windows-msvc -p espanso -i windows-targets@0.52.6 -e features || true
-            echo
-            echo '===== windows-sys 0.52.0 reverse tree for espanso core ====='
-            cargo tree --locked --target x86_64-pc-windows-msvc -p espanso -i windows-sys@0.52.0 -e features || true
-          } | tee target/dependency-tree/windows-gdiplus-core-trace.txt
-      - name: Upload dependency trace
+          git show origin/rEspanso-feature:Cargo.lock > Cargo.lock.compatible
+          test -s Cargo.lock.compatible
+          grep -A 3 'name = "socket2"' Cargo.lock.compatible | head -4
+      - name: Upload compatible lock
         uses: actions/upload-artifact@v4
         with:
-          name: rEspanso-Windows-GDIPlus-core-trace
-          path: target/dependency-tree/
+          name: rEspanso-compatible-Cargo-lock
+          path: Cargo.lock.compatible
           if-no-files-found: error
           retention-days: 3
