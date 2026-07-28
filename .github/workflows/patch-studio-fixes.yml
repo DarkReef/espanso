@@ -1,0 +1,182 @@
+name: Apply final Studio source fixes
+
+on:
+  push:
+    branches:
+      - feature/manual-build-dynamic-vars
+    paths:
+      - .github/workflows/patch-studio-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout working branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 1
+
+      - name: Apply focused source changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workspace_path = Path("espanso-editor/src/workspace.rs")
+          workspace = workspace_path.read_text(encoding="utf-8")
+          old_display = '''impl RuleRecord {
+              pub fn display_name(&self) -> String {
+                  if !self.draft.label.trim().is_empty() {
+                      return self.draft.label.trim().to_owned();
+                  }
+                  match self.draft.kind {
+                      MatchKind::Trigger => self
+                          .draft
+                          .triggers
+                          .first()
+                          .cloned()
+                          .unwrap_or_else(|| "<empty trigger>".to_owned()),
+                      MatchKind::Regex => {
+                          if self.draft.regex.is_empty() {
+                              "<empty regexp>".to_owned()
+                          } else {
+                              self.draft.regex.clone()
+                          }
+                      }
+                  }
+              }
+          }
+          '''
+          new_display = '''impl RuleRecord {
+              pub fn display_name(&self) -> String {
+                  let cause = match self.draft.kind {
+                      MatchKind::Trigger => self
+                          .draft
+                          .triggers
+                          .first()
+                          .cloned()
+                          .unwrap_or_else(|| "<empty trigger>".to_owned()),
+                      MatchKind::Regex => {
+                          if self.draft.regex.is_empty() {
+                              "<empty regexp>".to_owned()
+                          } else {
+                              self.draft.regex.clone()
+                          }
+                      }
+                  };
+                  let label = self.draft.label.trim();
+                  if label.is_empty() {
+                      cause
+                  } else {
+                      format!("{label} · {cause}")
+                  }
+              }
+          }
+          '''
+          if old_display not in workspace:
+              raise SystemExit("RuleRecord::display_name source block was not found")
+          workspace_path.write_text(workspace.replace(old_display, new_display, 1), encoding="utf-8")
+
+          app_path = Path("espanso-editor/src/app.rs")
+          app = app_path.read_text(encoding="utf-8")
+          start = app.index("    fn delete_yaml_file(&mut self, path: PathBuf) -> bool {")
+          end = app.index("    fn sync_builtin_variables", start)
+          replacement = '''    fn delete_yaml_file(&mut self, path: PathBuf) -> bool {
+              if self.has_transfer_unsaved_changes() || self.settings.dirty() {
+                  "Сначала сохраните текущие изменения, затем удалите YAML-файл"
+                      .clone_into(&mut self.status);
+                  return false;
+              }
+
+              let Some(workspace) = &mut self.workspace else {
+                  return false;
+              };
+              let files = workspace.files();
+              if !files.iter().any(|file| file == &path) {
+                  "Выбранный YAML-файл больше не входит в рабочую область"
+                      .clone_into(&mut self.status);
+                  return false;
+              }
+              let base_file = yaml_imports::find_base_file(&files, workspace.match_root());
+              if base_file.as_ref() == Some(&path) {
+                  "Нельзя удалить основной base.yml/base.yaml".clone_into(&mut self.status);
+                  return false;
+              }
+
+              let display_name = relative_display(&self.config_root, &path);
+              if let Some(base_file) = base_file {
+                  let base_content = match workspace.raw_file(&base_file) {
+                      Ok(content) => content.to_owned(),
+                      Err(error) => {
+                          self.status = format!(
+                              "Не удалось прочитать imports перед удалением {display_name}: {}",
+                              ru_message(&error.to_string())
+                          );
+                          return false;
+                      }
+                  };
+                  let updated = match yaml_imports::update_import(
+                      &base_content,
+                      &base_file,
+                      &path,
+                      false,
+                  ) {
+                      Ok(updated) => updated,
+                      Err(error) => {
+                          self.status = format!(
+                              "Удаление {display_name} остановлено: не удалось обновить imports: {error}"
+                          );
+                          return false;
+                      }
+                  };
+                  if updated != base_content {
+                      if let Err(error) = workspace.set_raw_file(&base_file, updated) {
+                          self.status = format!(
+                              "Удаление {display_name} остановлено: {}",
+                              ru_message(&error.to_string())
+                          );
+                          return false;
+                      }
+                      if let Err(error) = workspace.save_all() {
+                          self.status = format!(
+                              "Удаление {display_name} остановлено: {}",
+                              ru_message(&error.to_string())
+                          );
+                          return false;
+                      }
+                  }
+              }
+
+              if let Err(error) = fs::remove_file(&path) {
+                  self.status = format!(
+                      "Не удалось удалить {display_name}: {error}. Файл уже исключён из imports"
+                  );
+                  return false;
+              }
+              self.file_filter = None;
+              self.selected = None;
+              self.raw_rule.clear();
+              self.reload();
+              self.status = format!("Удалён {display_name}; import из base.yml также очищен");
+              true
+          }
+
+          '''
+          app_path.write_text(app[:start] + replacement + app[end:], encoding="utf-8")
+          PY
+
+          git diff --check
+
+      - name: Commit focused source changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add espanso-editor/src/app.rs espanso-editor/src/workspace.rs
+          git commit -m "fix: keep YAML imports consistent and show match cause"
+          git push origin HEAD:feature/manual-build-dynamic-vars
