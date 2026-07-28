@@ -1,0 +1,98 @@
+name: Apply final Match Studio UX
+
+on:
+  push:
+    branches:
+      - feature/finalize-studio-ux
+    paths:
+      - .github/workflows/apply-final-studio-ux.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build-package:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/finalize-studio-ux
+          fetch-depth: 1
+
+      - name: Set up Visual Studio C++ environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Cache Cargo downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: final-studio-ux-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Apply Studio UX patch and clean workflows
+        shell: pwsh
+        run: python scripts/apply_final_studio_ux.py
+
+      - name: Format Rust sources
+        shell: pwsh
+        run: cargo fmt --all
+
+      - name: Test rendering engine
+        shell: pwsh
+        run: cargo test --quiet -p espanso-render
+
+      - name: Test rEspanso engine
+        shell: pwsh
+        run: cargo test --quiet -p espanso-engine
+
+      - name: Test portable launcher
+        shell: pwsh
+        run: cargo test --quiet -p espanso --bin respanso-portable
+
+      - name: Test Match Studio
+        shell: pwsh
+        run: cargo test --quiet -p espanso-editor
+
+      - name: Build rEspanso core and launcher
+        shell: pwsh
+        run: cargo build --quiet --release -p espanso --bin espanso --bin respanso-portable
+
+      - name: Build Match Studio
+        shell: pwsh
+        run: cargo build --quiet --release -p espanso-editor
+
+      - name: Run strict Clippy
+        shell: pwsh
+        run: cargo clippy -p espanso -p espanso-editor --all-targets -- --deny warnings
+
+      - name: Assemble final Windows portable package
+        shell: pwsh
+        run: ./scripts/build_windows_native_portable_with_studio.ps1
+
+      - name: Commit finished source and CI cleanup
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: refine Match Studio editing and variables"
+          git push origin HEAD:feature/finalize-studio-ux
+
+      - name: Upload final portable package
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-final-studio-ux-windows-x64-${{ github.sha }}
+          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 14
