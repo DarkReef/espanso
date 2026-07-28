@@ -1,0 +1,50 @@
+name: Apply finalized Studio code
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-finalized-studio-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Checkout working branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 0
+
+      - name: Install Rust formatter
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Generate and verify final Studio sources
+        shell: pwsh
+        run: |
+          python -c "from pathlib import Path; Path('finalize.py').write_text(''.join(Path(f'.github/finalize.part{i}.py').read_text(encoding='utf-8') for i in range(1, 5)), encoding='utf-8')"
+          python finalize.py
+          cargo fmt --all
+          git diff --check
+
+      - name: Commit only product code and documentation
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "espanso-editor/src/app.rs" "espanso-editor/src/dynamic_variables.rs" "docs/respanso/MATCH_STUDIO.ru.md"
+          if (git diff --cached --quiet) {
+            throw "Finalization produced no product-code changes"
+          }
+          git commit -m "feat: finalize Studio workflow and variables"
+          git push origin HEAD:feature/manual-build-dynamic-vars
