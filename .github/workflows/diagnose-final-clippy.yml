@@ -1,0 +1,47 @@
+name: Diagnose final Clippy
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+    paths:
+      - .github/workflows/diagnose-final-clippy.yml
+
+permissions:
+  contents: read
+
+jobs:
+  clippy-log:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: diagnose-clippy-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            build-essential git libdbus-1-dev libssl-dev libwxgtk3.*-dev \
+            libx11-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev libxtst-dev
+      - name: Capture Clippy output
+        id: clippy
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy --all-targets --features=modulo,vendored-tls -- --deny warnings 2>&1 | tee clippy.log
+      - name: Upload Clippy log
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-clippy-log-${{ github.sha }}
+          path: clippy.log
+          if-no-files-found: error
+          retention-days: 3
+      - name: Preserve failure conclusion
+        if: steps.clippy.outcome == 'failure'
+        run: exit 1
