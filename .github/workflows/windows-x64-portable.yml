@@ -1,4 +1,4 @@
-name: Apply remaining Clippy fixes
+name: Stage remaining Clippy fixes
 
 on:
   pull_request:
@@ -10,11 +10,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: apply-remaining-clippy-fixes-${{ github.event.pull_request.number || github.ref }}
+  group: stage-remaining-clippy-fixes-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply:
+  stage:
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -74,15 +74,15 @@ jobs:
               '            canonical.variable_type = "echo".to_owned();',
               '            "echo".clone_into(&mut canonical.variable_type);',
           )
-          '@ | Set-Content -Path apply_remaining_fixes.py -Encoding utf8NoBOM
-          python apply_remaining_fixes.py
+          '@ | Set-Content -Path stage_fixes.py -Encoding utf8NoBOM
+          python stage_fixes.py
           cargo fmt --all
           git diff --check
 
-      - name: Commit fixes
+      - name: Commit and push staging ref
         shell: pwsh
         run: |
-          Remove-Item apply_remaining_fixes.py -Force
+          Remove-Item stage_fixes.py -Force
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- espanso-editor/src/app.rs espanso-editor/src/dynamic_variables.rs
@@ -90,4 +90,16 @@ jobs:
             throw "No remaining Clippy fixes were produced"
           }
           git commit -m "fix: resolve remaining Studio Clippy warnings"
-          git push origin HEAD:feature/manual-build-dynamic-vars
+          git push --force origin HEAD:refs/heads/automation/clippy-fixes
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to push staging ref"
+          }
+          git rev-parse HEAD | Set-Content staged-commit.txt -Encoding ascii
+
+      - name: Upload staged commit
+        uses: actions/upload-artifact@v4
+        with:
+          name: staged-clippy-fix-commit
+          path: staged-commit.txt
+          if-no-files-found: error
+          retention-days: 1
