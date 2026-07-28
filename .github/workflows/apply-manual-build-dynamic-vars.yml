@@ -34,7 +34,21 @@ jobs:
       - name: Apply final source and repository cleanup
         shell: pwsh
         run: |
-          python -c "import base64,gzip,pathlib; source=gzip.decompress(base64.b64decode(pathlib.Path('.github/finalize.payload').read_text())).decode(); exec(compile(source, 'finalize.py', 'exec'))"
+          python -c "import base64,gzip,pathlib; source=gzip.decompress(base64.b64decode(pathlib.Path('.github/finalize.payload').read_text())).decode(); exec(compile(source, 'finalize.py', 'exec'))" *>&1 | Tee-Object -FilePath finalize.log
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Persist diagnostic on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Copy-Item finalize.log .github/diagnose-finalize.log -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f .github/diagnose-finalize.log
+          git commit -m "chore: capture finalization diagnostic"
+          git push origin HEAD:feature/manual-build-dynamic-vars
 
       - name: Format Rust
         run: cargo fmt --all
