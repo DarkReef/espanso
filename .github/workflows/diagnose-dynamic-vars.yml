@@ -1,0 +1,46 @@
+name: Diagnose dynamic variable tests
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+    paths:
+      - .github/workflows/diagnose-dynamic-vars.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Apply patch
+        run: python scripts/apply_requested_update.py
+      - name: Format
+        run: cargo fmt --all
+      - name: Capture tests
+        id: tests
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          cargo test -p espanso-editor -- --nocapture *>&1 | Tee-Object -FilePath dynamic-vars-tests.log
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dynamic-vars-test-log-${{ github.sha }}
+          path: dynamic-vars-tests.log
+          if-no-files-found: error
+          retention-days: 3
+      - name: Preserve failure
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
