@@ -78,7 +78,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force "target/clippy-logs" | Out-Null
           $log = "target/clippy-logs/windows-x64-clippy.log"
-          & cargo clippy --locked -p espanso -p espanso-editor --all-targets -- --deny warnings *>&1 |
+          & cargo clippy --locked -p espanso-editor -p espanso-config --all-targets -- --deny warnings *>&1 |
             Tee-Object -FilePath $log
           if ($LASTEXITCODE -ne 0) {
             throw "Clippy failed with exit code $LASTEXITCODE"
