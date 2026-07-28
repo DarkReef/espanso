@@ -1,4 +1,4 @@
-name: Stage final rEspanso source
+name: Diagnose final source commit
 
 on:
   pull_request:
@@ -12,11 +12,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: stage-final-respanso-${{ github.event.pull_request.number || github.ref }}
+  group: diagnose-final-source-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  stage-source:
+  diagnose:
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
@@ -31,29 +31,44 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Apply and format final source
+      - name: Reproduce source commit with diagnostics
         shell: pwsh
         run: |
-          python -c "from pathlib import Path; Path('finalize.py').write_text(''.join(Path(f'.github/finalize.part{i}.py').read_text(encoding='utf-8') for i in range(1, 5)), encoding='utf-8')"
-          python finalize.py
-          cargo fmt --all
+          $ErrorActionPreference = "Continue"
+          "BEGIN DIAGNOSTIC" | Set-Content commit-diagnostic.log
+          python -c "from pathlib import Path; Path('finalize.py').write_text(''.join(Path(f'.github/finalize.part{i}.py').read_text(encoding='utf-8') for i in range(1, 5)), encoding='utf-8')" *>&1 | Tee-Object -FilePath commit-diagnostic.log -Append
+          "python-assemble=$LASTEXITCODE" | Tee-Object -FilePath commit-diagnostic.log -Append
+          python finalize.py *>&1 | Tee-Object -FilePath commit-diagnostic.log -Append
+          "python-finalize=$LASTEXITCODE" | Tee-Object -FilePath commit-diagnostic.log -Append
+          cargo fmt --all *>&1 | Tee-Object -FilePath commit-diagnostic.log -Append
+          "cargo-fmt=$LASTEXITCODE" | Tee-Object -FilePath commit-diagnostic.log -Append
           $docs = Get-Content "docs/respanso/MATCH_STUDIO.ru.md" -Raw
           $docs = $docs.Replace("**Удобный редактор**", "**Редактор**")
-          [System.IO.File]::WriteAllText(
-            "docs/respanso/MATCH_STUDIO.ru.md",
-            $docs,
-            [System.Text.UTF8Encoding]::new($false)
-          )
-
-      - name: Commit source cleanup to staging branch
-        shell: pwsh
-        run: |
-          git checkout HEAD -- .github/workflows
-          Remove-Item ".github/finalize.part*.py" -Force
-          Remove-Item "finalize.py" -Force
-          git diff --check
+          [System.IO.File]::WriteAllText("docs/respanso/MATCH_STUDIO.ru.md", $docs, [System.Text.UTF8Encoding]::new($false))
+          git checkout HEAD -- .github/workflows *>&1 | Tee-Object -FilePath commit-diagnostic.log -Append
+          "restore-workflows=$LASTEXITCODE" | Tee-Object -FilePath commit-diagnostic.log -Append
+          Remove-Item ".github/finalize.part*.py" -Force *>&1 | Tee-Object -FilePath commit-diagnostic.log -Append
+          "remove-parts=$?" | Tee-Object -FilePath commit-diagnostic.log -Append
+          Remove-Item "finalize.py" -Force *>&1 | Tee-Object -FilePath commit-diagnostic.log -Append
+          "remove-script=$?" | Tee-Object -FilePath commit-diagnostic.log -Append
+          git diff --check *>&1 | Tee-Object -FilePath commit-diagnostic.log -Append
+          "diff-check=$LASTEXITCODE" | Tee-Object -FilePath commit-diagnostic.log -Append
+          git status --short *>&1 | Tee-Object -FilePath commit-diagnostic.log -Append
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "feat: finalize rEspanso Studio source"
-          git push --force origin HEAD:refs/heads/automation/finalize-respanso-source
+          git add -A *>&1 | Tee-Object -FilePath commit-diagnostic.log -Append
+          "git-add=$LASTEXITCODE" | Tee-Object -FilePath commit-diagnostic.log -Append
+          git diff --cached --stat *>&1 | Tee-Object -FilePath commit-diagnostic.log -Append
+          git commit -m "feat: finalize rEspanso Studio source" *>&1 | Tee-Object -FilePath commit-diagnostic.log -Append
+          "git-commit=$LASTEXITCODE" | Tee-Object -FilePath commit-diagnostic.log -Append
+          git push --force origin HEAD:refs/heads/automation/finalize-respanso-source *>&1 | Tee-Object -FilePath commit-diagnostic.log -Append
+          "git-push=$LASTEXITCODE" | Tee-Object -FilePath commit-diagnostic.log -Append
+          exit 0
+
+      - name: Upload commit diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-source-commit-diagnostic
+          path: commit-diagnostic.log
+          if-no-files-found: error
+          retention-days: 3
