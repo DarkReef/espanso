@@ -1,11 +1,6 @@
 name: Windows x64 portable
 
-# One final packaging run after fmt, Clippy, tests, core and Studio passed.
-# Restored to workflow_dispatch only after the artifact is uploaded.
 on:
-  pull_request:
-    branches:
-      - rEspanso-feature
   workflow_dispatch:
 
 permissions:
