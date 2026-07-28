@@ -178,8 +178,11 @@ impl DynamicVariableDialog {
                             variable_type: self.variable_type.trim().to_owned(),
                             params_yaml: self.params_yaml.trim().to_owned(),
                         };
-                        match validate_definition(&definition) {
-                            Ok(()) => {
+                        match canonical_definition(&definition).and_then(|definition| {
+                            validate_definition(&definition)?;
+                            Ok(definition)
+                        }) {
+                            Ok(definition) => {
                                 let placeholder = definition.placeholder();
                                 action = Some(DynamicVariableAction {
                                     message: format!(
