@@ -1,4 +1,4 @@
-name: Diagnose final Match Studio Clippy
+name: Build final Match Studio UX
 
 on:
   pull_request:
@@ -10,13 +10,13 @@ on:
       - scripts/.patch_chunks/**
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose-clippy:
+  build-package:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: windows-2022
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,29 +35,79 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
           key: final-studio-ux-${{ hashFiles('**/Cargo.lock') }}
-      - name: Apply Studio UX patch
+
+      - name: Apply Studio UX patch and clean workflows
         shell: pwsh
         run: python scripts/apply_final_studio_ux.py
+
       - name: Format Rust sources
         shell: pwsh
         run: cargo fmt --all
-      - name: Capture strict editor Clippy
+
+      - name: Run strict Clippy
         id: clippy
         continue-on-error: true
         shell: pwsh
         run: |
           $ErrorActionPreference = "Continue"
-          cargo clippy -p espanso-editor --all-targets -- --deny warnings *>&1 | Tee-Object -FilePath clippy.log
+          cargo clippy -p espanso -p espanso-editor --all-targets -- --deny warnings *>&1 | Tee-Object -FilePath clippy.log
           if ($LASTEXITCODE -ne 0) { exit 1 }
-      - name: Upload Clippy log
-        if: always()
+
+      - name: Upload Clippy failure log
+        if: steps.clippy.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: final-studio-ux-clippy-log-${{ github.sha }}
           path: clippy.log
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 3
+
       - name: Preserve Clippy failure
         if: steps.clippy.outcome == 'failure'
         shell: pwsh
         run: exit 1
+
+      - name: Test rendering engine
+        shell: pwsh
+        run: cargo test --quiet -p espanso-render
+
+      - name: Test rEspanso engine
+        shell: pwsh
+        run: cargo test --quiet -p espanso-engine
+
+      - name: Test portable launcher
+        shell: pwsh
+        run: cargo test --quiet -p espanso --bin respanso-portable
+
+      - name: Test Match Studio
+        shell: pwsh
+        run: cargo test --quiet -p espanso-editor
+
+      - name: Build rEspanso core and launcher
+        shell: pwsh
+        run: cargo build --quiet --release -p espanso --bin espanso --bin respanso-portable
+
+      - name: Build Match Studio
+        shell: pwsh
+        run: cargo build --quiet --release -p espanso-editor
+
+      - name: Assemble final Windows portable package
+        shell: pwsh
+        run: ./scripts/build_windows_native_portable_with_studio.ps1
+
+      - name: Commit finished source and CI cleanup
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: refine Match Studio editing and variables"
+          git push origin HEAD:feature/finalize-studio-ux
+
+      - name: Upload final portable package
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-final-studio-ux-windows-x64-${{ github.sha }}
+          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 14
