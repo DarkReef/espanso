@@ -15,7 +15,7 @@ on:
       - .github/workflows/apply-finalize-respanso.yml
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: finalize-respanso
@@ -25,7 +25,7 @@ jobs:
   apply:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: windows-2022
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout feature branch
         uses: actions/checkout@v4
@@ -33,61 +33,57 @@ jobs:
           ref: feature/finalize-respanso
           fetch-depth: 1
 
-      - name: Install Rust formatter
+      - name: Install stable Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
 
-      - name: Apply patches and record diagnostics
-        id: apply
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          $ErrorActionPreference = "Continue"
-          New-Item -Path ".github" -ItemType Directory -Force | Out-Null
-          python scripts/finalize_patch_a.py *> .github/finalize-apply.log
-          if ($LASTEXITCODE -eq 0) {
-            python scripts/finalize_patch_b.py *>> .github/finalize-apply.log
-          }
-          if ($LASTEXITCODE -eq 0) {
-            python scripts/generate_respanso_icon.py *>> .github/finalize-apply.log
-          }
-          if ($LASTEXITCODE -eq 0) {
-            cargo fmt --all *>> .github/finalize-apply.log
-          }
-          if ($LASTEXITCODE -ne 0) {
-            exit 1
-          }
-
-      - name: Commit patch diagnostics on failure
-        if: steps.apply.outcome == 'failure'
+      - name: Apply patches
         shell: pwsh
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/finalize-apply.log
-          git commit -m "ci: record finalization patch failure"
-          git push origin HEAD:feature/finalize-respanso
+          $ErrorActionPreference = "Stop"
+          python scripts/finalize_patch_a.py
+          python scripts/finalize_patch_b.py
+          python scripts/generate_respanso_icon.py
+          cargo fmt --all
+          cargo metadata --format-version 1 | Out-Null
 
-      - name: Remove one-time helpers
-        if: steps.apply.outcome == 'success'
+      - name: Assemble final source payload
         shell: pwsh
         run: |
-          Remove-Item -Force scripts/finalize_patch_a.py
-          Remove-Item -Force scripts/finalize_patch_b.py
-          Remove-Item -Force scripts/generate_respanso_icon.py
-          Remove-Item -Force .github/finalize-apply.log
+          $root = "target/finalization"
+          if (Test-Path $root) { Remove-Item $root -Recurse -Force }
+          $files = @(
+            "README.md",
+            "Cargo.lock",
+            ".github/workflows/build-respanso-windows.yml",
+            "assets/respanso.ico",
+            "espanso/Cargo.toml",
+            "espanso/build.rs",
+            "espanso-editor/Cargo.toml",
+            "espanso-editor/build.rs",
+            "espanso-editor/src/app.rs",
+            "espanso-editor/src/config_transfer.rs",
+            "espanso-editor/src/diagnostics.rs",
+            "espanso-editor/src/file_monitor.rs",
+            "espanso-editor/src/lib.rs",
+            "espanso-editor/src/storm_logo.rs",
+            "scripts/build_windows_native_portable_with_studio.ps1"
+          )
+          foreach ($file in $files) {
+            if (-not (Test-Path -Path $file -PathType Leaf)) {
+              throw "Final source file is missing: $file"
+            }
+            $target = Join-Path $root $file
+            New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+            Copy-Item $file $target -Force
+          }
 
-      - name: Commit applied finalization
-        if: steps.apply.outcome == 'success'
-        shell: pwsh
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "feat: finalize rEspanso"
-          git push origin HEAD:feature/finalize-respanso
-
-      - name: Fail after publishing diagnostics
-        if: steps.apply.outcome == 'failure'
-        run: exit 1
+      - name: Upload final source payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: respanso-final-source-${{ github.sha }}
+          path: target/finalization
+          if-no-files-found: error
+          retention-days: 7
+          include-hidden-files: true
