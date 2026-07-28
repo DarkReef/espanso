@@ -1,7 +1,10 @@
 name: Windows x64 portable
 
-# Manual-only final verification. Run explicitly from the Actions tab.
+# Temporary PR trigger for final artifact verification.
 on:
+  pull_request:
+    branches:
+      - rEspanso-feature
   workflow_dispatch:
 
 permissions:
