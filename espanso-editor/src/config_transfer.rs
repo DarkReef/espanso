@@ -10,7 +10,7 @@ use std::{
 use walkdir::WalkDir;
 
 const PACKAGE_FORMAT: &str = "rEspanso configuration package";
-const PACKAGE_VERSION: u32 = 1;
+const PACKAGE_VERSION: u32 = 2;
 const MAX_PACKAGE_BYTES: usize = 64 * 1024 * 1024;
 const MAX_FILE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_FILES: usize = 10_000;
@@ -113,7 +113,7 @@ pub fn import_package(config_root: &Path, package_path: &Path) -> Result<ImportR
             )
         })?;
     }
-    for directory in ["config", "match", "scripts"] {
+    for directory in ["match", "scripts"] {
         fs::create_dir_all(stage_root.join(directory)).map_err(|error| {
             format!(
                 "Не удалось создать временную папку импорта {}: {error}",
@@ -144,7 +144,7 @@ pub fn import_package(config_root: &Path, package_path: &Path) -> Result<ImportR
     let mut moved_old = Vec::<(PathBuf, PathBuf)>::new();
     let mut installed = Vec::<PathBuf>::new();
     let install_result = (|| -> Result<(), String> {
-        for directory in ["config", "match", "scripts"] {
+        for directory in ["match", "scripts"] {
             let current = config_root.join(directory);
             let staged = stage_root.join(directory);
             let old = config_root.join(format!(".respanso-old-{stamp}-{directory}"));
@@ -308,7 +308,7 @@ fn unique_package_path(destination: &Path, prefix: &str, stamp: u64) -> PathBuf 
 
 fn collect_files(config_root: &Path) -> Result<Vec<PackageFile>, String> {
     let mut files = Vec::new();
-    for directory in ["config", "match", "scripts"] {
+    for directory in ["match", "scripts"] {
         let source = config_root.join(directory);
         if !source.exists() {
             continue;
@@ -454,7 +454,7 @@ fn is_allowed_relative(path: &Path) -> bool {
     let Some(Component::Normal(root)) = components.next() else {
         return false;
     };
-    if !matches!(root.to_str(), Some("config" | "match" | "scripts")) {
+    if !matches!(root.to_str(), Some("match" | "scripts")) {
         return false;
     }
     if components.any(|component| !matches!(component, Component::Normal(_))) {
@@ -465,7 +465,7 @@ fn is_allowed_relative(path: &Path) -> bool {
         .and_then(|extension| extension.to_str())
         .unwrap_or_default();
     match root.to_str() {
-        Some("config" | "match") => {
+        Some("match") => {
             extension.eq_ignore_ascii_case("yml") || extension.eq_ignore_ascii_case("yaml")
         }
         Some("scripts") => extension.eq_ignore_ascii_case("rhai"),
@@ -496,14 +496,8 @@ mod tests {
     use tempdir::TempDir;
 
     fn seed_root(root: &Path) {
-        fs::create_dir_all(root.join("config")).unwrap();
         fs::create_dir_all(root.join("match/medical")).unwrap();
         fs::create_dir_all(root.join("scripts/medical")).unwrap();
-        fs::write(
-            root.join("config/default.yml"),
-            "show_notifications: true\n",
-        )
-        .unwrap();
         fs::write(
             root.join("match/base.yml"),
             "imports:\n  - medical/rules.yml\nmatches: []\n",
@@ -519,10 +513,10 @@ mod tests {
         let temp = TempDir::new("respanso-export").unwrap();
         seed_root(temp.path());
         let report = export_current(temp.path()).unwrap();
-        assert_eq!(report.file_count, 4);
+        assert_eq!(report.file_count, 3);
         assert!(report.path.is_file());
         let summary = inspect_package(&report.path).unwrap();
-        assert_eq!(summary.file_count, 4);
+        assert_eq!(summary.file_count, 3);
         let raw = fs::read_to_string(report.path).unwrap();
         assert!(!raw.contains("ignored.txt"));
     }

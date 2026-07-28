@@ -12,10 +12,7 @@ const FULL_AUDIT_INTERVAL: Duration = Duration::from_secs(180);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Fingerprint {
-    Readable {
-        length: u64,
-        content_hash: u64,
-    },
+    Readable { length: u64, content_hash: u64 },
     Unreadable,
 }
 
@@ -225,7 +222,11 @@ mod tests {
         fs::create_dir_all(directory.path().join("config")).unwrap();
         fs::create_dir_all(directory.path().join("match")).unwrap();
         fs::create_dir_all(directory.path().join("scripts")).unwrap();
-        fs::write(directory.path().join("config/default.yml"), "enable: true\n").unwrap();
+        fs::write(
+            directory.path().join("config/default.yml"),
+            "enable: true\n",
+        )
+        .unwrap();
         fs::write(directory.path().join("match/base.yaml"), "matches: []\n").unwrap();
         fs::write(directory.path().join("scripts/test.rhai"), "42").unwrap();
         fs::write(directory.path().join("scripts/ignored.txt"), "ignored").unwrap();

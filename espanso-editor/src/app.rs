@@ -1,9 +1,11 @@
 use crate::{
     config_transfer::{self, PackageSummary},
-    file_monitor::FileMonitor,
+    diagnostics::{collect_project_diagnostics, DiagnosticManager, DiagnosticState},
+    file_monitor::{FileMonitor, PollResult},
     rhai_lab::RhaiLab,
     runtime::RuntimeMonitor,
     settings::SettingsEditor,
+    storm_logo,
     workspace::{
         DiagnosticLevel, MatchKind, MatchWorkspace, PlaygroundResult, RegexBuilderSpec,
         RegexExampleResult, RuleDraft, RuleId,
@@ -18,6 +20,7 @@ use std::{
 
 const APP_TITLE: &str = "rEspanso Match Studio";
 const FILE_CHECK_INTERVAL: Duration = Duration::from_secs(3);
+const FILE_STABILITY_RECHECK: Duration = Duration::from_millis(850);
 
 pub fn run(config_root: PathBuf) -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -77,6 +80,7 @@ pub struct MatchStudioApp {
     confirm_reload: bool,
     reload_all_after_confirm: bool,
     file_monitor: FileMonitor,
+    diagnostics: DiagnosticManager,
     next_file_check: Instant,
     external_change_pending: bool,
     show_config_transfer: bool,
@@ -96,7 +100,14 @@ impl MatchStudioApp {
         };
         let settings = SettingsEditor::load(&config_root);
         let rhai_lab = RhaiLab::new(&config_root);
-        let file_monitor = FileMonitor::new(&config_root);
+        let now = Instant::now();
+        let file_monitor = FileMonitor::new(&config_root, now);
+        let mut diagnostics = DiagnosticManager::default();
+        diagnostics.reconcile(
+            collect_project_diagnostics(&config_root, workspace.as_ref()),
+            &config_root,
+            workspace.as_ref(),
+        );
         let config_packages = config_transfer::list_packages(&config_root).unwrap_or_default();
         Self {
             config_root,
@@ -128,7 +139,8 @@ impl MatchStudioApp {
             confirm_reload: false,
             reload_all_after_confirm: false,
             file_monitor,
-            next_file_check: Instant::now() + FILE_CHECK_INTERVAL,
+            diagnostics,
+            next_file_check: now + FILE_CHECK_INTERVAL,
             external_change_pending: false,
             show_config_transfer: false,
             config_packages,
@@ -147,7 +159,8 @@ impl MatchStudioApp {
                 self.load_error = None;
                 self.selected = None;
                 self.raw_rule.clear();
-                self.file_monitor.refresh(&self.config_root);
+                self.file_monitor.refresh(&self.config_root, Instant::now());
+                self.validate_project();
                 "Правила перечитаны с диска".clone_into(&mut self.status);
             }
             Err(error) => {
@@ -172,14 +185,23 @@ impl MatchStudioApp {
             return;
         }
         self.settings = SettingsEditor::load(&self.config_root);
-        self.file_monitor.refresh(&self.config_root);
+        self.rhai_lab = RhaiLab::new(&self.config_root);
         self.external_change_pending = false;
-        "Обнаружены изменения YAML-файлов; Studio обновила правила и настройки"
+        "Обнаружены устойчивые изменения файлов; Studio обновила проект"
             .clone_into(&mut self.status);
     }
 
+    fn validate_project(&mut self) {
+        let diagnostics = collect_project_diagnostics(&self.config_root, self.workspace.as_ref());
+        self.diagnostics
+            .reconcile(diagnostics, &self.config_root, self.workspace.as_ref());
+    }
+
     fn has_transfer_unsaved_changes(&self) -> bool {
-        self.has_unsaved_changes() || self.rhai_lab.dirty()
+        self.workspace
+            .as_ref()
+            .is_some_and(|workspace| !workspace.dirty_files().is_empty())
+            || self.rhai_lab.dirty()
     }
 
     fn refresh_config_packages(&mut self) {
@@ -235,7 +257,7 @@ impl MatchStudioApp {
 
     fn export_config_package(&mut self) {
         if self.has_transfer_unsaved_changes() {
-            "Экспорт остановлен: сначала сохраните изменения правил, настроек и Rhai-скрипта"
+            "Экспорт остановлен: сначала сохраните изменения правил и Rhai-скрипта"
                 .clone_into(&mut self.config_transfer_status);
             return;
         }
@@ -274,7 +296,7 @@ impl MatchStudioApp {
                 self.load_error = load_error;
                 self.settings = SettingsEditor::load(&self.config_root);
                 self.rhai_lab = RhaiLab::new(&self.config_root);
-                self.file_monitor = FileMonitor::new(&self.config_root);
+                self.file_monitor = FileMonitor::new(&self.config_root, Instant::now());
                 self.next_file_check = Instant::now() + FILE_CHECK_INTERVAL;
                 self.external_change_pending = false;
                 self.selected = None;
@@ -283,6 +305,7 @@ impl MatchStudioApp {
                 self.yaml_file_filter.clear();
                 self.refresh_config_packages();
                 self.select_config_package(report.package.clone());
+                self.validate_project();
 
                 let warning = if report.cleanup_warnings.is_empty() {
                     String::new()
@@ -331,7 +354,7 @@ impl MatchStudioApp {
             .resizable(true)
             .show(context, |ui| {
                 ui.label(
-                    "Единый пакет .respanso-config включает config/**/*.yml|yaml, match/**/*.yml|yaml и scripts/**/*.rhai.",
+                    "Пакет .respanso-config включает только match/**/*.yml|yaml и scripts/**/*.rhai. Внутренний config не переносится.",
                 );
                 ui.label(
                     egui::RichText::new(format!(
@@ -470,7 +493,7 @@ impl MatchStudioApp {
             .show(context, |ui| {
                 ui.colored_label(
                     egui::Color32::from_rgb(210, 105, 35),
-                    "Текущие папки config, match и scripts будут заменены.",
+                    "Текущие папки match и scripts будут заменены. Внутренний config останется без изменений.",
                 );
                 if let Some(path) = &package {
                     ui.label(format!("Пакет: {}", path.display()));
@@ -515,21 +538,41 @@ impl MatchStudioApp {
             context.request_repaint_after(self.next_file_check.saturating_duration_since(now));
             return;
         }
-        self.next_file_check = now + FILE_CHECK_INTERVAL;
-        context.request_repaint_after(FILE_CHECK_INTERVAL);
 
-        if !self.file_monitor.changed(&self.config_root) {
-            return;
+        match self.file_monitor.poll(&self.config_root, now) {
+            PollResult::Unchanged => {
+                self.next_file_check = now + FILE_CHECK_INTERVAL;
+            }
+            PollResult::Pending { changed_files } => {
+                self.next_file_check = now + FILE_STABILITY_RECHECK;
+                self.status =
+                    format!("Файлы изменяются: ожидается устойчивый хеш ({changed_files})");
+            }
+            PollResult::Audit => {
+                self.next_file_check = now + FILE_CHECK_INTERVAL;
+                if !self.has_transfer_unsaved_changes() && !self.settings.dirty() {
+                    self.validate_project();
+                }
+            }
+            PollResult::StableChanged { changed_files } => {
+                self.next_file_check = now + FILE_CHECK_INTERVAL;
+                if self.has_unsaved_changes() || self.rhai_lab.dirty() {
+                    self.external_change_pending = true;
+                    self.status = format!(
+                        "Обнаружены внешние изменения ({changed_files}). Сохраните или отмените локальные изменения, затем обновите проект"
+                    );
+                } else {
+                    self.reload_all_from_disk();
+                    self.status = format!(
+                        "Проверен устойчивый снимок проекта: изменено файлов {changed_files}"
+                    );
+                }
+            }
         }
-
-        if self.has_unsaved_changes() {
-            self.external_change_pending = true;
-            "Файлы конфигурации изменились снаружи. Сохраните или отмените локальные изменения, затем обновите с диска"
-                .clone_into(&mut self.status);
-            return;
-        }
-
-        self.reload_all_from_disk();
+        context.request_repaint_after(
+            self.next_file_check
+                .saturating_duration_since(Instant::now()),
+        );
     }
 
     fn request_reload(&mut self) {
@@ -548,7 +591,8 @@ impl MatchStudioApp {
     fn save_settings(&mut self) {
         match self.settings.save() {
             Ok(()) => {
-                self.file_monitor.refresh(&self.config_root);
+                self.file_monitor.refresh(&self.config_root, Instant::now());
+                self.validate_project();
                 "Настройки rEspanso сохранены. Перезагрузите конфигурацию или перезапустите rEspanso"
                     .clone_into(&mut self.status);
             }
@@ -563,7 +607,8 @@ impl MatchStudioApp {
         }
         match self.settings.reload_selected() {
             Ok(()) => {
-                self.file_monitor.refresh(&self.config_root);
+                self.file_monitor.refresh(&self.config_root, Instant::now());
+                self.validate_project();
                 "Настройки перечитаны с диска".clone_into(&mut self.status);
             }
             Err(error) => self.status = error,
@@ -599,11 +644,13 @@ impl MatchStudioApp {
         };
         match workspace.save_all() {
             Ok(saved) if saved.is_empty() => {
-                self.file_monitor.refresh(&self.config_root);
+                self.file_monitor.refresh(&self.config_root, Instant::now());
+                self.validate_project();
                 "Нет изменений для сохранения".clone_into(&mut self.status);
             }
             Ok(saved) => {
-                self.file_monitor.refresh(&self.config_root);
+                self.file_monitor.refresh(&self.config_root, Instant::now());
+                self.validate_project();
                 self.status = format!("Сохранено файлов: {}. Резервные копии созданы", saved.len());
             }
             Err(error) => {
@@ -816,6 +863,16 @@ impl MatchStudioApp {
         };
     }
 
+    fn save_rhai_current(&mut self) {
+        let result = self.rhai_lab.save_current();
+        let saved = result.is_ok();
+        self.report_rhai_action(result);
+        if saved {
+            self.file_monitor.refresh(&self.config_root, Instant::now());
+            self.validate_project();
+        }
+    }
+
     fn handle_shortcuts(&mut self, context: &egui::Context) {
         if self.active_tab == MainTab::Rhai {
             let (run, compile, save, reload, new_script, help) = context.input(|input| {
@@ -830,8 +887,7 @@ impl MatchStudioApp {
                 )
             });
             if save {
-                let result = self.rhai_lab.save_current();
-                self.report_rhai_action(result);
+                self.save_rhai_current();
             }
             if reload {
                 let result = self.rhai_lab.reload_current();
@@ -922,6 +978,7 @@ impl MatchStudioApp {
     fn top_bar(&mut self, root: &mut egui::Ui) {
         egui::Panel::top("toolbar").show(root, |ui| {
             ui.horizontal(|ui| {
+                storm_logo::show(ui);
                 ui.heading(APP_TITLE);
                 ui.separator();
 
@@ -960,7 +1017,7 @@ impl MatchStudioApp {
                 ui.separator();
                 if ui
                     .button("Импорт / экспорт")
-                    .on_hover_text("Перенос config, match и scripts единым проверяемым пакетом")
+                    .on_hover_text("Перенос match и scripts единым проверяемым пакетом")
                     .clicked()
                 {
                     self.show_config_transfer = true;
@@ -1009,8 +1066,8 @@ impl MatchStudioApp {
                             self.confirm_delete = true;
                         }
                         ui.separator();
-                        ui.checkbox(&mut self.show_diagnostics, "Проверка").on_hover_text(
-                            "Ctrl+L. Ошибки YAML, RegExp, дубликаты и проблемы импортов",
+                        ui.checkbox(&mut self.show_diagnostics, "Диагностика").on_hover_text(
+                            "Ctrl+L. Показать или скрыть устойчивые экземпляры ошибок",
                         );
                         if let Some(workspace) = &self.workspace {
                             let dirty = workspace.dirty_files().len();
@@ -1692,44 +1749,71 @@ impl MatchStudioApp {
         if !self.show_diagnostics {
             return;
         }
-        let diagnostics = self
-            .workspace
-            .as_ref()
-            .map_or_else(Vec::new, MatchWorkspace::diagnostics);
+        let diagnostics = self.diagnostics.instances();
+        let generation = self.diagnostics.generation();
+        let active_count = self.diagnostics.active_count();
+
         egui::Panel::right("diagnostics")
             .resizable(true)
-            .default_size(340.0)
+            .default_size(360.0)
             .show(root, |ui| {
-                ui.heading("Проверка конфигурации");
-                if diagnostics.is_empty() {
+                ui.heading("Диагностика проекта");
+                ui.label(
+                    egui::RichText::new(format!(
+                        "Снимок #{generation} · активных проблем: {active_count}"
+                    ))
+                    .weak(),
+                );
+                if active_count == 0 {
                     ui.colored_label(
                         egui::Color32::from_rgb(40, 150, 90),
                         "Проблем не обнаружено",
                     );
                     ui.label(
                         egui::RichText::new(
-                            "YAML, RegExp, дубликаты и импорты прошли базовую проверку",
+                            "YAML, RegExp, импорты, внутренний config и Rhai проверены",
                         )
                         .weak(),
                     );
                 }
+
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     for diagnostic in diagnostics {
-                        let prefix = match diagnostic.level {
-                            DiagnosticLevel::Error => "ОШИБКА",
-                            DiagnosticLevel::Warning => "ВНИМАНИЕ",
-                            DiagnosticLevel::Info => "СВЕДЕНИЕ",
-                        };
-                        ui.strong(format!("{prefix}: {}", ru_message(&diagnostic.message)));
-                        if let Some(file) = &diagnostic.file {
-                            ui.small(relative_display(&self.config_root, file));
-                        }
-                        if let Some(rule) = diagnostic.rule {
-                            if ui.button("Открыть правило").clicked() {
-                                self.select_rule(rule);
+                        ui.push_id(diagnostic.id, |ui| {
+                            let prefix = match diagnostic.state {
+                                DiagnosticState::PendingResolved => "ИСПРАВЛЯЕТСЯ",
+                                DiagnosticState::New => "НОВАЯ",
+                                DiagnosticState::Active => match diagnostic.level {
+                                    DiagnosticLevel::Error => "ОШИБКА",
+                                    DiagnosticLevel::Warning => "ВНИМАНИЕ",
+                                    DiagnosticLevel::Info => "СВЕДЕНИЕ",
+                                },
+                            };
+                            let text = format!("{prefix}: {}", ru_message(&diagnostic.message));
+                            if diagnostic.state == DiagnosticState::PendingResolved {
+                                ui.label(egui::RichText::new(text).weak().italics());
+                            } else {
+                                ui.strong(text);
                             }
-                        }
-                        ui.separator();
+                            if let Some(file) = &diagnostic.file {
+                                ui.small(relative_display(&self.config_root, file));
+                            }
+                            ui.small(
+                                egui::RichText::new(format!(
+                                    "Наблюдений: {} · впервые: #{} · последнее: #{}",
+                                    diagnostic.occurrence_count,
+                                    diagnostic.first_seen_generation,
+                                    diagnostic.last_seen_generation
+                                ))
+                                .weak(),
+                            );
+                            if let Some(rule) = diagnostic.rule {
+                                if ui.button("Открыть правило").clicked() {
+                                    self.select_rule(rule);
+                                }
+                            }
+                            ui.separator();
+                        });
                     }
                 });
             });
@@ -1765,7 +1849,7 @@ impl MatchStudioApp {
                                 "Ctrl+R",
                                 "Обновить активный YAML или Rhai-файл с диска",
                             );
-                            shortcut_row(ui, "Ctrl+L", "Показать или скрыть проверку");
+                            shortcut_row(ui, "Ctrl+L", "Показать или скрыть диагностику");
                             shortcut_row(ui, "Ctrl+Shift+Enter", "Скомпилировать Rhai-скрипт");
                             shortcut_row(ui, "F1", "Открыть эту справку");
                         });

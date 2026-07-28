@@ -13,12 +13,7 @@ pub fn show(ui: &mut egui::Ui) -> egui::Response {
         let painter = ui.painter_at(rect);
         let center = rect.center() + egui::vec2(0.0, -1.0);
 
-        let glow = egui::Color32::from_rgba_unmultiplied(
-            35,
-            196,
-            255,
-            (45.0 + 75.0 * pulse) as u8,
-        );
+        let glow = egui::Color32::from_rgba_unmultiplied(35, 196, 255, (45.0 + 75.0 * pulse) as u8);
         painter.circle_filled(center + egui::vec2(-10.0, -2.0), 13.0, glow);
         painter.circle_filled(center + egui::vec2(1.0, -8.0), 15.0, glow);
         painter.circle_filled(center + egui::vec2(13.0, -1.0), 12.0, glow);
@@ -52,12 +47,8 @@ pub fn show(ui: &mut egui::Ui) -> egui::Response {
             center + egui::vec2(-3.0 + shift, 11.0),
             center + egui::vec2(-8.0 + shift, 11.0),
         ];
-        let bolt_glow = egui::Color32::from_rgba_unmultiplied(
-            76,
-            218,
-            255,
-            (65.0 + 90.0 * pulse) as u8,
-        );
+        let bolt_glow =
+            egui::Color32::from_rgba_unmultiplied(76, 218, 255, (65.0 + 90.0 * pulse) as u8);
         painter.add(egui::Shape::convex_polygon(
             bolt.iter()
                 .map(|point| *point + egui::vec2(0.0, 1.0))

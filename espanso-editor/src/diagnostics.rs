@@ -217,8 +217,7 @@ fn supported_files(root: &Path, kind: &str) -> Vec<PathBuf> {
                 .unwrap_or_default();
             match kind {
                 "yaml" => {
-                    extension.eq_ignore_ascii_case("yml")
-                        || extension.eq_ignore_ascii_case("yaml")
+                    extension.eq_ignore_ascii_case("yml") || extension.eq_ignore_ascii_case("yaml")
                 }
                 "rhai" => extension.eq_ignore_ascii_case("rhai"),
                 _ => false,

@@ -14,7 +14,7 @@
 - визуальные формы для калькуляторов, тестов и опросников;
 - встроенный Rhai-runtime: редактируемые `.rhai`-модули без Rust, Node.js, Python и PowerShell;
 - portable-запуск Windows двойным кликом по `rEspanso.exe`;
-- изолированные каталоги `portable/config`, `portable/runtime` и `portable/packages`;
+- единая portable-папка с локальными `config/`, `match/`, `scripts/`, `runtime/` и `packages/`;
 - локальная работа без обязательного облака и телеметрии.
 
 ## Быстрый старт Windows portable
@@ -40,6 +40,10 @@ YAML-форма → встроенный Rhai → результат → окн�
 ```
 
 Это позволяет добавлять и исправлять FINDRISC, HAS-BLED, SCORE2/SCORE2-OP, CHA₂DS₂-VASc и другие модули без пересборки приложения.
+
+## Документация rEspanso
+
+Полное русское руководство находится в [`docs/respanso/`](docs/respanso/README.ru.md). В portable-архив оно включается в папку `docs/`.
 
 ## Совместимость с исходным проектом
 
