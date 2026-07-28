@@ -1,70 +1,296 @@
-name: Refresh Windows dependency lock
+name: Windows x64 portable
 
-# One-time lock refresh. Replaced by the final manual Windows workflow afterward.
+# PR trigger is kept only for the requested final verification run.
+# After the artifact is produced this workflow is returned to workflow_dispatch only.
 on:
   pull_request:
     branches:
       - rEspanso-feature
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: windows-lock-refresh-${{ github.ref }}
+  group: windows-x64-portable-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  refresh-lock:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  verify-and-build:
+    name: Check and build rEspanso portable
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
     steps:
-      - name: Checkout working branch
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
         with:
-          ref: feature/manual-build-dynamic-vars
-          fetch-depth: 1
+          arch: x64
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
 
-      - name: Resolve compatible dependency versions
-        shell: bash
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-portable
+          cache-on-failure: true
+
+      - name: Verify repository cleanup
+        shell: pwsh
         run: |
-          cargo update -p colored --precise 2.1.0
-          cargo update -p reqwest --precise 0.11.17
-          cargo update -p hyper --precise 0.14.26
-          cargo metadata --locked --no-deps --format-version 1 >/dev/null
+          $workflows = @(Get-ChildItem ".github/workflows" -File)
+          if ($workflows.Count -ne 1 -or $workflows[0].Name -ne "windows-x64-portable.yml") {
+            throw "Repository must contain exactly one final workflow"
+          }
+          if (Test-Path ".claude") {
+            throw ".claude must not be present"
+          }
+          $junk = @(git ls-files | Where-Object {
+            ($_ -match '^(scripts|\.github)/.*(^|[-_.])(apply|patch|trigger|diagnose|rerun|temporary|temp|fix_dynamic|final[-_]?build)([-_.]|$)') -or
+            ($_ -match '(^|/)trigger[^/]*$')
+          })
+          if ($junk.Count -gt 0) {
+            $junk | ForEach-Object { Write-Error "Technical junk remains: $_" }
+            throw "Technical cleanup is incomplete"
+          }
 
-      - name: Verify conflicting dependency paths are gone
-        shell: bash
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        shell: pwsh
         run: |
-          mkdir -p target/dependency-tree
-          cargo tree --locked -p espanso --target x86_64-pc-windows-msvc -e normal \
-            > target/dependency-tree/espanso-windows-core.txt
-          cat target/dependency-tree/espanso-windows-core.txt
-          if grep -Eq 'socket2 v0\.5|colored v2\.2|windows-sys v0\.52\.0' \
-            target/dependency-tree/espanso-windows-core.txt; then
-            echo "Core still resolves a conflicting Windows import-library path" >&2
-            exit 1
-          fi
+          New-Item -ItemType Directory -Force "target/clippy-logs" | Out-Null
+          $log = "target/clippy-logs/windows-x64-clippy.log"
+          & cargo clippy --locked -p espanso-editor -p espanso-config --all-targets -- --deny warnings *>&1 |
+            Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            throw "Clippy failed with exit code $LASTEXITCODE"
+          }
 
-      - name: Commit refreshed lock
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock
-          git diff --cached --check
-          git commit -m "fix(windows): restore wxWidgets-compatible dependency lock [skip ci]"
-          git push origin HEAD:feature/manual-build-dynamic-vars
-
-      - name: Upload dependency verification
-        if: always()
+      - name: Upload Clippy failure log
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: rEspanso-Windows-compatible-dependency-tree
-          path: target/dependency-tree/espanso-windows-core.txt
+          name: rEspanso-Windows-x64-clippy-failure
+          path: target/clippy-logs/windows-x64-clippy.log
           if-no-files-found: warn
           retention-days: 3
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/test-logs" | Out-Null
+          $log = "target/test-logs/windows-x64-tests.log"
+          function Invoke-CargoTest([string]$label, [string[]]$arguments) {
+            "`n===== $label =====" | Tee-Object -FilePath $log -Append
+            & cargo @arguments *>&1 | Tee-Object -FilePath $log -Append
+            if ($LASTEXITCODE -ne 0) {
+              throw "$label failed with exit code $LASTEXITCODE"
+            }
+          }
+          Invoke-CargoTest "espanso-editor" @("test", "--locked", "--quiet", "-p", "espanso-editor")
+          Invoke-CargoTest "espanso-engine" @("test", "--locked", "--quiet", "-p", "espanso-engine")
+          Invoke-CargoTest "espanso-render" @("test", "--locked", "--quiet", "-p", "espanso-render")
+          Invoke-CargoTest "respanso-portable" @("test", "--locked", "--quiet", "-p", "espanso", "--bin", "respanso-portable")
+
+      - name: Upload test failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-test-failure
+          path: target/test-logs/windows-x64-tests.log
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Build rEspanso core and launcher
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/build-logs" | Out-Null
+          $log = "target/build-logs/windows-x64-core-build.jsonl"
+          $previousColor = $env:CARGO_TERM_COLOR
+          $env:CARGO_TERM_COLOR = "never"
+          try {
+            & cargo build --locked --release -p espanso --bin espanso --bin respanso-portable --message-format=json-diagnostic-rendered-ansi *>&1 |
+              Tee-Object -FilePath $log
+            $exitCode = $LASTEXITCODE
+            $messages = @(Get-Content -Path $log)
+            if ($exitCode -ne 0) {
+              foreach ($line in $messages) {
+                try {
+                  $message = $line | ConvertFrom-Json -ErrorAction Stop
+                  if ($message.reason -eq "compiler-message" -and $message.message.rendered) {
+                    Write-Host $message.message.rendered
+                  }
+                } catch {
+                  continue
+                }
+              }
+              throw "rEspanso core or launcher build failed with exit code $exitCode"
+            }
+
+            function Get-CargoExecutable([string]$binary) {
+              $paths = foreach ($line in $messages) {
+                try {
+                  $message = $line | ConvertFrom-Json -ErrorAction Stop
+                } catch {
+                  continue
+                }
+                if (
+                  $message.reason -eq "compiler-artifact" -and
+                  $message.target.name -eq $binary -and
+                  -not [string]::IsNullOrWhiteSpace([string]$message.executable)
+                ) {
+                  [string]$message.executable
+                }
+              }
+              $path = @($paths) | Select-Object -Last 1
+              if ([string]::IsNullOrWhiteSpace([string]$path) -or -not (Test-Path -Path $path -PathType Leaf)) {
+                throw "Cargo did not report an existing executable for $binary"
+              }
+              return (Resolve-Path $path).Path
+            }
+
+            $execPath = Get-CargoExecutable "espanso"
+            $launcherPath = Get-CargoExecutable "respanso-portable"
+            "EXEC_PATH=$execPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "LAUNCHER_PATH=$launcherPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } finally {
+            $env:CARGO_TERM_COLOR = $previousColor
+          }
+
+      - name: Upload core build failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-core-build-failure
+          path: target/build-logs/windows-x64-core-build.jsonl
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Build Match Studio
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/build-logs" | Out-Null
+          $log = "target/build-logs/windows-x64-studio-build.jsonl"
+          $previousColor = $env:CARGO_TERM_COLOR
+          $env:CARGO_TERM_COLOR = "never"
+          try {
+            & cargo build --locked --release -p espanso-editor --bin espanso-editor --message-format=json-diagnostic-rendered-ansi *>&1 |
+              Tee-Object -FilePath $log
+            $exitCode = $LASTEXITCODE
+            $messages = @(Get-Content -Path $log)
+            if ($exitCode -ne 0) {
+              throw "Match Studio build failed with exit code $exitCode"
+            }
+
+            $paths = foreach ($line in $messages) {
+              try {
+                $message = $line | ConvertFrom-Json -ErrorAction Stop
+              } catch {
+                continue
+              }
+              if (
+                $message.reason -eq "compiler-artifact" -and
+                $message.target.name -eq "espanso-editor" -and
+                -not [string]::IsNullOrWhiteSpace([string]$message.executable)
+              ) {
+                [string]$message.executable
+              }
+            }
+            $editorPath = @($paths) | Select-Object -Last 1
+            if ([string]::IsNullOrWhiteSpace([string]$editorPath) -or -not (Test-Path -Path $editorPath -PathType Leaf)) {
+              throw "Cargo did not report an existing executable for espanso-editor"
+            }
+            $editorPath = (Resolve-Path $editorPath).Path
+            "EDITOR_PATH=$editorPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } finally {
+            $env:CARGO_TERM_COLOR = $previousColor
+          }
+
+      - name: Upload Studio build failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-studio-build-failure
+          path: target/build-logs/windows-x64-studio-build.jsonl
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Assemble portable archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/package-logs" | Out-Null
+          $log = "target/package-logs/windows-x64-package.log"
+          try {
+            $requiredBinaries = @(
+              $env:EXEC_PATH,
+              $env:LAUNCHER_PATH,
+              $env:EDITOR_PATH
+            )
+            foreach ($binary in $requiredBinaries) {
+              if ([string]::IsNullOrWhiteSpace([string]$binary) -or -not (Test-Path -Path $binary -PathType Leaf)) {
+                throw "Release binary path is missing or invalid: $binary"
+              }
+            }
+
+            "EXEC_PATH=$env:EXEC_PATH" | Tee-Object -FilePath $log -Append
+            "LAUNCHER_PATH=$env:LAUNCHER_PATH" | Tee-Object -FilePath $log -Append
+            "EDITOR_PATH=$env:EDITOR_PATH" | Tee-Object -FilePath $log -Append
+
+            & "./scripts/build_windows_native_portable_with_studio.ps1" *>&1 |
+              Tee-Object -FilePath $log -Append
+            if ($LASTEXITCODE -ne 0) {
+              throw "Portable assembly script failed with exit code $LASTEXITCODE"
+            }
+
+            $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+            if (-not (Test-Path $archive)) {
+              throw "Portable archive was not created"
+            }
+            $entries = tar -tf $archive
+            $entries | Tee-Object -FilePath $log -Append
+            if ($LASTEXITCODE -ne 0) {
+              throw "Portable archive could not be listed"
+            }
+            if ($entries -match '\.(bat|cmd)$') {
+              throw "Portable archive contains BAT/CMD launchers"
+            }
+            $required = @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")
+            foreach ($file in $required) {
+              if (-not ($entries -match [regex]::Escape($file))) {
+                throw "Portable archive is missing $file"
+              }
+            }
+          } catch {
+            $_ | Out-String | Tee-Object -FilePath $log -Append
+            throw
+          }
+
+      - name: Upload packaging failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-package-failure
+          path: target/package-logs/windows-x64-package.log
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Upload portable archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-portable
+          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
