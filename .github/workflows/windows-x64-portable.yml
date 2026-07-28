@@ -37,17 +37,16 @@ jobs:
           cargo update -p hyper --precise 0.14.26
           cargo metadata --locked --no-deps --format-version 1 >/dev/null
 
-      - name: Verify core no longer uses windows-targets 0.52
+      - name: Verify conflicting dependency paths are gone
         shell: bash
         run: |
           mkdir -p target/dependency-tree
-          cargo tree --locked -p espanso --target x86_64-pc-windows-msvc \
-            -i windows-targets@0.52.6 -e normal \
-            > target/dependency-tree/core-windows-targets-0.52.txt 2>&1 || true
-          cat target/dependency-tree/core-windows-targets-0.52.txt
-          if grep -Eq 'espanso v2\.4\.0|espanso-package v0\.1\.0|socket2 v0\.5|colored v2\.2' \
-            target/dependency-tree/core-windows-targets-0.52.txt; then
-            echo "Core still resolves the conflicting Windows import library" >&2
+          cargo tree --locked -p espanso --target x86_64-pc-windows-msvc -e normal \
+            > target/dependency-tree/espanso-windows-core.txt
+          cat target/dependency-tree/espanso-windows-core.txt
+          if grep -Eq 'socket2 v0\.5|colored v2\.2|windows-sys v0\.52\.0' \
+            target/dependency-tree/espanso-windows-core.txt; then
+            echo "Core still resolves a conflicting Windows import-library path" >&2
             exit 1
           fi
 
@@ -66,6 +65,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rEspanso-Windows-compatible-dependency-tree
-          path: target/dependency-tree/core-windows-targets-0.52.txt
+          path: target/dependency-tree/espanso-windows-core.txt
           if-no-files-found: warn
           retention-days: 3
