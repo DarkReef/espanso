@@ -122,36 +122,48 @@ jobs:
       - name: Build release binaries
         run: |
           cargo build --locked --quiet --release -p espanso --bin espanso --bin respanso-portable
-          cargo build --locked --quiet --release -p espanso-editor
+          cargo build --locked --quiet --release -p espanso-editor --bin espanso-editor
 
       - name: Assemble portable archive
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force "target/package-logs" | Out-Null
           $log = "target/package-logs/windows-x64-package.log"
-          function Resolve-ReleaseBinary([string]$name) {
-            $expected = @(
-              "target/release/$name.exe",
-              "target/x86_64-pc-windows-msvc/release/$name.exe"
-            )
-            foreach ($candidate in $expected) {
-              if (Test-Path $candidate) {
-                return (Resolve-Path $candidate).Path
+          function Resolve-CargoBinary([string]$package, [string]$binary) {
+            $previousColor = $env:CARGO_TERM_COLOR
+            $env:CARGO_TERM_COLOR = "never"
+            try {
+              $messages = @(& cargo build --locked --release -p $package --bin $binary --message-format=json)
+              if ($LASTEXITCODE -ne 0) {
+                throw "Cargo could not resolve $package/$binary (exit code $LASTEXITCODE)"
               }
+              $paths = foreach ($line in $messages) {
+                try {
+                  $message = $line | ConvertFrom-Json -ErrorAction Stop
+                } catch {
+                  continue
+                }
+                if (
+                  $message.reason -eq "compiler-artifact" -and
+                  $message.target.name -eq $binary -and
+                  -not [string]::IsNullOrWhiteSpace([string]$message.executable)
+                ) {
+                  [string]$message.executable
+                }
+              }
+              $resolved = @($paths) | Select-Object -Last 1
+              if ([string]::IsNullOrWhiteSpace([string]$resolved) -or -not (Test-Path $resolved)) {
+                throw "Cargo did not report an existing executable for $package/$binary"
+              }
+              return (Resolve-Path $resolved).Path
+            } finally {
+              $env:CARGO_TERM_COLOR = $previousColor
             }
-            $fallback = Get-ChildItem "target" -Recurse -File -Filter "$name.exe" |
-              Where-Object { $_.FullName -notmatch '\\(deps|incremental|build)\\' } |
-              Sort-Object LastWriteTimeUtc -Descending |
-              Select-Object -First 1
-            if ($null -eq $fallback) {
-              throw "Release binary not found: $name.exe"
-            }
-            return $fallback.FullName
           }
           try {
-            $env:EXEC_PATH = Resolve-ReleaseBinary "espanso"
-            $env:LAUNCHER_PATH = Resolve-ReleaseBinary "respanso-portable"
-            $env:EDITOR_PATH = Resolve-ReleaseBinary "espanso-editor"
+            $env:EXEC_PATH = Resolve-CargoBinary "espanso" "espanso"
+            $env:LAUNCHER_PATH = Resolve-CargoBinary "espanso" "respanso-portable"
+            $env:EDITOR_PATH = Resolve-CargoBinary "espanso-editor" "espanso-editor"
             "EXEC_PATH=$env:EXEC_PATH" | Tee-Object -FilePath $log -Append
             "LAUNCHER_PATH=$env:LAUNCHER_PATH" | Tee-Object -FilePath $log -Append
             "EDITOR_PATH=$env:EDITOR_PATH" | Tee-Object -FilePath $log -Append
