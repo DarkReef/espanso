@@ -66,7 +66,9 @@ fs2 = "0.4.3"
 serde_norway.workspace = true
 fs_extra.workspace = true
 dialoguer = "0.8.0"
-colored = "2.0.0"
+# colored 2.2 uses windows-targets 0.52, whose generated GDI+ stubs conflict
+# with the GDI+ wrappers embedded in the statically linked wxWidgets build.
+colored = "=2.1.0"
 tempdir.workspace = true
 notify = "4.0.17"
 opener = "0.5.0"
