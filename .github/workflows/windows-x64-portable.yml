@@ -127,24 +127,48 @@ jobs:
       - name: Assemble portable archive
         shell: pwsh
         run: |
-          $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
-          $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
-          $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
-          & "./scripts/build_windows_native_portable_with_studio.ps1"
-          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
-          if (-not (Test-Path $archive)) {
-            throw "Portable archive was not created"
-          }
-          $entries = tar -tf $archive
-          if ($entries -match '\.(bat|cmd)$') {
-            throw "Portable archive contains BAT/CMD launchers"
-          }
-          $required = @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")
-          foreach ($file in $required) {
-            if (-not ($entries -match [regex]::Escape($file))) {
-              throw "Portable archive is missing $file"
+          New-Item -ItemType Directory -Force "target/package-logs" | Out-Null
+          $log = "target/package-logs/windows-x64-package.log"
+          try {
+            $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
+            $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
+            $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
+            & "./scripts/build_windows_native_portable_with_studio.ps1" *>&1 |
+              Tee-Object -FilePath $log -Append
+            if ($LASTEXITCODE -ne 0) {
+              throw "Portable assembly script failed with exit code $LASTEXITCODE"
             }
+            $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+            if (-not (Test-Path $archive)) {
+              throw "Portable archive was not created"
+            }
+            $entries = tar -tf $archive
+            $entries | Tee-Object -FilePath $log -Append
+            if ($LASTEXITCODE -ne 0) {
+              throw "Portable archive could not be listed"
+            }
+            if ($entries -match '\.(bat|cmd)$') {
+              throw "Portable archive contains BAT/CMD launchers"
+            }
+            $required = @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")
+            foreach ($file in $required) {
+              if (-not ($entries -match [regex]::Escape($file))) {
+                throw "Portable archive is missing $file"
+              }
+            }
+          } catch {
+            $_ | Out-String | Tee-Object -FilePath $log -Append
+            throw
           }
+
+      - name: Upload packaging failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-package-failure
+          path: target/package-logs/windows-x64-package.log
+          if-no-files-found: warn
+          retention-days: 3
 
       - name: Upload portable archive
         uses: actions/upload-artifact@v4
