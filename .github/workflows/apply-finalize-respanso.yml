@@ -1,0 +1,95 @@
+name: Apply final rEspanso polish
+
+on:
+  push:
+    branches:
+      - feature/finalize-respanso
+    paths:
+      - scripts/finalize_patch_a.py
+      - scripts/finalize_patch_b.py
+      - scripts/generate_respanso_icon.py
+      - .github/workflows/apply-finalize-respanso.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-respanso
+  cancel-in-progress: true
+
+jobs:
+  apply-and-verify:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/finalize-respanso
+          fetch-depth: 1
+
+      - name: Set up Visual Studio C++ environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Apply final source patches
+        run: |
+          python scripts/finalize_patch_a.py
+          python scripts/finalize_patch_b.py
+          python scripts/generate_respanso_icon.py
+
+      - name: Format Rust sources
+        run: cargo fmt --all
+
+      - name: Test Match Studio
+        run: cargo test --quiet -p espanso-editor
+
+      - name: Test native portable launcher
+        run: cargo test --quiet -p espanso --bin respanso-portable
+
+      - name: Run strict Clippy
+        run: cargo clippy -p espanso-editor -p espanso --all-targets -- --deny warnings
+
+      - name: Build final Windows binaries
+        run: cargo build --quiet --release -p espanso --bin espanso --bin respanso-portable -p espanso-editor
+
+      - name: Verify final assets and documentation
+        shell: pwsh
+        run: |
+          $required = @(
+            "assets/respanso.ico",
+            "docs/respanso/README.ru.md",
+            "docs/respanso/RHAI_PROMPT.ru.md",
+            "target/release/espanso.exe",
+            "target/release/respanso-portable.exe",
+            "target/release/espanso-editor.exe"
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path -Path $path -PathType Leaf)) {
+              throw "Final rEspanso item was not produced: $path"
+            }
+          }
+
+      - name: Remove one-time patch helpers
+        shell: pwsh
+        run: |
+          Remove-Item -Force scripts/finalize_patch_a.py
+          Remove-Item -Force scripts/finalize_patch_b.py
+          Remove-Item -Force scripts/generate_respanso_icon.py
+          Remove-Item -Force .github/workflows/apply-finalize-respanso.yml
+
+      - name: Commit verified finalization
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: finalize rEspanso"
+          git push origin HEAD:feature/finalize-respanso
