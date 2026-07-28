@@ -759,37 +759,84 @@ impl MatchStudioApp {
     }
 
     fn delete_yaml_file(&mut self, path: PathBuf) -> bool {
-        if self.has_transfer_unsaved_changes() || self.settings.dirty() {
-            "Сначала сохраните текущие изменения, затем удалите YAML-файл"
-                .clone_into(&mut self.status);
-            return false;
-        }
-
-        let Some(workspace) = &self.workspace else {
-            return false;
-        };
-        let files = workspace.files();
-        if !files.iter().any(|file| file == &path) {
-            "Выбранный YAML-файл больше не входит в рабочую область".clone_into(&mut self.status);
-            return false;
-        }
-        if yaml_imports::find_base_file(&files, workspace.match_root()).as_ref() == Some(&path) {
-            "Нельзя удалить основной base.yml/base.yaml".clone_into(&mut self.status);
-            return false;
-        }
-
-        let display_name = relative_display(&self.config_root, &path);
-        if let Err(error) = fs::remove_file(&path) {
-            self.status = format!("Не удалось удалить {display_name}: {error}");
-            return false;
-        }
-        self.file_filter = None;
-        self.selected = None;
-        self.raw_rule.clear();
-        self.reload();
-        self.status = format!("Удалён {display_name}");
-        true
+    if self.has_transfer_unsaved_changes() || self.settings.dirty() {
+        "Сначала сохраните текущие изменения, затем удалите YAML-файл"
+            .clone_into(&mut self.status);
+        return false;
     }
+
+    let Some(workspace) = &mut self.workspace else {
+        return false;
+    };
+    let files = workspace.files();
+    if !files.iter().any(|file| file == &path) {
+        "Выбранный YAML-файл больше не входит в рабочую область"
+            .clone_into(&mut self.status);
+        return false;
+    }
+    let base_file = yaml_imports::find_base_file(&files, workspace.match_root());
+    if base_file.as_ref() == Some(&path) {
+        "Нельзя удалить основной base.yml/base.yaml".clone_into(&mut self.status);
+        return false;
+    }
+
+    let display_name = relative_display(&self.config_root, &path);
+    if let Some(base_file) = base_file {
+        let base_content = match workspace.raw_file(&base_file) {
+            Ok(content) => content.to_owned(),
+            Err(error) => {
+                self.status = format!(
+                    "Не удалось прочитать imports перед удалением {display_name}: {}",
+                    ru_message(&error.to_string())
+                );
+                return false;
+            }
+        };
+        let updated = match yaml_imports::update_import(
+            &base_content,
+            &base_file,
+            &path,
+            false,
+        ) {
+            Ok(updated) => updated,
+            Err(error) => {
+                self.status = format!(
+                    "Удаление {display_name} остановлено: не удалось обновить imports: {error}"
+                );
+                return false;
+            }
+        };
+        if updated != base_content {
+            if let Err(error) = workspace.set_raw_file(&base_file, updated) {
+                self.status = format!(
+                    "Удаление {display_name} остановлено: {}",
+                    ru_message(&error.to_string())
+                );
+                return false;
+            }
+            if let Err(error) = workspace.save_all() {
+                self.status = format!(
+                    "Удаление {display_name} остановлено: {}",
+                    ru_message(&error.to_string())
+                );
+                return false;
+            }
+        }
+    }
+
+    if let Err(error) = fs::remove_file(&path) {
+        self.status = format!(
+            "Не удалось удалить {display_name}: {error}. Файл уже исключён из imports"
+        );
+        return false;
+    }
+    self.file_filter = None;
+    self.selected = None;
+    self.raw_rule.clear();
+    self.reload();
+    self.status = format!("Удалён {display_name}; import из base.yml также очищен");
+    true
+}
 
     fn sync_builtin_variables(&mut self, id: &RuleId) -> Result<usize, String> {
         let definitions = dynamic_variables::builtin_definitions_in(&self.draft.replace);

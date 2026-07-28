@@ -86,10 +86,7 @@ pub struct RuleRecord {
 
 impl RuleRecord {
     pub fn display_name(&self) -> String {
-        if !self.draft.label.trim().is_empty() {
-            return self.draft.label.trim().to_owned();
-        }
-        match self.draft.kind {
+        let cause = match self.draft.kind {
             MatchKind::Trigger => self
                 .draft
                 .triggers
@@ -103,6 +100,12 @@ impl RuleRecord {
                     self.draft.regex.clone()
                 }
             }
+        };
+        let label = self.draft.label.trim();
+        if label.is_empty() {
+            cause
+        } else {
+            format!("{label} · {cause}")
         }
     }
 }
