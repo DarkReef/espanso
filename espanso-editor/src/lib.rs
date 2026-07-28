@@ -1,6 +1,7 @@
 pub mod app;
 pub mod config_transfer;
 pub mod diagnostics;
+pub mod dynamic_variables;
 pub mod file_monitor;
 pub mod rhai_lab;
 #[allow(clippy::pedantic)]

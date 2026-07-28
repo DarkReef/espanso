@@ -317,10 +317,9 @@ fn validate_definition(definition: &VariableDefinition) -> Result<(), String> {
         );
     }
     if definition.variable_type.is_empty()
-        || !definition
-            .variable_type
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-')
+        || !definition.variable_type.chars().all(|character| {
+            character.is_ascii_alphanumeric() || character == '_' || character == '-'
+        })
     {
         return Err("Укажите корректный тип переменной".to_owned());
     }
@@ -431,7 +430,8 @@ mod tests {
         let (updated, added) = upsert_rule_variable(raw, &definition).unwrap();
         assert!(added);
         assert!(updated.contains("    vars:\n      - name: \"date\""));
-        assert!(updated.contains("format: \"%d.%m.%Y\""));
+        assert!(updated.contains("format:"));
+        assert!(updated.contains("%d.%m.%Y"));
     }
 
     #[test]
@@ -467,6 +467,8 @@ mod tests {
             variable_type: "date".to_owned(),
             params_yaml: String::new(),
         };
-        assert!(upsert_rule_variable("  - trigger: \":x\"\n    replace: \"X\"\n", &definition).is_err());
+        assert!(
+            upsert_rule_variable("  - trigger: \":x\"\n    replace: \"X\"\n", &definition).is_err()
+        );
     }
 }

@@ -1,6 +1,7 @@
 use crate::{
     config_transfer::{self, PackageSummary},
     diagnostics::{collect_project_diagnostics, DiagnosticManager, DiagnosticState},
+    dynamic_variables::{self, DynamicVariableAction, DynamicVariableDialog},
     file_monitor::{FileMonitor, PollResult},
     rhai_lab::RhaiLab,
     runtime::RuntimeMonitor,
@@ -76,6 +77,8 @@ pub struct MatchStudioApp {
     builder_error: Option<String>,
     show_diagnostics: bool,
     show_shortcuts: bool,
+    show_dynamic_variables: bool,
+    dynamic_variables: DynamicVariableDialog,
     confirm_delete: bool,
     confirm_reload: bool,
     reload_all_after_confirm: bool,
@@ -135,6 +138,8 @@ impl MatchStudioApp {
             builder_error: None,
             show_diagnostics: true,
             show_shortcuts: false,
+            show_dynamic_variables: false,
+            dynamic_variables: DynamicVariableDialog::default(),
             confirm_delete: false,
             confirm_reload: false,
             reload_all_after_confirm: false,
@@ -564,7 +569,7 @@ impl MatchStudioApp {
                 } else {
                     self.reload_all_from_disk();
                     self.status = format!(
-                        "Проверен устойчивый снимок проекта: изменено файлов {changed_files}"
+                        "Проект проверен после устойчивого изменения файлов: изменено {changed_files}"
                     );
                 }
             }
@@ -854,6 +859,53 @@ impl MatchStudioApp {
         name.clone_into(&mut self.builder.capture_name);
         pattern.clone_into(&mut self.builder.capture_pattern);
         self.builder_error = None;
+    }
+
+    fn add_dynamic_variable(&mut self, action: DynamicVariableAction) {
+        let Some(id) = self.selected.clone() else {
+            "Сначала выберите правило".clone_into(&mut self.status);
+            return;
+        };
+        let previous_replace = self.draft.replace.clone();
+        self.draft.replace.push_str(&action.placeholder);
+        self.apply_structured();
+
+        match dynamic_variables::upsert_rule_variable(&self.raw_rule, &action.definition) {
+            Ok((updated, added)) => {
+                let result = self
+                    .workspace
+                    .as_mut()
+                    .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())
+                    .and_then(|workspace| {
+                        workspace
+                            .update_rule_raw(&id, &updated)
+                            .map_err(|error| ru_message(&error.to_string()))
+                    });
+                match result {
+                    Ok(()) => {
+                        self.refresh_selected();
+                        self.status = if added {
+                            format!("{}. Нажмите Ctrl+S для записи YAML", action.message)
+                        } else {
+                            format!(
+                                "Переменная {} уже была объявлена; шаблон добавлен в текст. Нажмите Ctrl+S",
+                                action.placeholder
+                            )
+                        };
+                    }
+                    Err(error) => {
+                        self.draft.replace = previous_replace;
+                        self.apply_structured();
+                        self.status = format!("Не удалось добавить переменную: {error}");
+                    }
+                }
+            }
+            Err(error) => {
+                self.draft.replace = previous_replace;
+                self.apply_structured();
+                self.status = format!("Не удалось добавить переменную: {error}");
+            }
+        }
     }
 
     fn report_rhai_action(&mut self, result: Result<String, String>) {
@@ -1464,7 +1516,16 @@ impl MatchStudioApp {
         }
 
         ui.add_space(8.0);
-        ui.label("Текст подстановки");
+        ui.horizontal(|ui| {
+            ui.label("Текст подстановки");
+            if ui
+                .small_button("?")
+                .on_hover_text("Динамические переменные: {{date}}, {{time}}, {{clipboard}} и свои")
+                .clicked()
+            {
+                self.show_dynamic_variables = true;
+            }
+        });
         ui.add(
             egui::TextEdit::multiline(&mut self.draft.replace)
                 .desired_rows(10)
@@ -1749,7 +1810,6 @@ impl MatchStudioApp {
             return;
         }
         let diagnostics = self.diagnostics.instances();
-        let generation = self.diagnostics.generation();
         let active_count = self.diagnostics.active_count();
 
         egui::Panel::right("diagnostics")
@@ -1757,12 +1817,7 @@ impl MatchStudioApp {
             .default_size(360.0)
             .show(root, |ui| {
                 ui.heading("Диагностика проекта");
-                ui.label(
-                    egui::RichText::new(format!(
-                        "Снимок #{generation} · активных проблем: {active_count}"
-                    ))
-                    .weak(),
-                );
+                ui.label(egui::RichText::new(format!("Активных проблем: {active_count}")).weak());
                 if active_count == 0 {
                     ui.colored_label(
                         egui::Color32::from_rgb(40, 150, 90),
@@ -1799,10 +1854,8 @@ impl MatchStudioApp {
                             }
                             ui.small(
                                 egui::RichText::new(format!(
-                                    "Наблюдений: {} · впервые: #{} · последнее: #{}",
-                                    diagnostic.occurrence_count,
-                                    diagnostic.first_seen_generation,
-                                    diagnostic.last_seen_generation
+                                    "Наблюдений: {}",
+                                    diagnostic.occurrence_count
                                 ))
                                 .weak(),
                             );
@@ -1821,6 +1874,14 @@ impl MatchStudioApp {
     fn dialogs(&mut self, context: &egui::Context) {
         self.config_transfer_dialog(context);
         self.config_import_confirmation(context);
+
+        if self.show_dynamic_variables {
+            let mut open = self.show_dynamic_variables;
+            if let Some(action) = self.dynamic_variables.show(context, &mut open) {
+                self.add_dynamic_variable(action);
+            }
+            self.show_dynamic_variables = open;
+        }
 
         if self.show_shortcuts {
             let mut open = self.show_shortcuts;
