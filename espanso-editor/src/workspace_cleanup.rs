@@ -45,7 +45,6 @@ impl Drop for MatchWorkspace {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
     use tempdir::TempDir;
 
     #[test]
@@ -106,6 +105,4 @@ mod tests {
         let content = fs::read_to_string(base).expect("read base");
         assert!(content.contains("extra.yml"));
     }
-
-    fn _path_type_guard(_: PathBuf) {}
 }
