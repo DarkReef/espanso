@@ -9,9 +9,7 @@ on:
       - reopened
       - synchronize
     paths:
-      - scripts/finalize_patch_a.py
-      - scripts/finalize_patch_b.py
-      - scripts/generate_respanso_icon.py
+      - scripts/finalize_patch_c.py
       - .github/workflows/apply-finalize-respanso.yml
 
 permissions:
@@ -25,7 +23,7 @@ jobs:
   apply:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Checkout feature branch
         uses: actions/checkout@v4
@@ -33,33 +31,24 @@ jobs:
           ref: feature/finalize-respanso
           fetch-depth: 1
 
-      - name: Install stable Rust toolchain
+      - name: Install Rust formatter
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
 
-      - name: Apply and format final source
+      - name: Apply final consistency patch
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python scripts/finalize_patch_a.py
-          python scripts/finalize_patch_b.py
-          python scripts/generate_respanso_icon.py
+          python scripts/finalize_patch_c.py
           cargo fmt --all
-          cargo metadata --format-version 1 | Out-Null
+          Remove-Item -Force scripts/finalize_patch_c.py
 
-          # GITHUB_TOKEN cannot push modifications to workflow files. The final
-          # Windows workflow is applied separately through the GitHub connector.
-          git checkout -- .github/workflows/build-respanso-windows.yml
-          Remove-Item -Force scripts/finalize_patch_a.py
-          Remove-Item -Force scripts/finalize_patch_b.py
-          Remove-Item -Force scripts/generate_respanso_icon.py
-
-      - name: Commit final source
+      - name: Commit final consistency patch
         shell: pwsh
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "feat: finalize rEspanso"
+          git commit -m "fix: keep Rhai saves and external reloads consistent"
           git push origin HEAD:feature/finalize-respanso
