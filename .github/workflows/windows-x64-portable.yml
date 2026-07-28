@@ -1,4 +1,4 @@
-name: Refresh Cargo lockfile
+name: Apply Cargo lockfile
 
 on:
   pull_request:
@@ -7,19 +7,22 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: refresh-cargo-lock-${{ github.event.pull_request.number || github.ref }}
+  group: apply-cargo-lock-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  generate-lockfile:
+  apply-lockfile:
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
-      - name: Checkout
+      - name: Checkout working branch
         uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 0
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -30,16 +33,19 @@ jobs:
           shared-key: windows-x64-portable
           cache-on-failure: true
 
-      - name: Generate Cargo.lock
-        run: cargo generate-lockfile
+      - name: Generate and verify Cargo.lock
+        run: |
+          cargo generate-lockfile
+          cargo metadata --locked --no-deps --format-version 1 > $null
 
-      - name: Verify lockfile
-        run: cargo metadata --locked --no-deps --format-version 1 > $null
-
-      - name: Upload Cargo.lock
-        uses: actions/upload-artifact@v4
-        with:
-          name: respanso-cargo-lock
-          path: Cargo.lock
-          if-no-files-found: error
-          retention-days: 3
+      - name: Commit Cargo.lock
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- Cargo.lock
+          if (git diff --cached --quiet) {
+            throw "Cargo.lock did not change"
+          }
+          git commit -m "fix: update Cargo lockfile"
+          git push origin HEAD:feature/manual-build-dynamic-vars
