@@ -1,4 +1,4 @@
-name: Prepare final rEspanso patch
+name: Commit final rEspanso source
 
 on:
   pull_request:
@@ -9,14 +9,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: prepare-final-respanso-${{ github.event.pull_request.number || github.ref }}
+  group: commit-final-respanso-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  prepare:
+  finalize-source:
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
@@ -31,29 +31,32 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Apply final source and repository cleanup
+      - name: Apply and format final source
         shell: pwsh
         run: |
           python -c "from pathlib import Path; Path('finalize.py').write_text(''.join(Path(f'.github/finalize.part{i}.py').read_text(encoding='utf-8') for i in range(1, 5)), encoding='utf-8')"
           python finalize.py
           cargo fmt --all
+          $docs = Get-Content "docs/respanso/MATCH_STUDIO.ru.md" -Raw
+          $docs = $docs.Replace("**Удобный редактор**", "**Редактор**")
+          [System.IO.File]::WriteAllText(
+            "docs/respanso/MATCH_STUDIO.ru.md",
+            $docs,
+            [System.Text.UTF8Encoding]::new($false)
+          )
 
-      - name: Package exact final result
+      - name: Restore workflows and commit source cleanup
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force "target/finalization" | Out-Null
-          Copy-Item "espanso-editor/src/app.rs" "target/finalization/app.rs"
-          Copy-Item "espanso-editor/src/dynamic_variables.rs" "target/finalization/dynamic_variables.rs"
-          Copy-Item "docs/respanso/MATCH_STUDIO.ru.md" "target/finalization/MATCH_STUDIO.ru.md"
-          Copy-Item ".github/workflows/windows-x64-portable.yml" "target/finalization/windows-x64-portable.yml"
-          cmd /c "git diff --binary > target\finalization\finalization.patch"
-          git status --short | Set-Content "target/finalization/status.txt" -Encoding utf8NoBOM
-          git ls-files | Set-Content "target/finalization/tracked-files.txt" -Encoding utf8NoBOM
-
-      - name: Upload finalization preview
-        uses: actions/upload-artifact@v4
-        with:
-          name: respanso-finalization-preview
-          path: target/finalization
-          if-no-files-found: error
-          retention-days: 3
+          git checkout HEAD -- .github/workflows
+          Remove-Item ".github/finalize.part*.py" -Force
+          Remove-Item "finalize.py" -Force
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if (git diff --cached --quiet) {
+            throw "Finalization produced no source changes"
+          }
+          git commit -m "feat: finalize rEspanso Studio source"
+          git push origin HEAD:feature/manual-build-dynamic-vars
