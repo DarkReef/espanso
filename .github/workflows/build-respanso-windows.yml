@@ -82,7 +82,6 @@ jobs:
         run: cargo build --quiet --release -p espanso-editor
 
       - name: Run strict Clippy
-        continue-on-error: true
         run: cargo clippy -p espanso -p espanso-editor --all-targets -- --deny warnings
 
       - name: Verify source binaries
@@ -117,7 +116,9 @@ jobs:
             "$package/match/base.yml",
             "$package/runtime",
             "$package/packages",
-            "$package/scripts/example.rhai"
+            "$package/scripts/example.rhai",
+            "$package/docs/README.ru.md",
+            "$package/docs/RHAI_PROMPT.ru.md"
           )
           foreach ($path in $required) {
             if (-not (Test-Path $path)) {
