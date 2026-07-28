@@ -46,7 +46,9 @@ jobs:
           key: requested-dynamic-vars-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Apply requested source changes
-        run: python scripts/apply_requested_update.py
+        run: |
+          python scripts/apply_requested_update.py
+          python scripts/fix_dynamic_variable_test.py
 
       - name: Format source
         run: cargo fmt --all
@@ -84,6 +86,7 @@ jobs:
             $_.Name -ne "build-respanso-windows.yml"
           } | Remove-Item -Force
           Remove-Item "scripts/apply_requested_update.py" -Force
+          Remove-Item "scripts/fix_dynamic_variable_test.py" -Force
           Remove-Item "scripts/final-build-respanso-windows.yml" -Force
 
           git config user.name "github-actions[bot]"
