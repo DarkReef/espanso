@@ -1,123 +1,156 @@
-name: Stage remaining Clippy fixes
+name: Windows x64 portable
 
 on:
   pull_request:
     branches:
       - rEspanso-feature
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "**/*.txt"
+      - "LICENSE*"
   workflow_dispatch:
+  release:
+    types:
+      - published
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: stage-remaining-clippy-fixes-${{ github.event.pull_request.number || github.ref }}
+  group: windows-x64-portable-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  stage:
+  verify-and-build:
+    name: Check and build rEspanso portable
     runs-on: windows-2022
-    timeout-minutes: 20
-    steps:
-      - name: Checkout branch
-        uses: actions/checkout@v4
-        with:
-          ref: feature/manual-build-dynamic-vars
-          fetch-depth: 0
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
 
-      - name: Install Rust formatter
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
 
-      - name: Apply exact fixes
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-portable
+          cache-on-failure: true
+
+      - name: Verify repository cleanup
         shell: pwsh
         run: |
-          @'
-          from pathlib import Path
+          $workflows = @(Get-ChildItem ".github/workflows" -File)
+          if ($workflows.Count -ne 1 -or $workflows[0].Name -ne "windows-x64-portable.yml") {
+            throw "Repository must contain exactly one final workflow"
+          }
+          if (Test-Path ".claude") {
+            throw ".claude must not be present"
+          }
+          $junk = @(git ls-files | Where-Object {
+            ($_ -match '^(scripts|\.github)/.*(^|[-_.])(apply|patch|trigger|diagnose|rerun|temporary|temp|fix_dynamic|final[-_]?build)([-_.]|$)') -or
+            ($_ -match '(^|/)trigger[^/]*$')
+          })
+          if ($junk.Count -gt 0) {
+            $junk | ForEach-Object { Write-Error "Technical junk remains: $_" }
+            throw "Technical cleanup is incomplete"
+          }
 
-          def ensure_replaced(path: str, old: str, new: str, label: str) -> None:
-              file = Path(path)
-              text = file.read_text(encoding="utf-8")
-              old_count = text.count(old)
-              new_count = text.count(new)
-              if old_count == 1 and new_count == 0:
-                  file.write_text(text.replace(old, new), encoding="utf-8")
-                  return
-              if old_count == 0 and new_count == 1:
-                  return
-              raise SystemExit(
-                  f"{label}: expected old=1/new=0 or old=0/new=1, got old={old_count}, new={new_count}"
-              )
+      - name: Check formatting
+        run: cargo fmt --all -- --check
 
-          ensure_replaced(
-              "espanso-editor/src/app.rs",
-              "            if create && self.create_yaml_file() {\n                open = false;\n            } else if cancel {\n                open = false;\n            }",
-              "            if (create && self.create_yaml_file()) || cancel {\n                open = false;\n            }",
-              "create YAML dialog close condition",
-          )
-          ensure_replaced(
-              "espanso-editor/src/dynamic_variables.rs",
-              "    canonical.variable_type = variable_type.clone();",
-              "    canonical.variable_type.clone_from(&variable_type);",
-              "canonical variable type clone",
-          )
-          ensure_replaced(
-              "espanso-editor/src/dynamic_variables.rs",
-              '            canonical.variable_type = "date".to_owned();',
-              '            "date".clone_into(&mut canonical.variable_type);',
-              "time canonical type",
-          )
-          ensure_replaced(
-              "espanso-editor/src/dynamic_variables.rs",
-              r'                canonical.params_yaml = "format: \"%H:%M\"".to_owned();',
-              r'                "format: \"%H:%M\"".clone_into(&mut canonical.params_yaml);',
-              "time default format",
-          )
-          ensure_replaced(
-              "espanso-editor/src/dynamic_variables.rs",
-              '            canonical.variable_type = "echo".to_owned();',
-              '            "echo".clone_into(&mut canonical.variable_type);',
-              "string canonical type",
-          )
-          '@ | Set-Content -Path stage_fixes.py -Encoding utf8NoBOM
-          python stage_fixes.py
-          if ($LASTEXITCODE -ne 0) { throw "Patch script failed" }
-          cargo fmt --all
-          if ($LASTEXITCODE -ne 0) { throw "cargo fmt failed" }
-          git diff --check
-          if ($LASTEXITCODE -ne 0) { throw "git diff --check failed" }
-
-      - name: Commit and push staging ref
+      - name: Run Clippy
         shell: pwsh
         run: |
-          Remove-Item stage_fixes.py -Force
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- espanso-editor/src/app.rs espanso-editor/src/dynamic_variables.rs
-          git diff --cached --stat
-          git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) {
-            throw "No remaining Clippy fixes were staged"
-          }
-          $parent = (git rev-parse HEAD).Trim()
-          git commit --no-verify -m "fix: resolve remaining Studio Clippy warnings"
+          New-Item -ItemType Directory -Force "target/clippy-logs" | Out-Null
+          $log = "target/clippy-logs/windows-x64-clippy.log"
+          & cargo clippy --locked -p espanso-editor -p espanso-config --all-targets -- --deny warnings *>&1 |
+            Tee-Object -FilePath $log
           if ($LASTEXITCODE -ne 0) {
-            throw "git commit failed"
+            throw "Clippy failed with exit code $LASTEXITCODE"
           }
-          $commit = (git rev-parse HEAD).Trim()
-          if ($commit -eq $parent) {
-            throw "Commit SHA did not advance"
-          }
-          git push --force origin HEAD:refs/heads/automation/clippy-fixes
-          if ($LASTEXITCODE -ne 0) {
-            throw "Unable to push staging ref"
-          }
-          $commit | Set-Content staged-commit.txt -Encoding ascii
 
-      - name: Upload staged commit
+      - name: Upload Clippy failure log
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: staged-clippy-fix-commit
-          path: staged-commit.txt
+          name: rEspanso-Windows-x64-clippy-failure
+          path: target/clippy-logs/windows-x64-clippy.log
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/test-logs" | Out-Null
+          $log = "target/test-logs/windows-x64-tests.log"
+          function Invoke-CargoTest([string]$label, [string[]]$arguments) {
+            "`n===== $label =====" | Tee-Object -FilePath $log -Append
+            & cargo @arguments *>&1 | Tee-Object -FilePath $log -Append
+            if ($LASTEXITCODE -ne 0) {
+              throw "$label failed with exit code $LASTEXITCODE"
+            }
+          }
+          Invoke-CargoTest "espanso-editor" @("test", "--locked", "--quiet", "-p", "espanso-editor")
+          Invoke-CargoTest "espanso-engine" @("test", "--locked", "--quiet", "-p", "espanso-engine")
+          Invoke-CargoTest "espanso-render" @("test", "--locked", "--quiet", "-p", "espanso-render")
+          Invoke-CargoTest "respanso-portable" @("test", "--locked", "--quiet", "-p", "espanso", "--bin", "respanso-portable")
+
+      - name: Upload test failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-test-failure
+          path: target/test-logs/windows-x64-tests.log
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Build release binaries
+        run: |
+          cargo build --locked --quiet --release -p espanso --bin espanso --bin respanso-portable
+          cargo build --locked --quiet --release -p espanso-editor
+
+      - name: Assemble portable archive
+        shell: pwsh
+        run: |
+          $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
+          $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
+          $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
+          & "./scripts/build_windows_native_portable_with_studio.ps1"
+          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+          if (-not (Test-Path $archive)) {
+            throw "Portable archive was not created"
+          }
+          $entries = tar -tf $archive
+          if ($entries -match '\.(bat|cmd)$') {
+            throw "Portable archive contains BAT/CMD launchers"
+          }
+          $required = @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")
+          foreach ($file in $required) {
+            if (-not ($entries -match [regex]::Escape($file))) {
+              throw "Portable archive is missing $file"
+            }
+          }
+
+      - name: Upload portable archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-portable
+          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 14
+          compression-level: 0
