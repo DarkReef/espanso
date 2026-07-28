@@ -8,7 +8,7 @@ use std::{
 use walkdir::WalkDir;
 
 const STABILITY_DELAY: Duration = Duration::from_millis(750);
-const FULL_AUDIT_INTERVAL: Duration = Duration::from_secs(180);
+const FULL_AUDIT_INTERVAL: Duration = Duration::from_mins(3);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Fingerprint {

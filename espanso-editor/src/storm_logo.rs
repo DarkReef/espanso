@@ -62,7 +62,7 @@ pub fn show(ui: &mut egui::Ui) -> egui::Response {
             egui::Stroke::new(0.8, egui::Color32::WHITE),
         ));
 
-        let rain_offset = (phase % 4) as f32;
+        let rain_offset = [0.0_f32, 1.0, 2.0, 3.0][phase % 4];
         let rain = egui::Stroke::new(
             1.5,
             egui::Color32::from_rgba_unmultiplied(74, 188, 255, 150),

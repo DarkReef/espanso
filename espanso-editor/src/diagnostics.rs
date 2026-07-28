@@ -291,8 +291,7 @@ fn diagnostic_kind(message: &str) -> String {
     message
         .split(':')
         .next()
-        .map(normalize_message)
-        .unwrap_or_else(|| "diagnostic".to_owned())
+        .map_or_else(|| "diagnostic".to_owned(), normalize_message)
 }
 
 fn normalize_message(message: &str) -> String {
