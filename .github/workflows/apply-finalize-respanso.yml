@@ -15,7 +15,7 @@ on:
       - .github/workflows/apply-finalize-respanso.yml
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: finalize-respanso
@@ -38,7 +38,7 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Apply patches
+      - name: Apply and format final source
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -48,42 +48,18 @@ jobs:
           cargo fmt --all
           cargo metadata --format-version 1 | Out-Null
 
-      - name: Assemble final source payload
+          # GITHUB_TOKEN cannot push modifications to workflow files. The final
+          # Windows workflow is applied separately through the GitHub connector.
+          git checkout -- .github/workflows/build-respanso-windows.yml
+          Remove-Item -Force scripts/finalize_patch_a.py
+          Remove-Item -Force scripts/finalize_patch_b.py
+          Remove-Item -Force scripts/generate_respanso_icon.py
+
+      - name: Commit final source
         shell: pwsh
         run: |
-          $root = "target/finalization"
-          if (Test-Path $root) { Remove-Item $root -Recurse -Force }
-          $files = @(
-            "README.md",
-            "Cargo.lock",
-            ".github/workflows/build-respanso-windows.yml",
-            "assets/respanso.ico",
-            "espanso/Cargo.toml",
-            "espanso/build.rs",
-            "espanso-editor/Cargo.toml",
-            "espanso-editor/build.rs",
-            "espanso-editor/src/app.rs",
-            "espanso-editor/src/config_transfer.rs",
-            "espanso-editor/src/diagnostics.rs",
-            "espanso-editor/src/file_monitor.rs",
-            "espanso-editor/src/lib.rs",
-            "espanso-editor/src/storm_logo.rs",
-            "scripts/build_windows_native_portable_with_studio.ps1"
-          )
-          foreach ($file in $files) {
-            if (-not (Test-Path -Path $file -PathType Leaf)) {
-              throw "Final source file is missing: $file"
-            }
-            $target = Join-Path $root $file
-            New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
-            Copy-Item $file $target -Force
-          }
-
-      - name: Upload final source payload
-        uses: actions/upload-artifact@v4
-        with:
-          name: respanso-final-source-${{ github.sha }}
-          path: target/finalization
-          if-no-files-found: error
-          retention-days: 7
-          include-hidden-files: true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: finalize rEspanso"
+          git push origin HEAD:feature/finalize-respanso
