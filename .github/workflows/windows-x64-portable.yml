@@ -73,6 +73,26 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+      - name: Run Clippy
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/clippy-logs" | Out-Null
+          $log = "target/clippy-logs/windows-x64-clippy.log"
+          & cargo clippy --locked -p espanso -p espanso-editor --all-targets -- --deny warnings *>&1 |
+            Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            throw "Clippy failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Upload Clippy failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-clippy-failure
+          path: target/clippy-logs/windows-x64-clippy.log
+          if-no-files-found: warn
+          retention-days: 3
+
       - name: Run tests
         shell: pwsh
         run: |
@@ -96,26 +116,6 @@ jobs:
         with:
           name: rEspanso-Windows-x64-test-failure
           path: target/test-logs/windows-x64-tests.log
-          if-no-files-found: warn
-          retention-days: 3
-
-      - name: Run Clippy
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force "target/clippy-logs" | Out-Null
-          $log = "target/clippy-logs/windows-x64-clippy.log"
-          & cargo clippy --locked -p espanso -p espanso-editor --all-targets -- --deny warnings *>&1 |
-            Tee-Object -FilePath $log
-          if ($LASTEXITCODE -ne 0) {
-            throw "Clippy failed with exit code $LASTEXITCODE"
-          }
-
-      - name: Upload Clippy failure log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rEspanso-Windows-x64-clippy-failure
-          path: target/clippy-logs/windows-x64-clippy.log
           if-no-files-found: warn
           retention-days: 3
 
