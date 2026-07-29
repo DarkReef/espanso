@@ -3,6 +3,7 @@ pub mod config_transfer;
 pub mod diagnostics;
 pub mod dynamic_variables;
 pub mod file_monitor;
+pub mod global_variables;
 pub mod rhai_lab;
 #[allow(clippy::pedantic)]
 pub mod runtime;
