@@ -34,17 +34,11 @@ jobs:
           path = Path("espanso-editor/src/app.rs")
           text = path.read_text(encoding="utf-8")
 
-          old_transition = '''        ui.horizontal_wrapped(|ui| {
-              ui.label("Условие срабатывания:");
-              ui.selectable_value(&mut self.draft.kind, MatchKind::Trigger, "Обычный триггер");
-              ui.selectable_value(&mut self.draft.kind, MatchKind::Regex, "Гибкий RegExp");
-          });
-          ui.horizontal(|ui| {
-          '''
-          new_transition = '''        ui.horizontal_wrapped(|ui| {
-              ui.label("Условие срабатывания:");
-              ui.selectable_value(&mut self.draft.kind, MatchKind::Trigger, "Обычный триггер");
-              ui.selectable_value(&mut self.draft.kind, MatchKind::Regex, "Гибкий RegExp");
+          transition_marker = (
+              '            ui.selectable_value(&mut self.draft.kind, MatchKind::Regex, "Гибкий RegExp");\n'
+              '        });\n'
+          )
+          transition = '''            ui.selectable_value(&mut self.draft.kind, MatchKind::Regex, "Гибкий RegExp");
           });
           if previous_draft.kind == MatchKind::Trigger && self.draft.kind == MatchKind::Regex {
               if self.draft.regex.trim().is_empty() {
@@ -61,14 +55,12 @@ jobs:
               }
               self.refresh_regex_examples();
           }
-          ui.horizontal(|ui| {
           '''
-          if old_transition not in text:
-              raise SystemExit("structured editor transition anchor not found")
-          text = text.replace(old_transition, new_transition, 1)
+          if transition_marker not in text:
+              raise SystemExit("structured editor transition marker not found")
+          text = text.replace(transition_marker, transition, 1)
 
-          helper_anchor = '''fn relative_display(root: &Path, path: &Path) -> String {
-          '''
+          helper_anchor = "fn relative_display(root: &Path, path: &Path) -> String {\n"
           helper = '''fn literal_trigger_regex(triggers: &[String]) -> String {
               let escaped = triggers
                   .iter()
