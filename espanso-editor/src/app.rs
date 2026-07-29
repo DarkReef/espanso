@@ -1987,6 +1987,21 @@ impl MatchStudioApp {
             ui.selectable_value(&mut self.draft.kind, MatchKind::Trigger, "Обычный триггер");
             ui.selectable_value(&mut self.draft.kind, MatchKind::Regex, "Гибкий RegExp");
         });
+        if previous_draft.kind == MatchKind::Trigger && self.draft.kind == MatchKind::Regex {
+            if self.draft.regex.trim().is_empty() {
+                self.draft.regex = literal_trigger_regex(&previous_draft.triggers);
+            }
+            let examples = previous_draft
+                .triggers
+                .iter()
+                .map(String::as_str)
+                .filter(|trigger| !trigger.trim().is_empty())
+                .collect::<Vec<_>>();
+            if !examples.is_empty() {
+                self.regex_examples_text = examples.join("\n");
+            }
+            self.refresh_regex_examples();
+        }
         ui.horizontal(|ui| {
             ui.label("Название правила");
             ui.add(
@@ -2839,6 +2854,20 @@ fn normalize_yaml_file_name(value: &str) -> Result<String, String> {
     }
     Ok(name)
 }
+fn literal_trigger_regex(triggers: &[String]) -> String {
+    let escaped = triggers
+        .iter()
+        .map(String::as_str)
+        .filter(|trigger| !trigger.trim().is_empty())
+        .map(regex::escape)
+        .collect::<Vec<_>>();
+    match escaped.as_slice() {
+        [] => String::new(),
+        [trigger] => format!("{trigger}$"),
+        _ => format!("(?:{})$", escaped.join("|")),
+    }
+}
+
 fn relative_display(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .unwrap_or(path)
@@ -2887,4 +2916,28 @@ fn ru_message(message: &str) -> String {
         translated = translated.replace(source, target);
     }
     translated
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn converts_trigger_to_literal_end_anchored_regexp() {
+        let pattern = literal_trigger_regex(&[":doc".to_owned()]);
+        assert_eq!(pattern, ":doc$");
+        let regex = regex::Regex::new(&pattern).expect("converted regexp");
+        assert!(regex.is_match("текст :doc"));
+        assert!(!regex.is_match("текст :doc продолжение"));
+    }
+
+    #[test]
+    fn converts_multiple_triggers_and_escapes_regexp_metacharacters() {
+        let pattern = literal_trigger_regex(&[":a.b".to_owned(), ":c+".to_owned()]);
+        assert_eq!(pattern, r"(?::a\.b|:c\+)$");
+        let regex = regex::Regex::new(&pattern).expect("converted regexp");
+        assert!(regex.is_match("до :a.b"));
+        assert!(regex.is_match("до :c+"));
+        assert!(!regex.is_match("до :axb"));
+    }
 }
