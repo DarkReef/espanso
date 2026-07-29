@@ -1,6 +1,6 @@
 use crate::dynamic_variables::{canonical_definition, validate_definition, VariableDefinition};
 use eframe::egui;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::{
     collections::BTreeMap,
@@ -408,7 +408,7 @@ pub fn remove_global_variable(content: &str, name: &str) -> Result<(String, bool
 
 #[derive(Debug, Default, Deserialize)]
 struct GlobalVarsHolder {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_global_vars")]
     global_vars: Vec<StoredVariable>,
 }
 
@@ -421,6 +421,26 @@ struct StoredVariable {
     params: Option<Value>,
     #[serde(flatten)]
     extra: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum StoredVariables {
+    Sequence(Vec<StoredVariable>),
+    Single(StoredVariable),
+}
+
+fn deserialize_global_vars<'de, D>(deserializer: D) -> Result<Vec<StoredVariable>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(
+        match Option::<StoredVariables>::deserialize(deserializer)? {
+            Some(StoredVariables::Sequence(variables)) => variables,
+            Some(StoredVariables::Single(variable)) => vec![variable],
+            None => Vec::new(),
+        },
+    )
 }
 
 fn parse_holder(content: &str) -> Result<GlobalVarsHolder, String> {
@@ -542,8 +562,8 @@ fn render_global_vars(variables: &[StoredVariable], newline: &str) -> Result<Str
     for variable in variables {
         let rendered = serde_norway::to_string(variable)
             .map_err(|error| format!("Не удалось сохранить глобальную переменную: {error}"))?;
-        for line in rendered.lines() {
-            result.push_str("  ");
+        for (index, line) in rendered.lines().enumerate() {
+            result.push_str(if index == 0 { "  - " } else { "    " });
             result.push_str(line);
             result.push_str(newline);
         }
@@ -698,5 +718,42 @@ mod tests {
         let records = list_global_variables(Path::new("match/base.yml"), source).unwrap();
         assert_eq!(records[0].definition.variable_type, "string");
         assert_eq!(records[0].definition.params_yaml, "Иван");
+    }
+
+    #[test]
+    fn renders_new_string_as_sequence_and_adds_it_to_selection_pool() {
+        let source = "matches: []\n";
+        let definition = VariableDefinition {
+            name: "doc".to_owned(),
+            variable_type: "string".to_owned(),
+            params_yaml: "Куцин Иван Юрьевич".to_owned(),
+        };
+
+        let (updated, added) =
+            upsert_global_variable(source, None, &definition).expect("add string variable");
+        assert!(added);
+        assert!(updated.contains("global_vars:\n  - name: doc\n"));
+
+        let records = list_global_variables(Path::new("match/base.yml"), &updated)
+            .expect("new variable should enter the selection pool");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].definition.name, "doc");
+        assert_eq!(records[0].definition.variable_type, "string");
+        assert_eq!(records[0].definition.params_yaml, "Куцин Иван Юрьевич");
+    }
+
+    #[test]
+    fn accepts_legacy_single_map_and_rewrites_it_as_sequence() {
+        let source = "global_vars:\n  name: doc\n  type: echo\n  params:\n    echo: Куцин Иван Юрьевич\n\nmatches: []\n";
+        let records = list_global_variables(Path::new("match/base.yml"), source)
+            .expect("legacy map should remain editable and visible");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].definition.name, "doc");
+
+        let (updated, added) = upsert_global_variable(source, Some("doc"), &records[0].definition)
+            .expect("normalize legacy map");
+        assert!(!added);
+        assert!(updated.contains("global_vars:\n  - name: doc\n"));
+        assert!(!updated.contains("global_vars:\n  name: doc\n"));
     }
 }
