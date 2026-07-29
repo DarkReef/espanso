@@ -1,0 +1,32 @@
+name: Verify Studio cleanup
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-studio-cleanup-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: github.head_ref == 'feature/manual-build-dynamic-vars'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Verify
+        run: |
+          cargo fmt --all -- --check
+          cargo check -p espanso-editor --all-targets
+          cargo test -p espanso-editor --lib
+          cargo clippy -p espanso-editor --all-targets -- --deny warnings
