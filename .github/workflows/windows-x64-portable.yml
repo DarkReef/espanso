@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: feature/manual-build-dynamic-vars
-          fetch-depth: 6
+          fetch-depth: 7
 
       - name: Install rustfmt
         uses: dtolnay/rust-toolchain@stable
@@ -37,23 +37,21 @@ jobs:
 
           path = Path('scripts/apply_yaml_toggle_regex_ux.py')
           text = path.read_text(encoding='utf-8')
-          replacements = [
-              (
-                  're.subn(pattern, replacement, source, count=1, flags=re.S)',
-                  're.subn(pattern, lambda _match: replacement, source, count=1, flags=re.S)',
-              ),
-              (
-                  'normalize_yaml_file_name(input: &str)',
-                  'normalize_yaml_file_name(value: &str)',
-              ),
-          ]
-          for old, new in replacements:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(
-                      f'patch-script fix target not found exactly once ({count}): {old}'
-                  )
-              text = text.replace(old, new, 1)
+
+          regex_old = 're.subn(pattern, replacement, source, count=1, flags=re.S)'
+          regex_new = 're.subn(pattern, lambda _match: replacement, source, count=1, flags=re.S)'
+          if text.count(regex_old) != 1:
+              raise SystemExit('literal regex replacement target was not unique')
+          text = text.replace(regex_old, regex_new, 1)
+
+          anchor_old = 'normalize_yaml_file_name(input: &str)'
+          anchor_new = 'normalize_yaml_file_name(value: &str)'
+          if text.count(anchor_old) != 2:
+              raise SystemExit(
+                  f'expected two helper anchors, found {text.count(anchor_old)}'
+              )
+          text = text.replace(anchor_old, anchor_new)
+
           path.write_text(text, encoding='utf-8')
           PY
           python3 scripts/apply_yaml_toggle_regex_ux.py
