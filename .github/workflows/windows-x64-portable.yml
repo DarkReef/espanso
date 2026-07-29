@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: feature/manual-build-dynamic-vars
-          fetch-depth: 4
+          fetch-depth: 5
 
       - name: Install rustfmt
         uses: dtolnay/rust-toolchain@stable
@@ -36,11 +36,17 @@ jobs:
           from pathlib import Path
           path = Path('scripts/apply_yaml_toggle_regex_ux.py')
           text = path.read_text(encoding='utf-8')
-          old = 're.subn(pattern, replacement, source, count=1, flags=re.S)'
-          new = 're.subn(pattern, lambda _match: replacement, source, count=1, flags=re.S)'
-          if text.count(old) != 1:
-              raise SystemExit('literal replacement fix target not found exactly once')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          replacements = {
+              're.subn(pattern, replacement, source, count=1, flags=re.S)':
+                  're.subn(pattern, lambda _match: replacement, source, count=1, flags=re.S)',
+              'fn normalize_yaml_file_name(input: &str) -> Result<String, String> {\\n':
+                  'fn normalize_yaml_file_name(value: &str) -> Result<String, String> {\\n',
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f'patch-script fix target not found exactly once: {old}')
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
           PY
           python3 scripts/apply_yaml_toggle_regex_ux.py
 
