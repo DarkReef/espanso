@@ -403,6 +403,24 @@ pub fn validate_definition(definition: &VariableDefinition) -> Result<(), String
     {
         return Err("Укажите корректный тип переменной".to_owned());
     }
+    const SUPPORTED_TYPES: &[&str] = &[
+        "date",
+        "clipboard",
+        "echo",
+        "choice",
+        "form",
+        "random",
+        "rhai",
+        "script",
+        "shell",
+    ];
+    if !SUPPORTED_TYPES.contains(&definition.variable_type.as_str()) {
+        return Err(format!(
+            "Неизвестный тип переменной '{}'. Допустимы: {}",
+            definition.variable_type,
+            SUPPORTED_TYPES.join(", ")
+        ));
+    }
     let _ = normalized_params(&definition.params_yaml)?;
     Ok(())
 }

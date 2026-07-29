@@ -1,4 +1,7 @@
-use crate::workspace::{Diagnostic, DiagnosticLevel, MatchKind, MatchWorkspace, RuleId};
+use crate::{
+    global_variables,
+    workspace::{Diagnostic, DiagnosticLevel, MatchKind, MatchWorkspace, RuleId},
+};
 use rhai::Engine;
 use std::{
     collections::{hash_map::DefaultHasher, BTreeMap, HashSet},
@@ -137,8 +140,51 @@ pub fn collect_project_diagnostics(
     workspace: Option<&MatchWorkspace>,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = workspace.map_or_else(Vec::new, MatchWorkspace::diagnostics);
+    diagnostics.extend(validate_global_variables(workspace));
     diagnostics.extend(validate_config_files(config_root));
     diagnostics.extend(validate_rhai_files(config_root));
+    diagnostics
+}
+
+fn validate_global_variables(workspace: Option<&MatchWorkspace>) -> Vec<Diagnostic> {
+    let Some(workspace) = workspace else {
+        return Vec::new();
+    };
+    let mut by_name = BTreeMap::<String, Vec<PathBuf>>::new();
+    let mut diagnostics = Vec::new();
+    for file in workspace.files() {
+        let Ok(content) = workspace.raw_file(&file) else {
+            continue;
+        };
+        match global_variables::list_global_variables(&file, content) {
+            Ok(records) => {
+                for record in records {
+                    by_name
+                        .entry(record.definition.name)
+                        .or_default()
+                        .push(record.file);
+                }
+            }
+            Err(error) => diagnostics.push(Diagnostic {
+                level: DiagnosticLevel::Error,
+                message: format!("Global variable parse error: {error}"),
+                file: Some(file),
+                rule: None,
+            }),
+        }
+    }
+    for (name, files) in by_name {
+        if files.len() > 1 {
+            for file in files {
+                diagnostics.push(Diagnostic {
+                    level: DiagnosticLevel::Warning,
+                    message: format!("Duplicate global variable: {name}"),
+                    file: Some(file),
+                    rule: None,
+                });
+            }
+        }
+    }
     diagnostics
 }
 
@@ -276,12 +322,19 @@ fn diagnostic_kind(message: &str) -> String {
         ("empty trigger", "empty-trigger"),
         ("empty regexp", "empty-regexp"),
         ("invalid regexp", "invalid-regexp"),
+        ("invalid rule block", "invalid-rule-block"),
         ("duplicate match cause", "duplicate-match"),
+        ("duplicate global variable", "duplicate-global-variable"),
+        ("global variable parse error", "global-variable-parse"),
         ("missing import", "missing-import"),
         ("not imported", "not-imported"),
     ] {
         if lower.contains(needle) {
-            if code == "duplicate-match" || code == "missing-import" || code == "not-imported" {
+            if code == "duplicate-match"
+                || code == "duplicate-global-variable"
+                || code == "missing-import"
+                || code == "not-imported"
+            {
                 return format!("{code}:{}", normalize_message(message));
             }
             return code.to_owned();

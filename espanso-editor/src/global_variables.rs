@@ -97,8 +97,8 @@ impl GlobalVariableEditor {
                     }
                     if ui.button("Новая").clicked() {
                         self.selected = None;
-                        self.name = "my_variable".to_owned();
-                        self.variable_type = "string".to_owned();
+                        "my_variable".clone_into(&mut self.name);
+                        "string".clone_into(&mut self.variable_type);
                         self.params_yaml.clear();
                         self.error = None;
                     }
@@ -346,6 +346,7 @@ pub fn upsert_global_variable(
     let definition = canonical_definition(definition)?;
     validate_definition(&definition)?;
     let mut holder = parse_holder(content)?;
+    ensure_rewrite_safe(content)?;
     let existing_index = original_name
         .and_then(|name| {
             holder
@@ -394,6 +395,7 @@ pub fn upsert_global_variable(
 
 pub fn remove_global_variable(content: &str, name: &str) -> Result<(String, bool), String> {
     let mut holder = parse_holder(content)?;
+    ensure_rewrite_safe(content)?;
     let before = holder.global_vars.len();
     holder.global_vars.retain(|variable| variable.name != name);
     if holder.global_vars.len() == before {
@@ -469,6 +471,27 @@ fn stored_to_definition(variable: StoredVariable) -> Result<VariableDefinition, 
         variable_type: variable.variable_type,
         params_yaml,
     })
+}
+
+fn ensure_rewrite_safe(content: &str) -> Result<(), String> {
+    let Some((start, end)) = top_level_section(content, "global_vars") else {
+        return Ok(());
+    };
+    let section = &content[start..end];
+    let unsafe_line = section.lines().skip(1).find(|line| {
+        let trimmed = line.trim_start();
+        trimmed.starts_with('#')
+            || trimmed.starts_with('*')
+            || line.contains(": &")
+            || line.contains(": *")
+    });
+    if let Some(line) = unsafe_line {
+        return Err(format!(
+            "Секция global_vars содержит комментарий или YAML-якорь ('{}'). Чтобы не потерять оформление, измените её в исходном YAML",
+            line.trim()
+        ));
+    }
+    Ok(())
 }
 
 fn replace_global_vars_section(
@@ -551,7 +574,7 @@ fn top_level_section(content: &str, key: &str) -> Option<(usize, usize)> {
         for (next_start, next_end) in ranges.iter().copied().skip(index + 1) {
             let next_line = &content[next_start..next_end];
             let next_trimmed = trim_line(next_line);
-            if next_trimmed.is_empty() || next_trimmed.starts_with('#') {
+            if next_trimmed.is_empty() {
                 continue;
             }
             if indentation(next_line) == 0 {
@@ -641,6 +664,32 @@ mod tests {
         assert!(!added);
         assert!(updated.contains("inject_vars: false"));
         assert!(updated.contains("echo: New"));
+    }
+
+    #[test]
+    fn refuses_structural_rewrite_when_comments_would_be_lost() {
+        let source = "global_vars:\n  # keep me\n  - name: doc\n    type: echo\n    params:\n      echo: Old\n\nmatches: []\n";
+        let definition = VariableDefinition {
+            name: "doc".to_owned(),
+            variable_type: "string".to_owned(),
+            params_yaml: "New".to_owned(),
+        };
+        assert!(upsert_global_variable(source, Some("doc"), &definition)
+            .expect_err("commented section must require raw edit")
+            .contains("исходном YAML"));
+    }
+
+    #[test]
+    fn preserves_top_level_comment_after_global_vars() {
+        let source = "global_vars:\n  - name: doc\n    type: echo\n    params:\n      echo: Old\n\n# section comment\nmatches: []\n";
+        let definition = VariableDefinition {
+            name: "doc".to_owned(),
+            variable_type: "string".to_owned(),
+            params_yaml: "New".to_owned(),
+        };
+        let (updated, _) =
+            upsert_global_variable(source, Some("doc"), &definition).expect("update");
+        assert!(updated.contains("# section comment"));
     }
 
     #[test]
