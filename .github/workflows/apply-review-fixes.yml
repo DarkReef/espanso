@@ -30,7 +30,9 @@ jobs:
           components: rustfmt, clippy
 
       - name: Apply reviewed fixes
-        run: python3 scripts/apply_review_fixes.py
+        run: |
+          python3 scripts/apply_review_fixes.py
+          python3 scripts/apply_review_clippy_cleanup.py
 
       - name: Format and verify Match Studio
         run: |
@@ -44,6 +46,7 @@ jobs:
       - name: Commit verified patch and remove temporary files
         run: |
           rm scripts/apply_review_fixes.py
+          rm scripts/apply_review_clippy_cleanup.py
           rm .github/workflows/apply-review-fixes.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
