@@ -46,9 +46,7 @@ pub fn builtin_definitions_in(replacement: &str) -> Vec<VariableDefinition> {
     definitions
 }
 
-pub fn canonical_definition(
-    definition: &VariableDefinition,
-) -> Result<VariableDefinition, String> {
+pub fn canonical_definition(definition: &VariableDefinition) -> Result<VariableDefinition, String> {
     let variable_type = definition.variable_type.trim().to_ascii_lowercase();
     let mut canonical = definition.clone();
     canonical.name = canonical.name.trim().to_owned();
