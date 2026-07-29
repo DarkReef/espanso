@@ -1,0 +1,192 @@
+name: Fix PR15 global vars sequence
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+    types:
+      - synchronize
+      - opened
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  fix-global-vars:
+    if: github.event.pull_request.head.ref == 'feature/manual-build-dynamic-vars'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Patch global variable parser and renderer
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("espanso-editor/src/global_variables.rs")
+          text = path.read_text(encoding="utf-8")
+
+          old_import = "use serde::{Deserialize, Serialize};"
+          new_import = "use serde::{Deserialize, Deserializer, Serialize};"
+          if old_import not in text:
+              raise SystemExit("serde import anchor not found")
+          text = text.replace(old_import, new_import, 1)
+
+          old_holder = '''#[derive(Debug, Default, Deserialize)]
+          struct GlobalVarsHolder {
+              #[serde(default)]
+              global_vars: Vec<StoredVariable>,
+          }
+          '''
+          new_holder = '''#[derive(Debug, Default, Deserialize)]
+          struct GlobalVarsHolder {
+              #[serde(default, deserialize_with = "deserialize_global_vars")]
+              global_vars: Vec<StoredVariable>,
+          }
+          '''
+          if old_holder not in text:
+              raise SystemExit("GlobalVarsHolder anchor not found")
+          text = text.replace(old_holder, new_holder, 1)
+
+          stored_anchor = '''#[derive(Debug, Clone, Deserialize, Serialize)]
+          struct StoredVariable {
+              name: String,
+              #[serde(rename = "type")]
+              variable_type: String,
+              #[serde(default, skip_serializing_if = "Option::is_none")]
+              params: Option<Value>,
+              #[serde(flatten)]
+              extra: BTreeMap<String, Value>,
+          }
+
+          '''
+          deserialize_block = '''#[derive(Debug, Deserialize)]
+          #[serde(untagged)]
+          enum StoredVariables {
+              Sequence(Vec<StoredVariable>),
+              Single(StoredVariable),
+          }
+
+          fn deserialize_global_vars<'de, D>(deserializer: D) -> Result<Vec<StoredVariable>, D::Error>
+          where
+              D: Deserializer<'de>,
+          {
+              Ok(match Option::<StoredVariables>::deserialize(deserializer)? {
+                  Some(StoredVariables::Sequence(variables)) => variables,
+                  Some(StoredVariables::Single(variable)) => vec![variable],
+                  None => Vec::new(),
+              })
+          }
+
+          '''
+          if stored_anchor not in text:
+              raise SystemExit("StoredVariable anchor not found")
+          text = text.replace(stored_anchor, stored_anchor + deserialize_block, 1)
+
+          old_render = '''    for variable in variables {
+              let rendered = serde_norway::to_string(variable)
+                  .map_err(|error| format!("Не удалось сохранить глобальную переменную: {error}"))?;
+              for line in rendered.lines() {
+                  result.push_str("  ");
+                  result.push_str(line);
+                  result.push_str(newline);
+              }
+          }
+          '''
+          new_render = '''    for variable in variables {
+              let rendered = serde_norway::to_string(variable)
+                  .map_err(|error| format!("Не удалось сохранить глобальную переменную: {error}"))?;
+              for (index, line) in rendered.lines().enumerate() {
+                  result.push_str(if index == 0 { "  - " } else { "    " });
+                  result.push_str(line);
+                  result.push_str(newline);
+              }
+          }
+          '''
+          if old_render not in text:
+              raise SystemExit("render_global_vars anchor not found")
+          text = text.replace(old_render, new_render, 1)
+
+          test_anchor = '''    #[test]
+              fn lists_echo_scalar_as_string() {
+                  let source = "global_vars:\\n  - name: doc\\n    type: echo\\n    params:\\n      echo: Иван\\n\\nmatches: []\\n";
+                  let records = list_global_variables(Path::new("match/base.yml"), source).unwrap();
+                  assert_eq!(records[0].definition.variable_type, "string");
+                  assert_eq!(records[0].definition.params_yaml, "Иван");
+              }
+          '''
+          extra_tests = '''
+
+              #[test]
+              fn renders_new_string_as_sequence_and_adds_it_to_selection_pool() {
+                  let source = "matches: []\\n";
+                  let definition = VariableDefinition {
+                      name: "doc".to_owned(),
+                      variable_type: "string".to_owned(),
+                      params_yaml: "Куцин Иван Юрьевич".to_owned(),
+                  };
+
+                  let (updated, added) =
+                      upsert_global_variable(source, None, &definition).expect("add string variable");
+                  assert!(added);
+                  assert!(updated.contains("global_vars:\\n  - name: doc\\n"));
+
+                  let records =
+                      list_global_variables(Path::new("match/base.yml"), &updated).expect("list pool");
+                  assert_eq!(records.len(), 1);
+                  assert_eq!(records[0].definition.name, "doc");
+                  assert_eq!(records[0].definition.variable_type, "string");
+                  assert_eq!(records[0].definition.params_yaml, "Куцин Иван Юрьевич");
+              }
+
+              #[test]
+              fn accepts_legacy_single_map_and_rewrites_it_as_sequence() {
+                  let source = "global_vars:\\n  name: doc\\n  type: echo\\n  params:\\n    echo: Куцин Иван Юрьевич\\n\\nmatches: []\\n";
+                  let records = list_global_variables(Path::new("match/base.yml"), source)
+                      .expect("legacy map should remain editable");
+                  assert_eq!(records.len(), 1);
+                  assert_eq!(records[0].definition.name, "doc");
+
+                  let (updated, added) = upsert_global_variable(
+                      source,
+                      Some("doc"),
+                      &records[0].definition,
+                  )
+                  .expect("normalize legacy map");
+                  assert!(!added);
+                  assert!(updated.contains("global_vars:\\n  - name: doc\\n"));
+                  assert!(!updated.contains("global_vars:\\n  name: doc\\n"));
+              }
+          '''
+          if test_anchor not in text:
+              raise SystemExit("test anchor not found")
+          text = text.replace(test_anchor, test_anchor + extra_tests, 1)
+
+          path.write_text(text, encoding="utf-8")
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Test Match Studio
+        run: cargo test -p espanso-editor --lib
+
+      - name: Strict Clippy
+        run: cargo clippy -p espanso-editor --all-targets -- --deny warnings
+
+      - name: Commit validated fix and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/fix-pr15-global-vars.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add espanso-editor/src/global_variables.rs .github/workflows/fix-pr15-global-vars.yml
+          git commit -m "fix(editor): serialize global variables as a YAML sequence"
+          git push origin HEAD:feature/manual-build-dynamic-vars
