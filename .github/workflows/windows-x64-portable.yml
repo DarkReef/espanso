@@ -1,5 +1,6 @@
 name: Apply global variables manager
 
+# Temporary source-only validation; restored to the manual Windows workflow afterwards.
 on:
   pull_request:
     branches:
