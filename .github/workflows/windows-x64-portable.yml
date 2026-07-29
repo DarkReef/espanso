@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: feature/manual-build-dynamic-vars
-          fetch-depth: 7
+          fetch-depth: 8
 
       - name: Install rustfmt
         uses: dtolnay/rust-toolchain@stable
@@ -66,14 +66,13 @@ jobs:
           grep -q 'is_expected_simple_trigger_duplicate' espanso-editor/src/app.rs
           ! grep -q 'set_file_import_enabled' espanso-editor/src/app.rs
 
-      - name: Restore manual workflow and commit
+      - name: Commit source patch
         shell: bash
         run: |
-          git show fca4d8025aa915dbb18c88895e56820123a7c398:.github/workflows/windows-x64-portable.yml > .github/workflows/windows-x64-portable.yml
           rm scripts/apply_yaml_toggle_regex_ux.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add espanso-editor/src/app.rs .github/workflows/windows-x64-portable.yml scripts/apply_yaml_toggle_regex_ux.py
+          git add espanso-editor/src/app.rs scripts/apply_yaml_toggle_regex_ux.py
           git diff --cached --check
           git commit -m "fix(studio): disable YAML files and improve RegExp UX [skip ci]"
           git push origin HEAD:feature/manual-build-dynamic-vars
