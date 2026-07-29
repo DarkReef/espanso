@@ -1,187 +1,54 @@
-name: Windows x64 portable
+name: Apply global variables manager
 
 on:
-  workflow_dispatch:
+  pull_request:
+    branches:
+      - rEspanso-feature
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: windows-x64-portable-${{ github.ref }}
+  group: apply-global-variables-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-and-package:
-    name: Build and package rEspanso portable
-    runs-on: windows-2022
-    timeout-minutes: 90
-    env:
-      CARGO_TERM_COLOR: always
-      RUST_BACKTRACE: 1
-
+  apply-patch:
+    if: github.head_ref == 'feature/manual-build-dynamic-vars'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: Checkout
+      - name: Checkout working branch
         uses: actions/checkout@v4
-
-      - name: Set up MSVC x64
-        uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: x64
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 8
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          components: rustfmt
 
-      - name: Restore Cargo cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: windows-x64-portable
-          cache-on-failure: true
+      - name: Apply global variable patch
+        shell: bash
+        run: python3 scripts/apply_global_variables_ui.py
 
-      - name: Build rEspanso core and launcher
-        shell: pwsh
+      - name: Format and verify
+        shell: bash
         run: |
-          New-Item -ItemType Directory -Force "target/build-logs" | Out-Null
-          $log = "target/build-logs/windows-x64-core-build.jsonl"
-          $previousColor = $env:CARGO_TERM_COLOR
-          $env:CARGO_TERM_COLOR = "never"
-          try {
-            & cargo build --locked --release -p espanso --bin espanso --bin respanso-portable --message-format=json-diagnostic-rendered-ansi *>&1 |
-              Tee-Object -FilePath $log
-            $exitCode = $LASTEXITCODE
-            $messages = @(Get-Content -Path $log)
-            if ($exitCode -ne 0) {
-              throw "rEspanso core or launcher build failed with exit code $exitCode"
-            }
+          rustfmt --edition 2021 espanso-editor/src/app.rs espanso-editor/src/dynamic_variables.rs espanso-editor/src/global_variables.rs
+          cargo fmt --all -- --check
+          cargo check -p espanso-editor --all-targets
+          cargo test -p espanso-editor --lib
+          git diff --check
 
-            function Get-CargoExecutable([string]$binary) {
-              $paths = foreach ($line in $messages) {
-                try {
-                  $message = $line | ConvertFrom-Json -ErrorAction Stop
-                } catch {
-                  continue
-                }
-                if (
-                  $message.reason -eq "compiler-artifact" -and
-                  $message.target.name -eq $binary -and
-                  -not [string]::IsNullOrWhiteSpace([string]$message.executable)
-                ) {
-                  [string]$message.executable
-                }
-              }
-              $path = @($paths) | Select-Object -Last 1
-              if ([string]::IsNullOrWhiteSpace([string]$path) -or -not (Test-Path -Path $path -PathType Leaf)) {
-                throw "Cargo did not report an existing executable for $binary"
-              }
-              return (Resolve-Path $path).Path
-            }
-
-            "EXEC_PATH=$(Get-CargoExecutable 'espanso')" |
-              Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-            "LAUNCHER_PATH=$(Get-CargoExecutable 'respanso-portable')" |
-              Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          } finally {
-            $env:CARGO_TERM_COLOR = $previousColor
-          }
-
-      - name: Build Match Studio
-        shell: pwsh
+      - name: Commit source patch
+        shell: bash
         run: |
-          $log = "target/build-logs/windows-x64-studio-build.jsonl"
-          $previousColor = $env:CARGO_TERM_COLOR
-          $env:CARGO_TERM_COLOR = "never"
-          try {
-            & cargo build --locked --release -p espanso-editor --bin espanso-editor --message-format=json-diagnostic-rendered-ansi *>&1 |
-              Tee-Object -FilePath $log
-            $exitCode = $LASTEXITCODE
-            $messages = @(Get-Content -Path $log)
-            if ($exitCode -ne 0) {
-              throw "Match Studio build failed with exit code $exitCode"
-            }
-
-            $paths = foreach ($line in $messages) {
-              try {
-                $message = $line | ConvertFrom-Json -ErrorAction Stop
-              } catch {
-                continue
-              }
-              if (
-                $message.reason -eq "compiler-artifact" -and
-                $message.target.name -eq "espanso-editor" -and
-                -not [string]::IsNullOrWhiteSpace([string]$message.executable)
-              ) {
-                [string]$message.executable
-              }
-            }
-            $editorPath = @($paths) | Select-Object -Last 1
-            if ([string]::IsNullOrWhiteSpace([string]$editorPath) -or -not (Test-Path -Path $editorPath -PathType Leaf)) {
-              throw "Cargo did not report an existing executable for espanso-editor"
-            }
-            "EDITOR_PATH=$((Resolve-Path $editorPath).Path)" |
-              Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          } finally {
-            $env:CARGO_TERM_COLOR = $previousColor
-          }
-
-      - name: Assemble and verify portable archive
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force "target/package-logs" | Out-Null
-          $log = "target/package-logs/windows-x64-package.log"
-
-          $requiredBinaries = @($env:EXEC_PATH, $env:LAUNCHER_PATH, $env:EDITOR_PATH)
-          foreach ($binary in $requiredBinaries) {
-            if ([string]::IsNullOrWhiteSpace([string]$binary) -or -not (Test-Path -Path $binary -PathType Leaf)) {
-              throw "Release binary path is missing or invalid: $binary"
-            }
-          }
-
-          "EXEC_PATH=$env:EXEC_PATH" | Tee-Object -FilePath $log -Append
-          "LAUNCHER_PATH=$env:LAUNCHER_PATH" | Tee-Object -FilePath $log -Append
-          "EDITOR_PATH=$env:EDITOR_PATH" | Tee-Object -FilePath $log -Append
-
-          # A successful PowerShell script does not set LASTEXITCODE. The archive and
-          # its contents below are the authoritative success checks.
-          & "./scripts/build_windows_native_portable_with_studio.ps1" *>&1 |
-            Tee-Object -FilePath $log -Append
-
-          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
-          if (-not (Test-Path -Path $archive -PathType Leaf)) {
-            throw "Portable archive was not created"
-          }
-
-          $entries = tar -tf $archive
-          if ($LASTEXITCODE -ne 0) {
-            throw "Portable archive could not be listed"
-          }
-          $entries | Tee-Object -FilePath $log -Append
-
-          if ($entries -match '\.(bat|cmd)$') {
-            throw "Portable archive contains BAT/CMD launchers"
-          }
-          foreach ($file in @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")) {
-            if (-not ($entries -match [regex]::Escape($file))) {
-              throw "Portable archive is missing $file"
-            }
-          }
-
-      - name: Upload diagnostic logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rEspanso-Windows-x64-final-build-failure
-          path: |
-            target/build-logs/
-            target/package-logs/
-          if-no-files-found: warn
-          retention-days: 3
-
-      - name: Upload portable archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: rEspanso-Windows-x64-portable
-          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
+          rm scripts/apply_global_variables_ui.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add espanso-editor/src/app.rs espanso-editor/src/dynamic_variables.rs espanso-editor/src/global_variables.rs scripts/apply_global_variables_ui.py
+          git diff --cached --check
+          git commit -m "feat(studio): manage shared global variables [skip ci]"
+          git push origin HEAD:feature/manual-build-dynamic-vars
