@@ -55,7 +55,7 @@ impl DynamicVariableDialog {
             .resizable(true)
             .show(context, |ui| {
                 ui.label(
-                    "Переменная добавляется в vars выбранного правила, а её шаблон — в конец текста подстановки.",
+                    "Переменная добавляется в общие global_vars, а её шаблон — в конец текста выбранного правила.",
                 );
                 ui.add_space(6.0);
                 ui.heading("Готовые переменные");
@@ -354,7 +354,7 @@ pub fn upsert_rule_variable(
     Ok((updated, true))
 }
 
-fn canonical_definition(definition: &VariableDefinition) -> Result<VariableDefinition, String> {
+pub fn canonical_definition(definition: &VariableDefinition) -> Result<VariableDefinition, String> {
     let variable_type = definition.variable_type.trim().to_ascii_lowercase();
     let mut canonical = definition.clone();
     canonical.name = canonical.name.trim().to_owned();
@@ -383,7 +383,7 @@ fn canonical_definition(definition: &VariableDefinition) -> Result<VariableDefin
     }
     Ok(canonical)
 }
-fn validate_definition(definition: &VariableDefinition) -> Result<(), String> {
+pub fn validate_definition(definition: &VariableDefinition) -> Result<(), String> {
     let mut characters = definition.name.chars();
     let Some(first) = characters.next() else {
         return Err("Укажите имя переменной".to_owned());

@@ -1,8 +1,11 @@
 use crate::{
     config_transfer::{self, PackageSummary},
     diagnostics::{collect_project_diagnostics, DiagnosticManager, DiagnosticState},
-    dynamic_variables::{self, DynamicVariableAction, DynamicVariableDialog},
+    dynamic_variables::{self, VariableDefinition},
     file_monitor::{FileMonitor, PollResult},
+    global_variables::{
+        self, GlobalVariableEditor, GlobalVariableEditorAction, GlobalVariableRecord,
+    },
     rhai_lab::RhaiLab,
     runtime::RuntimeMonitor,
     settings::SettingsEditor,
@@ -15,6 +18,7 @@ use crate::{
 };
 use eframe::egui;
 use std::{
+    collections::HashSet,
     fs,
     io::Write as _,
     path::{Path, PathBuf},
@@ -88,8 +92,8 @@ pub struct MatchStudioApp {
     builder_error: Option<String>,
     show_diagnostics: bool,
     show_shortcuts: bool,
-    show_dynamic_variables: bool,
-    dynamic_variables: DynamicVariableDialog,
+    show_global_variables: bool,
+    global_variables: GlobalVariableEditor,
     show_create_yaml_file: bool,
     new_yaml_file_name: String,
     confirm_delete_yaml_file: bool,
@@ -153,8 +157,8 @@ impl MatchStudioApp {
             builder_error: None,
             show_diagnostics: true,
             show_shortcuts: false,
-            show_dynamic_variables: false,
-            dynamic_variables: DynamicVariableDialog::default(),
+            show_global_variables: false,
+            global_variables: GlobalVariableEditor::default(),
             show_create_yaml_file: false,
             new_yaml_file_name: "rules.yml".to_owned(),
             confirm_delete_yaml_file: false,
@@ -922,32 +926,219 @@ impl MatchStudioApp {
         true
     }
 
-    fn sync_builtin_variables(&mut self, id: &RuleId) -> Result<usize, String> {
+    fn global_variable_records(&self) -> Result<Vec<GlobalVariableRecord>, String> {
+        let workspace = self
+            .workspace
+            .as_ref()
+            .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+        let mut records = Vec::new();
+        for file in workspace.files() {
+            let content = workspace
+                .raw_file(&file)
+                .map_err(|error| ru_message(&error.to_string()))?;
+            records.extend(global_variables::list_global_variables(&file, content)?);
+        }
+        records.sort_by(|left, right| {
+            left.definition
+                .name
+                .cmp(&right.definition.name)
+                .then_with(|| left.file.cmp(&right.file))
+        });
+        Ok(records)
+    }
+
+    fn global_variable_base_file(&self) -> Result<PathBuf, String> {
+        let workspace = self
+            .workspace
+            .as_ref()
+            .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+        let files = workspace.files();
+        yaml_imports::find_base_file(&files, workspace.match_root())
+            .ok_or_else(|| "Не найден основной match/base.yml или match/base.yaml".to_owned())
+    }
+
+    fn sync_builtin_variables(&mut self, _id: &RuleId) -> Result<usize, String> {
         let definitions = dynamic_variables::builtin_definitions_in(&self.draft.replace);
         if definitions.is_empty() {
             return Ok(0);
         }
 
-        let mut raw = self.raw_rule.clone();
-        let mut added = 0_usize;
-        for definition in definitions {
-            let (updated, was_added) = dynamic_variables::upsert_rule_variable(&raw, &definition)?;
-            raw = updated;
-            added += usize::from(was_added);
+        let mut existing = self
+            .global_variable_records()?
+            .into_iter()
+            .map(|record| record.definition.name)
+            .collect::<HashSet<_>>();
+        let missing = definitions
+            .into_iter()
+            .filter(|definition| existing.insert(definition.name.clone()))
+            .collect::<Vec<_>>();
+        if missing.is_empty() {
+            return Ok(0);
         }
 
-        if raw != self.raw_rule {
-            let workspace = self
-                .workspace
-                .as_mut()
-                .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
-            workspace
-                .update_rule_raw(id, &raw)
-                .map_err(|error| ru_message(&error.to_string()))?;
-            self.raw_rule = raw;
+        let base_file = self.global_variable_base_file()?;
+        let workspace = self
+            .workspace
+            .as_mut()
+            .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+        let mut content = workspace
+            .raw_file(&base_file)
+            .map_err(|error| ru_message(&error.to_string()))?
+            .to_owned();
+        let mut added = 0_usize;
+        for definition in missing {
+            let (updated, was_added) =
+                global_variables::ensure_global_variable(&content, &definition)?;
+            content = updated;
+            added += usize::from(was_added);
         }
+        workspace
+            .set_raw_file(&base_file, content)
+            .map_err(|error| ru_message(&error.to_string()))?;
         Ok(added)
     }
+
+    fn insert_global_placeholder(&mut self, name: &str) -> Result<String, String> {
+        let id = self
+            .selected
+            .clone()
+            .ok_or_else(|| "Сначала выберите правило для вставки переменной".to_owned())?;
+        let placeholder = format!("{{{{{name}}}}}");
+        self.draft.replace.push_str(&placeholder);
+        let workspace = self
+            .workspace
+            .as_mut()
+            .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+        workspace
+            .update_rule(&id, &self.draft)
+            .map_err(|error| ru_message(&error.to_string()))?;
+        self.raw_rule = workspace
+            .rule(&id)
+            .map(|rule| rule.raw)
+            .map_err(|error| ru_message(&error.to_string()))?;
+        Ok(placeholder)
+    }
+
+    fn apply_global_variable_action(&mut self, action: GlobalVariableEditorAction) {
+        match action {
+            GlobalVariableEditorAction::Save {
+                file,
+                original_name,
+                definition,
+                insert,
+            } => {
+                let result = (|| -> Result<(bool, Option<String>), String> {
+                    if file.is_none() {
+                        if let Some(existing) = self
+                            .global_variable_records()?
+                            .into_iter()
+                            .find(|record| record.definition.name == definition.name)
+                        {
+                            return Err(format!(
+                                "Переменная {} уже объявлена в {}. Выберите её в списке для изменения",
+                                definition.placeholder(),
+                                relative_display(&self.config_root, &existing.file)
+                            ));
+                        }
+                    }
+                    let target = match file {
+                        Some(file) => file,
+                        None => self.global_variable_base_file()?,
+                    };
+                    let added = {
+                        let workspace = self
+                            .workspace
+                            .as_mut()
+                            .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+                        let content = workspace
+                            .raw_file(&target)
+                            .map_err(|error| ru_message(&error.to_string()))?
+                            .to_owned();
+                        let (updated, added) = global_variables::upsert_global_variable(
+                            &content,
+                            original_name.as_deref(),
+                            &definition,
+                        )?;
+                        workspace
+                            .set_raw_file(&target, updated)
+                            .map_err(|error| ru_message(&error.to_string()))?;
+                        added
+                    };
+                    let inserted = if insert {
+                        Some(self.insert_global_placeholder(&definition.name)?)
+                    } else {
+                        None
+                    };
+                    Ok((added, inserted))
+                })();
+
+                self.status = match result {
+                    Ok((added, inserted)) => {
+                        let operation = if added {
+                            "добавлена"
+                        } else {
+                            "обновлена"
+                        };
+                        if let Some(placeholder) = inserted {
+                            format!(
+                                "Глобальная переменная {placeholder} {operation} и вставлена в правило. Сохраните изменения Ctrl+S"
+                            )
+                        } else {
+                            format!(
+                                "Глобальная переменная {} {operation}. Сохраните изменения Ctrl+S",
+                                definition.placeholder()
+                            )
+                        }
+                    }
+                    Err(error) => format!("Не удалось сохранить глобальную переменную: {error}"),
+                };
+            }
+            GlobalVariableEditorAction::Delete { file, name } => {
+                let result = (|| -> Result<bool, String> {
+                    let workspace = self
+                        .workspace
+                        .as_mut()
+                        .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+                    let content = workspace
+                        .raw_file(&file)
+                        .map_err(|error| ru_message(&error.to_string()))?
+                        .to_owned();
+                    let (updated, removed) =
+                        global_variables::remove_global_variable(&content, &name)?;
+                    if removed {
+                        workspace
+                            .set_raw_file(&file, updated)
+                            .map_err(|error| ru_message(&error.to_string()))?;
+                    }
+                    Ok(removed)
+                })();
+                self.status = match result {
+                    Ok(true) => format!(
+                        "Глобальная переменная {{{{{name}}}}} удалена. Использования в правилах оставлены для ручной проверки"
+                    ),
+                    Ok(false) => format!("Глобальная переменная {{{{{name}}}}} уже отсутствует"),
+                    Err(error) => format!("Не удалось удалить глобальную переменную: {error}"),
+                };
+            }
+            GlobalVariableEditorAction::Insert { name } => {
+                self.status = match self.global_variable_records().and_then(|records| {
+                    if records.iter().any(|record| record.definition.name == name) {
+                        self.insert_global_placeholder(&name)
+                    } else {
+                        Err(format!(
+                            "Глобальная переменная {{{{{name}}}}} ещё не сохранена"
+                        ))
+                    }
+                }) {
+                    Ok(placeholder) => format!(
+                        "{placeholder} добавлена в текст правила. Сохраните изменения Ctrl+S"
+                    ),
+                    Err(error) => format!("Не удалось вставить переменную: {error}"),
+                };
+            }
+        }
+    }
+
     fn create_rule(&mut self) {
         let Some(workspace) = &mut self.workspace else {
             return;
@@ -1031,7 +1222,7 @@ impl MatchStudioApp {
                     Ok(0) => "Изменения ожидают сохранения (Ctrl+S)".clone_into(&mut self.status),
                     Ok(count) => {
                         self.status = format!(
-                            "Изменения ожидают сохранения. Автоматически объявлено переменных: {count}"
+                            "Изменения ожидают сохранения. Автоматически объявлено общих переменных: {count}"
                         );
                     }
                     Err(error) => {
@@ -1118,58 +1309,6 @@ impl MatchStudioApp {
         self.builder_error = None;
     }
 
-    fn add_dynamic_variable(&mut self, action: DynamicVariableAction) {
-        let Some(id) = self.selected.clone() else {
-            "Сначала выберите правило".clone_into(&mut self.status);
-            return;
-        };
-        let previous_draft = self.draft.clone();
-        self.draft.replace.push_str(&action.placeholder);
-
-        let result = self
-            .workspace
-            .as_mut()
-            .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())
-            .and_then(|workspace| {
-                workspace
-                    .update_rule(&id, &self.draft)
-                    .map_err(|error| ru_message(&error.to_string()))?;
-                let raw = workspace
-                    .rule(&id)
-                    .map(|rule| rule.raw)
-                    .map_err(|error| ru_message(&error.to_string()))?;
-                let (updated, added) =
-                    dynamic_variables::upsert_rule_variable(&raw, &action.definition)?;
-                workspace
-                    .update_rule_raw(&id, &updated)
-                    .map_err(|error| ru_message(&error.to_string()))?;
-                Ok((updated, added))
-            });
-
-        match result {
-            Ok((updated, added)) => {
-                self.raw_rule = updated;
-                self.status = if added {
-                    format!("{}. Нажмите Ctrl+S для записи YAML", action.message)
-                } else {
-                    format!(
-                        "Переменная {} уже объявлена; шаблон добавлен в текст. Нажмите Ctrl+S",
-                        action.placeholder
-                    )
-                };
-            }
-            Err(error) => {
-                self.draft = previous_draft;
-                if let Some(workspace) = &mut self.workspace {
-                    let _ = workspace.update_rule(&id, &self.draft);
-                    if let Ok(rule) = workspace.rule(&id) {
-                        self.raw_rule = rule.raw;
-                    }
-                }
-                self.status = format!("Не удалось добавить переменную: {error}");
-            }
-        }
-    }
     fn report_rhai_action(&mut self, result: Result<String, String>) {
         self.status = match result {
             Ok(message) => message,
@@ -1347,6 +1486,13 @@ impl MatchStudioApp {
                             .clicked()
                         {
                             self.create_rule();
+                        }
+                        if ui
+                            .button("Переменные")
+                            .on_hover_text("Просмотр, создание и изменение общих global_vars")
+                            .clicked()
+                        {
+                            self.show_global_variables = true;
                         }
                         if ui
                             .button("Сохранить всё")
@@ -1833,11 +1979,11 @@ impl MatchStudioApp {
             if ui
                 .small_button("?")
                 .on_hover_text(
-                    "Переменные: date, time, string, clipboard, echo, choice, form, random, rhai, script, shell",
+                    "Открыть общие переменные: date, time, string, clipboard, echo, choice, form, random, rhai, script, shell",
                 )
                 .clicked()
             {
-                self.show_dynamic_variables = true;
+                self.show_global_variables = true;
             }
         });
         ui.add(
@@ -2312,12 +2458,22 @@ impl MatchStudioApp {
             }
             self.confirm_delete_yaml_file = open;
         }
-        if self.show_dynamic_variables {
-            let mut open = self.show_dynamic_variables;
-            if let Some(action) = self.dynamic_variables.show(context, &mut open) {
-                self.add_dynamic_variable(action);
+        if self.show_global_variables {
+            let records = match self.global_variable_records() {
+                Ok(records) => records,
+                Err(error) => {
+                    self.status = format!("Не удалось прочитать global_vars: {error}");
+                    Vec::new()
+                }
+            };
+            let mut open = self.show_global_variables;
+            let action =
+                self.global_variables
+                    .show(context, &mut open, &records, self.selected.is_some());
+            self.show_global_variables = open;
+            if let Some(action) = action {
+                self.apply_global_variable_action(action);
             }
-            self.show_dynamic_variables = open;
         }
 
         if self.show_shortcuts {

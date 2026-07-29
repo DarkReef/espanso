@@ -213,7 +213,7 @@ impl GlobalVariableEditor {
                         }
                         if ui
                             .add_enabled(
-                                can_insert && !self.name.trim().is_empty(),
+                                can_insert && self.selected.is_some() && !self.name.trim().is_empty(),
                                 egui::Button::new("Только вставить"),
                             )
                             .clicked()
@@ -347,7 +347,12 @@ pub fn upsert_global_variable(
     validate_definition(&definition)?;
     let mut holder = parse_holder(content)?;
     let existing_index = original_name
-        .and_then(|name| holder.global_vars.iter().position(|variable| variable.name == name))
+        .and_then(|name| {
+            holder
+                .global_vars
+                .iter()
+                .position(|variable| variable.name == name)
+        })
         .or_else(|| {
             holder
                 .global_vars
@@ -359,9 +364,7 @@ pub fn upsert_global_variable(
         .global_vars
         .iter()
         .enumerate()
-        .any(|(index, variable)| {
-            variable.name == definition.name && Some(index) != existing_index
-        })
+        .any(|(index, variable)| variable.name == definition.name && Some(index) != existing_index)
     {
         return Err(format!(
             "Глобальная переменная {} уже объявлена в этом файле",
@@ -431,7 +434,9 @@ fn parse_params(params_yaml: &str) -> Result<Option<Value>, String> {
     let value = serde_norway::from_str::<Value>(trimmed)
         .map_err(|error| format!("Ошибка параметров переменной: {error}"))?;
     if !value.is_object() {
-        return Err("Параметры переменной должны быть YAML-объектом вида ключ: значение".to_owned());
+        return Err(
+            "Параметры переменной должны быть YAML-объектом вида ключ: значение".to_owned(),
+        );
     }
     Ok(Some(value))
 }
@@ -470,7 +475,11 @@ fn replace_global_vars_section(
     content: &str,
     variables: &[StoredVariable],
 ) -> Result<String, String> {
-    let newline = if content.contains("\r\n") { "\r\n" } else { "\n" };
+    let newline = if content.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
     let rendered = render_global_vars(variables, newline)?;
     let section = top_level_section(content, "global_vars");
 
@@ -570,7 +579,9 @@ fn line_ranges(content: &str) -> Vec<(usize, usize)> {
 }
 
 fn indentation(line: &str) -> usize {
-    line.chars().take_while(|character| *character == ' ').count()
+    line.chars()
+        .take_while(|character| *character == ' ')
+        .count()
 }
 
 fn trim_line(line: &str) -> &str {
