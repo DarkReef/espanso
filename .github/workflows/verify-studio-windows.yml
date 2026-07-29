@@ -1,0 +1,52 @@
+name: Verify Match Studio on Windows
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-studio-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-windows:
+    if: github.head_ref == 'feature/manual-build-dynamic-vars'
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: verify-studio-windows
+          cache-on-failure: true
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Test Match Studio
+        run: cargo test --locked -p espanso-editor --lib
+      - name: Lint Match Studio
+        run: cargo clippy --locked -p espanso-editor --all-targets -- --deny warnings
+      - name: Build Match Studio release
+        run: cargo build --locked --release -p espanso-editor --bin espanso-editor
+      - name: Verify executable
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -Path "target/release/espanso-editor.exe" -PathType Leaf)) {
+            throw "Match Studio executable was not produced"
+          }
+          Get-Item "target/release/espanso-editor.exe" | Format-List Name,Length,LastWriteTime
