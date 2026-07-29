@@ -1,0 +1,53 @@
+name: Apply review fixes
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-review-fixes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply-and-verify:
+    if: github.head_ref == 'feature/manual-build-dynamic-vars'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout working branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 8
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply reviewed fixes
+        run: python3 scripts/apply_review_fixes.py
+
+      - name: Format and verify Match Studio
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo check -p espanso-editor --all-targets
+          cargo test -p espanso-editor --lib
+          cargo clippy -p espanso-editor --all-targets -- --deny warnings
+          git diff --check
+
+      - name: Commit verified patch and remove temporary files
+        run: |
+          rm scripts/apply_review_fixes.py
+          rm .github/workflows/apply-review-fixes.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(studio): harden YAML and global variable editing [skip ci]"
+          git push origin HEAD:feature/manual-build-dynamic-vars
