@@ -32,12 +32,22 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
 
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: windows-x64-portable
           cache-on-failure: true
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test Match Studio
+        run: cargo test --locked -p espanso-editor --lib
+
+      - name: Lint Match Studio
+        run: cargo clippy --locked -p espanso-editor --all-targets -- --deny warnings
 
       - name: Build rEspanso core and launcher
         shell: pwsh
