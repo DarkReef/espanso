@@ -46,6 +46,21 @@ pub fn builtin_definitions_in(replacement: &str) -> Vec<VariableDefinition> {
     definitions
 }
 
+#[must_use]
+pub fn newly_completed_builtin_definitions(
+    previous: &str,
+    current: &str,
+) -> Vec<VariableDefinition> {
+    let previous_names = builtin_definitions_in(previous)
+        .into_iter()
+        .map(|definition| definition.name)
+        .collect::<std::collections::HashSet<_>>();
+    builtin_definitions_in(current)
+        .into_iter()
+        .filter(|definition| !previous_names.contains(&definition.name))
+        .collect()
+}
+
 pub fn canonical_definition(definition: &VariableDefinition) -> Result<VariableDefinition, String> {
     let variable_type = definition.variable_type.trim().to_ascii_lowercase();
     let mut canonical = definition.clone();
@@ -138,6 +153,20 @@ mod tests {
         assert_eq!(definitions[0].name, "date");
         assert_eq!(definitions[1].name, "time");
         assert_eq!(definitions[2].name, "clipboard");
+    }
+
+    #[test]
+    fn detects_only_newly_completed_builtin_placeholders() {
+        let definitions =
+            newly_completed_builtin_definitions("Дата {{dat", "Дата {{date}}, время {{time}}");
+        assert_eq!(
+            definitions
+                .iter()
+                .map(|definition| definition.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["date", "time"]
+        );
+        assert!(newly_completed_builtin_definitions("Дата {{date}}", "Дата: {{date}}").is_empty());
     }
 
     #[test]

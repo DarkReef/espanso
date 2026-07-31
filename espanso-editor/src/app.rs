@@ -9,12 +9,12 @@ use crate::{
     rhai_lab::RhaiLab,
     runtime::RuntimeMonitor,
     settings::SettingsEditor,
-    storm_logo,
+    storm_logo, trigger_conversion,
     workspace::{
         DiagnosticLevel, MatchKind, MatchWorkspace, PlaygroundResult, RegexBuilderSpec,
         RegexExampleResult, RuleDraft, RuleId,
     },
-    yaml_imports,
+    yaml_files, yaml_imports,
 };
 use eframe::egui;
 use std::{
@@ -24,13 +24,10 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
-use walkdir::WalkDir;
 
 const APP_TITLE: &str = "rEspanso Match Studio";
 const FILE_CHECK_INTERVAL: Duration = Duration::from_secs(3);
 const FILE_STABILITY_RECHECK: Duration = Duration::from_millis(850);
-const DISABLED_YAML_SUFFIX: &str = ".disabled";
-const DISABLED_IMPORTED_YAML_SUFFIX: &str = ".disabled.imported";
 const ESPANSO_REGEXP_DOCS_URL: &str = "https://espanso.org/docs/matches/regex-triggers/";
 
 pub fn run(config_root: PathBuf) -> eframe::Result {
@@ -59,12 +56,6 @@ enum MainTab {
 enum EditorMode {
     Structured,
     Raw,
-}
-
-#[derive(Debug, Clone)]
-struct YamlFileEntry {
-    path: PathBuf,
-    enabled: bool,
 }
 
 pub struct MatchStudioApp {
@@ -696,7 +687,12 @@ impl MatchStudioApp {
         }
 
         let display_name =
-            yaml_display_name(&self.config_root, &file, !is_disabled_yaml_path(&file));
+            yaml_files::display_name(&self.config_root, &file, !yaml_files::is_disabled(&file));
+        let workspace_snapshot = self
+            .workspace
+            .as_ref()
+            .map(MatchWorkspace::working_snapshot)
+            .unwrap_or_default();
         let result = (|| -> Result<PathBuf, String> {
             if !file.is_file() {
                 return Err(format!("Файл не найден: {}", file.display()));
@@ -709,7 +705,7 @@ impl MatchStudioApp {
             let files = workspace.files();
             let base_file = yaml_imports::find_base_file(&files, workspace.match_root());
             let logical_enabled_path = if enabled {
-                enabled_yaml_path(&file)
+                yaml_files::enabled_path(&file)
                     .ok_or_else(|| format!("Файл {display_name} уже включён"))?
             } else {
                 file.clone()
@@ -721,7 +717,7 @@ impl MatchStudioApp {
             let mut base_update = None;
             let target = if enabled {
                 let target = logical_enabled_path;
-                if is_imported_disabled_yaml_path(&file) {
+                if yaml_files::is_imported_disabled(&file) {
                     if let Some(base_file) = &base_file {
                         let base_content = workspace
                             .raw_file(base_file)
@@ -749,7 +745,7 @@ impl MatchStudioApp {
                         base_update = Some((base_file.clone(), updated));
                     }
                 }
-                disabled_yaml_path(&file, was_imported)
+                yaml_files::disabled_path(&file, was_imported)
             };
 
             if target.exists() {
@@ -775,13 +771,15 @@ impl MatchStudioApp {
                             .map_err(|error| ru_message(&error.to_string()))
                     });
                 if let Err(error) = update_result {
+                    workspace.restore_working_snapshot(&workspace_snapshot);
                     let rollback = fs::rename(&target, &file);
                     return Err(match rollback {
                         Ok(()) => format!(
-                            "Не удалось обновить imports; переименование отменено: {error}"
+                            "Не удалось обновить imports; переименование и рабочая копия восстановлены: {error}"
                         ),
                         Err(rollback_error) => format!(
-                            "Не удалось обновить imports ({error}) и вернуть имя файла ({rollback_error})"
+                            "Не удалось обновить imports ({error}); файл сохранён по адресу {} и не удалось вернуть исходное имя ({rollback_error})",
+                            target.display()
                         ),
                     });
                 }
@@ -818,7 +816,7 @@ impl MatchStudioApp {
             return false;
         }
 
-        let name = match normalize_yaml_file_name(&self.new_yaml_file_name) {
+        let name = match yaml_files::normalize_file_name(&self.new_yaml_file_name) {
             Ok(name) => name,
             Err(error) => {
                 self.status = error;
@@ -863,9 +861,9 @@ impl MatchStudioApp {
             return false;
         }
 
-        let disabled = is_disabled_yaml_path(&path);
+        let disabled = yaml_files::is_disabled(&path);
         let logical_path = if disabled {
-            let Some(path) = enabled_yaml_path(&path) else {
+            let Some(path) = yaml_files::enabled_path(&path) else {
                 "Не удалось определить исходное имя выключенного YAML-файла"
                     .clone_into(&mut self.status);
                 return false;
@@ -874,81 +872,114 @@ impl MatchStudioApp {
         } else {
             path.clone()
         };
+        let display_name = yaml_files::display_name(&self.config_root, &path, !disabled);
+        let workspace_snapshot = self
+            .workspace
+            .as_ref()
+            .map(MatchWorkspace::working_snapshot)
+            .unwrap_or_default();
 
-        let Some(workspace) = &mut self.workspace else {
-            return false;
-        };
-        let files = workspace.files();
-        if disabled {
-            if !path.is_file() {
-                "Выбранный выключенный YAML-файл больше не существует".clone_into(&mut self.status);
-                return false;
+        let result = (|| -> Result<PathBuf, String> {
+            let workspace = self
+                .workspace
+                .as_mut()
+                .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+            let files = workspace.files();
+            if disabled {
+                if !path.is_file() {
+                    return Err("Выбранный выключенный YAML-файл больше не существует".to_owned());
+                }
+            } else if !files.iter().any(|file| file == &path) {
+                return Err("Выбранный YAML-файл больше не входит в рабочую область".to_owned());
             }
-        } else if !files.iter().any(|file| file == &path) {
-            "Выбранный YAML-файл больше не входит в рабочую область".clone_into(&mut self.status);
-            return false;
-        }
 
-        let base_file = yaml_imports::find_base_file(&files, workspace.match_root());
-        if base_file.as_ref() == Some(&logical_path) {
-            "Нельзя удалить основной base.yml/base.yaml".clone_into(&mut self.status);
-            return false;
-        }
+            let base_file = yaml_imports::find_base_file(&files, workspace.match_root());
+            if base_file.as_ref() == Some(&logical_path) {
+                return Err("Нельзя удалить основной base.yml/base.yaml".to_owned());
+            }
 
-        let display_name = yaml_display_name(&self.config_root, &path, !disabled);
-        if let Some(base_file) = base_file {
-            let base_content = match workspace.raw_file(&base_file) {
-                Ok(content) => content.to_owned(),
-                Err(error) => {
-                    self.status = format!(
-                        "Не удалось прочитать imports перед удалением {display_name}: {}",
-                        ru_message(&error.to_string())
-                    );
-                    return false;
-                }
-            };
-            let updated = match yaml_imports::update_import(
-                &base_content,
-                &base_file,
-                &logical_path,
-                false,
-            ) {
-                Ok(updated) => updated,
-                Err(error) => {
-                    self.status = format!(
-                        "Удаление {display_name} остановлено: не удалось обновить imports: {error}"
-                    );
-                    return false;
-                }
-            };
-            if updated != base_content {
-                if let Err(error) = workspace.set_raw_file(&base_file, updated) {
-                    self.status = format!(
-                        "Удаление {display_name} остановлено: {}",
-                        ru_message(&error.to_string())
-                    );
-                    return false;
-                }
-                if let Err(error) = workspace.save_all() {
-                    self.status = format!(
-                        "Удаление {display_name} остановлено: {}",
-                        ru_message(&error.to_string())
-                    );
-                    return false;
+            let mut base_update = None;
+            if let Some(base_file) = base_file {
+                let base_content = workspace
+                    .raw_file(&base_file)
+                    .map_err(|error| {
+                        format!(
+                            "Не удалось прочитать imports перед удалением {display_name}: {}",
+                            ru_message(&error.to_string())
+                        )
+                    })?
+                    .to_owned();
+                let updated =
+                    yaml_imports::update_import(&base_content, &base_file, &logical_path, false)?;
+                if updated != base_content {
+                    base_update = Some((base_file, updated));
                 }
             }
-        }
 
-        if let Err(error) = fs::remove_file(&path) {
-            self.status = format!("Не удалось удалить {display_name}: {error}");
-            return false;
+            let quarantine = yaml_files::deletion_quarantine_path(&path)?;
+            if quarantine.exists() {
+                return Err(format!(
+                    "Удаление остановлено: уже существует файл безопасного карантина {}",
+                    quarantine.display()
+                ));
+            }
+            fs::rename(&path, &quarantine).map_err(|error| {
+                format!(
+                    "Не удалось переместить {display_name} в безопасный карантин {}: {error}",
+                    quarantine.display()
+                )
+            })?;
+
+            if let Some((base_file, updated)) = base_update {
+                let save_result = workspace
+                    .set_raw_file(&base_file, updated)
+                    .map_err(|error| ru_message(&error.to_string()))
+                    .and_then(|()| {
+                        workspace
+                            .save_all()
+                            .map(|_| ())
+                            .map_err(|error| ru_message(&error.to_string()))
+                    });
+                if let Err(error) = save_result {
+                    workspace.restore_working_snapshot(&workspace_snapshot);
+                    let rollback = fs::rename(&quarantine, &path);
+                    return Err(match rollback {
+                        Ok(()) => format!(
+                            "Удаление отменено: imports не сохранены ({error}); исходный файл и рабочая копия восстановлены"
+                        ),
+                        Err(rollback_error) => format!(
+                            "Удаление imports отменено ({error}), но файл остался в карантине {} и не вернулся на место ({rollback_error})",
+                            quarantine.display()
+                        ),
+                    });
+                }
+            }
+            Ok(quarantine)
+        })();
+
+        match result {
+            Ok(quarantine) => {
+                let cleanup_error = fs::remove_file(&quarantine).err();
+                self.file_filter = None;
+                self.selected = None;
+                self.raw_rule.clear();
+                self.reload();
+                self.status = cleanup_error.map_or_else(
+                    || format!("Удалён {display_name}; связанные imports также очищены"),
+                    |error| {
+                        format!(
+                            "{display_name} отключён и исключён из imports, но карантинный файл {} не удалось окончательно удалить: {error}",
+                            quarantine.display()
+                        )
+                    },
+                );
+                true
+            }
+            Err(error) => {
+                self.status = format!("Удаление {display_name} остановлено: {error}");
+                false
+            }
         }
-        self.file_filter = None;
-        self.selected = None;
-        self.raw_rule.clear();
-        self.reload();
-        self.status = format!("Удалён {display_name}; связанные imports также очищены");
-        true
     }
 
     fn global_variable_records(&self) -> Result<Vec<GlobalVariableRecord>, String> {
@@ -982,8 +1013,10 @@ impl MatchStudioApp {
             .ok_or_else(|| "Не найден основной match/base.yml или match/base.yaml".to_owned())
     }
 
-    fn sync_builtin_variables(&mut self, _id: &RuleId) -> Result<usize, String> {
-        let definitions = dynamic_variables::builtin_definitions_in(&self.draft.replace);
+    fn sync_builtin_variables(
+        &mut self,
+        definitions: Vec<dynamic_variables::VariableDefinition>,
+    ) -> Result<usize, String> {
         if definitions.is_empty() {
             return Ok(0);
         }
@@ -1249,7 +1282,10 @@ impl MatchStudioApp {
         }
     }
 
-    fn apply_structured(&mut self) {
+    fn apply_structured(
+        &mut self,
+        builtin_definitions: Vec<dynamic_variables::VariableDefinition>,
+    ) {
         let Some(id) = self.selected.clone() else {
             return;
         };
@@ -1270,21 +1306,26 @@ impl MatchStudioApp {
         match result {
             Ok(raw) => {
                 self.raw_rule = raw;
-                match self.sync_builtin_variables(&id) {
-                    Ok(0) => "Изменения ожидают сохранения (Ctrl+S)".clone_into(&mut self.status),
+                match self.sync_builtin_variables(builtin_definitions) {
+                    Ok(0) => {
+                        "Изменения ожидают сохранения (Ctrl+S)".clone_into(&mut self.status);
+                    }
                     Ok(count) => {
                         self.status = format!(
                             "Изменения ожидают сохранения. Автоматически объявлено общих переменных: {count}"
                         );
                     }
                     Err(error) => {
-                        self.status = format!("Не удалось объявить переменную: {error}");
+                        self.status = format!(
+                            "Правило изменено, но общую переменную объявить не удалось: {error}"
+                        );
                     }
                 }
             }
             Err(error) => self.status = error,
         }
     }
+
     fn apply_raw(&mut self) {
         let Some(id) = self.selected.clone() else {
             return;
@@ -1674,7 +1715,7 @@ impl MatchStudioApp {
         let rules = workspace.rules();
         let config_root = workspace.config_root().to_path_buf();
         let match_root = workspace.match_root().to_path_buf();
-        let yaml_entries = yaml_file_entries(&files, &match_root);
+        let yaml_entries = yaml_files::entries(&files, &match_root);
         let files_count = yaml_entries.len();
         let disabled_count = yaml_entries.iter().filter(|entry| !entry.enabled).count();
         let rules_count = rules.len();
@@ -1735,8 +1776,8 @@ impl MatchStudioApp {
                             }
                             let selected_file = self.file_filter.clone();
                             let can_delete = selected_file.as_ref().is_some_and(|file| {
-                                let logical = if is_disabled_yaml_path(file) {
-                                    enabled_yaml_path(file).unwrap_or_else(|| file.clone())
+                                let logical = if yaml_files::is_disabled(file) {
+                                    yaml_files::enabled_path(file).unwrap_or_else(|| file.clone())
                                 } else {
                                     file.clone()
                                 };
@@ -1776,7 +1817,7 @@ impl MatchStudioApp {
 
                                 let mut visible_files = 0_usize;
                                 for entry in &yaml_entries {
-                                    let display_name = yaml_display_name(
+                                    let display_name = yaml_files::display_name(
                                         &config_root,
                                         &entry.path,
                                         entry.enabled,
@@ -1790,7 +1831,7 @@ impl MatchStudioApp {
                                     let logical_path = if entry.enabled {
                                         entry.path.clone()
                                     } else {
-                                        enabled_yaml_path(&entry.path)
+                                        yaml_files::enabled_path(&entry.path)
                                             .unwrap_or_else(|| entry.path.clone())
                                     };
                                     let is_base = base_file.as_ref() == Some(&logical_path);
@@ -1894,7 +1935,7 @@ impl MatchStudioApp {
                             if self
                                 .file_filter
                                 .as_ref()
-                                .is_some_and(|file| is_disabled_yaml_path(file))
+                                .is_some_and(|file| yaml_files::is_disabled(file))
                             {
                                 ui.label("Файл выключен: его правила не загружаются");
                             } else {
@@ -1934,7 +1975,7 @@ impl MatchStudioApp {
                 let disabled_file_selected = self
                     .file_filter
                     .as_ref()
-                    .is_some_and(|file| is_disabled_yaml_path(file));
+                    .is_some_and(|file| yaml_files::is_disabled(file));
                 ui.vertical_centered(|ui| {
                     ui.add_space(35.0);
                     if disabled_file_selected {
@@ -1988,17 +2029,10 @@ impl MatchStudioApp {
             ui.selectable_value(&mut self.draft.kind, MatchKind::Regex, "Гибкий RegExp");
         });
         if previous_draft.kind == MatchKind::Trigger && self.draft.kind == MatchKind::Regex {
-            if self.draft.regex.trim().is_empty() {
-                self.draft.regex = literal_trigger_regex(&previous_draft.triggers);
-            }
-            let examples = previous_draft
-                .triggers
-                .iter()
-                .map(String::as_str)
-                .filter(|trigger| !trigger.trim().is_empty())
-                .collect::<Vec<_>>();
-            if !examples.is_empty() {
-                self.regex_examples_text = examples.join("\n");
+            let conversion = trigger_conversion::from_triggers(&previous_draft.triggers);
+            self.draft.regex = conversion.pattern;
+            if !conversion.examples.is_empty() {
+                self.regex_examples_text = conversion.examples;
             }
             self.refresh_regex_examples();
         }
@@ -2060,7 +2094,11 @@ impl MatchStudioApp {
                 .hint_text("Текст, который rEspanso вставит вместо триггера"),
         );
         if self.draft != previous_draft {
-            self.apply_structured();
+            let new_builtins = dynamic_variables::newly_completed_builtin_definitions(
+                &previous_draft.replace,
+                &self.draft.replace,
+            );
+            self.apply_structured(new_builtins);
         }
     }
     fn regex_editor(&mut self, ui: &mut egui::Ui) {
@@ -2695,179 +2733,6 @@ fn shortcut_row(ui: &mut egui::Ui, shortcut: &str, description: &str) {
     ui.end_row();
 }
 
-fn yaml_file_entries(active_files: &[PathBuf], match_root: &Path) -> Vec<YamlFileEntry> {
-    let mut entries = active_files
-        .iter()
-        .cloned()
-        .map(|path| YamlFileEntry {
-            path,
-            enabled: true,
-        })
-        .collect::<Vec<_>>();
-
-    if match_root.is_dir() {
-        for path in WalkDir::new(match_root)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|entry| entry.file_type().is_file())
-            .map(walkdir::DirEntry::into_path)
-            .filter(|path| is_disabled_yaml_path(path))
-        {
-            let logical = enabled_yaml_path(&path).unwrap_or_else(|| path.clone());
-            if entries.iter().any(|entry| entry.path == logical) {
-                continue;
-            }
-            entries.push(YamlFileEntry {
-                path,
-                enabled: false,
-            });
-        }
-    }
-
-    entries.sort_by_key(|entry| {
-        yaml_visible_path(&entry.path, entry.enabled)
-            .to_string_lossy()
-            .to_lowercase()
-    });
-    entries
-}
-
-fn disabled_yaml_path(path: &Path, imported: bool) -> PathBuf {
-    let Some(file_name) = path.file_name() else {
-        return path.with_extension("disabled");
-    };
-    let mut disabled_name = file_name.to_os_string();
-    disabled_name.push(if imported {
-        DISABLED_IMPORTED_YAML_SUFFIX
-    } else {
-        DISABLED_YAML_SUFFIX
-    });
-    path.with_file_name(disabled_name)
-}
-
-fn enabled_yaml_path(path: &Path) -> Option<PathBuf> {
-    let file_name = path.file_name()?.to_string_lossy();
-    let lower = file_name.to_ascii_lowercase();
-    let suffix = if lower.ends_with(DISABLED_IMPORTED_YAML_SUFFIX) {
-        DISABLED_IMPORTED_YAML_SUFFIX
-    } else if lower.ends_with(DISABLED_YAML_SUFFIX) {
-        DISABLED_YAML_SUFFIX
-    } else {
-        return None;
-    };
-    let enabled_name = &file_name[..file_name.len() - suffix.len()];
-    let extension = Path::new(enabled_name)
-        .extension()
-        .and_then(|extension| extension.to_str());
-    if !extension.is_some_and(|extension| {
-        extension.eq_ignore_ascii_case("yml") || extension.eq_ignore_ascii_case("yaml")
-    }) {
-        return None;
-    }
-    Some(path.with_file_name(enabled_name))
-}
-
-fn is_disabled_yaml_path(path: &Path) -> bool {
-    enabled_yaml_path(path).is_some()
-}
-
-fn is_imported_disabled_yaml_path(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| {
-            name.to_ascii_lowercase()
-                .ends_with(DISABLED_IMPORTED_YAML_SUFFIX)
-        })
-}
-
-fn yaml_visible_path(path: &Path, enabled: bool) -> PathBuf {
-    if enabled {
-        path.to_path_buf()
-    } else {
-        enabled_yaml_path(path).unwrap_or_else(|| path.to_path_buf())
-    }
-}
-
-fn yaml_display_name(root: &Path, path: &Path, enabled: bool) -> String {
-    relative_display(root, &yaml_visible_path(path, enabled))
-}
-
-fn normalize_yaml_file_name(value: &str) -> Result<String, String> {
-    let mut name = value.trim().to_owned();
-    if name.is_empty() {
-        return Err("Укажите имя YAML-файла".to_owned());
-    }
-    if name.starts_with('.')
-        || name.chars().any(|character| {
-            character.is_control()
-                || ['<', '>', ':', '"', '/', '\\', '|', '?', '*'].contains(&character)
-        })
-    {
-        return Err("Имя содержит недопустимые для Windows символы".to_owned());
-    }
-    if Path::new(&name).extension().is_none() {
-        name.push_str(".yml");
-    }
-    let path = Path::new(&name);
-    let extension = path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .unwrap_or_default();
-    if !extension.eq_ignore_ascii_case("yml") && !extension.eq_ignore_ascii_case("yaml") {
-        return Err("Допустимы только расширения .yml и .yaml".to_owned());
-    }
-    let stem = path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or_default();
-    if stem.is_empty() {
-        return Err("Имя YAML-файла не может быть пустым".to_owned());
-    }
-    let reserved = stem.to_ascii_uppercase();
-    if matches!(
-        reserved.as_str(),
-        "CON"
-            | "PRN"
-            | "AUX"
-            | "NUL"
-            | "COM1"
-            | "COM2"
-            | "COM3"
-            | "COM4"
-            | "COM5"
-            | "COM6"
-            | "COM7"
-            | "COM8"
-            | "COM9"
-            | "LPT1"
-            | "LPT2"
-            | "LPT3"
-            | "LPT4"
-            | "LPT5"
-            | "LPT6"
-            | "LPT7"
-            | "LPT8"
-            | "LPT9"
-    ) {
-        return Err("Это имя зарезервировано Windows".to_owned());
-    }
-    Ok(name)
-}
-fn literal_trigger_regex(triggers: &[String]) -> String {
-    let escaped = triggers
-        .iter()
-        .map(String::as_str)
-        .filter(|trigger| !trigger.trim().is_empty())
-        .map(regex::escape)
-        .collect::<Vec<_>>();
-    match escaped.as_slice() {
-        [] => String::new(),
-        [trigger] => format!("{trigger}$"),
-        _ => format!("(?:{})$", escaped.join("|")),
-    }
-}
-
 fn relative_display(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .unwrap_or(path)
@@ -2916,28 +2781,4 @@ fn ru_message(message: &str) -> String {
         translated = translated.replace(source, target);
     }
     translated
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn converts_trigger_to_literal_end_anchored_regexp() {
-        let pattern = literal_trigger_regex(&[":doc".to_owned()]);
-        assert_eq!(pattern, ":doc$");
-        let regex = regex::Regex::new(&pattern).expect("converted regexp");
-        assert!(regex.is_match("текст :doc"));
-        assert!(!regex.is_match("текст :doc продолжение"));
-    }
-
-    #[test]
-    fn converts_multiple_triggers_and_escapes_regexp_metacharacters() {
-        let pattern = literal_trigger_regex(&[":a.b".to_owned(), ":c+".to_owned()]);
-        assert_eq!(pattern, r"(?::a\.b|:c\+)$");
-        let regex = regex::Regex::new(&pattern).expect("converted regexp");
-        assert!(regex.is_match("до :a.b"));
-        assert!(regex.is_match("до :c+"));
-        assert!(!regex.is_match("до :axb"));
-    }
 }

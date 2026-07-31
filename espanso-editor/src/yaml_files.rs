@@ -158,11 +158,7 @@ pub fn normalize_file_name(value: &str) -> Result<String, String> {
     if stem.ends_with(' ') || stem.ends_with('.') {
         return Err("Имя файла не может оканчиваться пробелом или точкой".to_owned());
     }
-    let reserved = stem
-        .split('.')
-        .next()
-        .unwrap_or(stem)
-        .to_ascii_uppercase();
+    let reserved = stem.split('.').next().unwrap_or(stem).to_ascii_uppercase();
     if matches!(
         reserved.as_str(),
         "CON"
