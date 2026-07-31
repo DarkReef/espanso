@@ -76,10 +76,11 @@ jobs:
           $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
           $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
           $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
+
+          # The packaging script is authoritative through the archive it creates.
+          # A successful PowerShell script may leave a stale LASTEXITCODE from an
+          # internal native command, so validate the archive and its contents below.
           & "./scripts/build_windows_native_portable_with_studio.ps1"
-          if ($LASTEXITCODE -ne 0) {
-            throw "Portable packaging failed with exit code $LASTEXITCODE"
-          }
 
           $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
           if (-not (Test-Path -Path $archive -PathType Leaf)) {
