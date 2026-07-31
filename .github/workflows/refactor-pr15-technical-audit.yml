@@ -1,0 +1,1087 @@
+name: Refactor PR15 technical audit
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+    types:
+      - synchronize
+      - opened
+      - reopened
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refactor-pr15-technical-audit
+  cancel-in-progress: true
+
+jobs:
+  refactor-test-build:
+    if: github.event.pull_request.head.ref == 'feature/manual-build-dynamic-vars'
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 0
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-portable
+          cache-on-failure: true
+
+      - name: Apply audited refactor
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if old not in text:
+                  raise SystemExit(f"anchor not found: {label}")
+              return text.replace(old, new, 1)
+
+          def replace_regex(text: str, pattern: str, replacement: str, label: str) -> str:
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f"regex anchor not found or ambiguous: {label} ({count})")
+              return updated
+
+          yaml_files = r'''use std::{
+              ffi::OsString,
+              path::{Path, PathBuf},
+          };
+          use walkdir::WalkDir;
+
+          const DISABLED_YAML_SUFFIX: &str = ".disabled";
+          const DISABLED_IMPORTED_YAML_SUFFIX: &str = ".disabled.imported";
+          const DELETE_QUARANTINE_SUFFIX: &str = ".respanso-delete";
+
+          #[derive(Debug, Clone, PartialEq, Eq)]
+          pub struct YamlFileEntry {
+              pub path: PathBuf,
+              pub enabled: bool,
+          }
+
+          #[must_use]
+          pub fn entries(active_files: &[PathBuf], match_root: &Path) -> Vec<YamlFileEntry> {
+              let mut entries = active_files
+                  .iter()
+                  .cloned()
+                  .map(|path| YamlFileEntry {
+                      path,
+                      enabled: true,
+                  })
+                  .collect::<Vec<_>>();
+
+              if match_root.is_dir() {
+                  for path in WalkDir::new(match_root)
+                      .follow_links(false)
+                      .into_iter()
+                      .filter_map(Result::ok)
+                      .filter(|entry| entry.file_type().is_file())
+                      .map(walkdir::DirEntry::into_path)
+                      .filter(|path| is_disabled(path))
+                  {
+                      let logical = enabled_path(&path).unwrap_or_else(|| path.clone());
+                      if entries.iter().any(|entry| entry.path == logical) {
+                          continue;
+                      }
+                      entries.push(YamlFileEntry {
+                          path,
+                          enabled: false,
+                      });
+                  }
+              }
+
+              entries.sort_by_key(|entry| {
+                  visible_path(&entry.path, entry.enabled)
+                      .to_string_lossy()
+                      .to_lowercase()
+              });
+              entries
+          }
+
+          #[must_use]
+          pub fn disabled_path(path: &Path, imported: bool) -> PathBuf {
+              let Some(file_name) = path.file_name() else {
+                  return path.with_extension("disabled");
+              };
+              let mut disabled_name = file_name.to_os_string();
+              disabled_name.push(if imported {
+                  DISABLED_IMPORTED_YAML_SUFFIX
+              } else {
+                  DISABLED_YAML_SUFFIX
+              });
+              path.with_file_name(disabled_name)
+          }
+
+          #[must_use]
+          pub fn enabled_path(path: &Path) -> Option<PathBuf> {
+              let file_name = path.file_name()?.to_string_lossy();
+              let lower = file_name.to_ascii_lowercase();
+              let suffix = if lower.ends_with(DISABLED_IMPORTED_YAML_SUFFIX) {
+                  DISABLED_IMPORTED_YAML_SUFFIX
+              } else if lower.ends_with(DISABLED_YAML_SUFFIX) {
+                  DISABLED_YAML_SUFFIX
+              } else {
+                  return None;
+              };
+              let enabled_name = &file_name[..file_name.len() - suffix.len()];
+              let extension = Path::new(enabled_name)
+                  .extension()
+                  .and_then(|extension| extension.to_str());
+              if !extension.is_some_and(|extension| {
+                  extension.eq_ignore_ascii_case("yml")
+                      || extension.eq_ignore_ascii_case("yaml")
+              }) {
+                  return None;
+              }
+              Some(path.with_file_name(enabled_name))
+          }
+
+          #[must_use]
+          pub fn is_disabled(path: &Path) -> bool {
+              enabled_path(path).is_some()
+          }
+
+          #[must_use]
+          pub fn is_imported_disabled(path: &Path) -> bool {
+              path.file_name()
+                  .and_then(|name| name.to_str())
+                  .is_some_and(|name| {
+                      name.to_ascii_lowercase()
+                          .ends_with(DISABLED_IMPORTED_YAML_SUFFIX)
+                  })
+          }
+
+          #[must_use]
+          pub fn visible_path(path: &Path, enabled: bool) -> PathBuf {
+              if enabled {
+                  path.to_path_buf()
+              } else {
+                  enabled_path(path).unwrap_or_else(|| path.to_path_buf())
+              }
+          }
+
+          #[must_use]
+          pub fn display_name(root: &Path, path: &Path, enabled: bool) -> String {
+              let visible = visible_path(path, enabled);
+              visible
+                  .strip_prefix(root)
+                  .unwrap_or(&visible)
+                  .display()
+                  .to_string()
+          }
+
+          pub fn normalize_file_name(value: &str) -> Result<String, String> {
+              let mut name = value.trim().to_owned();
+              if name.is_empty() {
+                  return Err("Укажите имя YAML-файла".to_owned());
+              }
+              if name.starts_with('.')
+                  || name.chars().any(|character| {
+                      character.is_control()
+                          || ['<', '>', ':', '"', '/', '\\', '|', '?', '*'].contains(&character)
+                  })
+              {
+                  return Err("Имя содержит недопустимые для Windows символы".to_owned());
+              }
+              if Path::new(&name).extension().is_none() {
+                  name.push_str(".yml");
+              }
+              let path = Path::new(&name);
+              let extension = path
+                  .extension()
+                  .and_then(|extension| extension.to_str())
+                  .unwrap_or_default();
+              if !extension.eq_ignore_ascii_case("yml")
+                  && !extension.eq_ignore_ascii_case("yaml")
+              {
+                  return Err("Допустимы только расширения .yml и .yaml".to_owned());
+              }
+              let stem = path
+                  .file_stem()
+                  .and_then(|stem| stem.to_str())
+                  .unwrap_or_default();
+              if stem.is_empty() {
+                  return Err("Имя YAML-файла не может быть пустым".to_owned());
+              }
+              if stem.ends_with(' ') || stem.ends_with('.') {
+                  return Err("Имя файла не может оканчиваться пробелом или точкой".to_owned());
+              }
+              let reserved = stem
+                  .split('.')
+                  .next()
+                  .unwrap_or(stem)
+                  .to_ascii_uppercase();
+              if matches!(
+                  reserved.as_str(),
+                  "CON"
+                      | "PRN"
+                      | "AUX"
+                      | "NUL"
+                      | "COM1"
+                      | "COM2"
+                      | "COM3"
+                      | "COM4"
+                      | "COM5"
+                      | "COM6"
+                      | "COM7"
+                      | "COM8"
+                      | "COM9"
+                      | "LPT1"
+                      | "LPT2"
+                      | "LPT3"
+                      | "LPT4"
+                      | "LPT5"
+                      | "LPT6"
+                      | "LPT7"
+                      | "LPT8"
+                      | "LPT9"
+              ) {
+                  return Err("Это имя зарезервировано Windows".to_owned());
+              }
+              Ok(name)
+          }
+
+          pub fn deletion_quarantine_path(path: &Path) -> Result<PathBuf, String> {
+              let file_name = path
+                  .file_name()
+                  .ok_or_else(|| "Не удалось определить имя удаляемого YAML-файла".to_owned())?;
+              let mut quarantine_name = OsString::from(".");
+              quarantine_name.push(file_name);
+              quarantine_name.push(DELETE_QUARANTINE_SUFFIX);
+              Ok(path.with_file_name(quarantine_name))
+          }
+
+          #[cfg(test)]
+          mod tests {
+              use super::*;
+
+              #[test]
+              fn disabled_names_round_trip_for_imported_and_standalone_files() {
+                  let source = Path::new("match/therapy.yml");
+                  for imported in [false, true] {
+                      let disabled = disabled_path(source, imported);
+                      assert!(is_disabled(&disabled));
+                      assert_eq!(enabled_path(&disabled).as_deref(), Some(source));
+                  }
+              }
+
+              #[test]
+              fn unrelated_disabled_file_is_not_treated_as_yaml() {
+                  assert!(!is_disabled(Path::new("match/readme.txt.disabled")));
+              }
+
+              #[test]
+              fn normalizes_safe_names_and_rejects_windows_edge_cases() {
+                  assert_eq!(normalize_file_name("therapy").unwrap(), "therapy.yml");
+                  assert!(normalize_file_name("../therapy.yml").is_err());
+                  assert!(normalize_file_name("CON.backup.yml").is_err());
+                  assert!(normalize_file_name("therapy .yml").is_err());
+              }
+
+              #[test]
+              fn quarantine_path_cannot_be_loaded_as_yaml() {
+                  let quarantine = deletion_quarantine_path(Path::new("match/therapy.yml")).unwrap();
+                  assert_eq!(
+                      quarantine.file_name().and_then(|name| name.to_str()),
+                      Some(".therapy.yml.respanso-delete")
+                  );
+                  assert!(!is_disabled(&quarantine));
+                  assert_ne!(quarantine.extension().and_then(|value| value.to_str()), Some("yml"));
+              }
+          }
+          '''
+
+          trigger_conversion = r'''#[derive(Debug, Clone, PartialEq, Eq)]
+          pub struct TriggerRegexConversion {
+              pub pattern: String,
+              pub examples: String,
+          }
+
+          #[must_use]
+          pub fn from_triggers(triggers: &[String]) -> TriggerRegexConversion {
+              let literal = triggers
+                  .iter()
+                  .map(String::as_str)
+                  .filter(|trigger| !trigger.trim().is_empty())
+                  .collect::<Vec<_>>();
+              let escaped = literal
+                  .iter()
+                  .map(|trigger| regex::escape(trigger))
+                  .collect::<Vec<_>>();
+              let pattern = match escaped.as_slice() {
+                  [] => String::new(),
+                  [trigger] => format!("{trigger}$"),
+                  _ => format!("(?:{})$", escaped.join("|")),
+              };
+              TriggerRegexConversion {
+                  pattern,
+                  examples: literal.join("\n"),
+              }
+          }
+
+          #[cfg(test)]
+          mod tests {
+              use super::*;
+
+              #[test]
+              fn converts_single_trigger_to_literal_end_anchored_regexp() {
+                  let conversion = from_triggers(&[":doc".to_owned()]);
+                  assert_eq!(conversion.pattern, ":doc$");
+                  assert_eq!(conversion.examples, ":doc");
+                  let regex = regex::Regex::new(&conversion.pattern).expect("converted regexp");
+                  assert!(regex.is_match("текст :doc"));
+                  assert!(!regex.is_match("текст :doc продолжение"));
+              }
+
+              #[test]
+              fn converts_multiple_triggers_and_escapes_metacharacters() {
+                  let conversion = from_triggers(&[":a.b".to_owned(), ":c+".to_owned()]);
+                  assert_eq!(conversion.pattern, r"(?::a\.b|:c\+)$");
+                  assert_eq!(conversion.examples, ":a.b\n:c+");
+              }
+
+              #[test]
+              fn empty_triggers_produce_empty_conversion() {
+                  let conversion = from_triggers(&[String::new(), "   ".to_owned()]);
+                  assert!(conversion.pattern.is_empty());
+                  assert!(conversion.examples.is_empty());
+              }
+          }
+          '''
+
+          Path("espanso-editor/src/yaml_files.rs").write_text(yaml_files, encoding="utf-8")
+          Path("espanso-editor/src/trigger_conversion.rs").write_text(
+              trigger_conversion, encoding="utf-8"
+          )
+
+          lib_path = Path("espanso-editor/src/lib.rs")
+          lib = lib_path.read_text(encoding="utf-8")
+          lib = replace_once(
+              lib,
+              "pub mod global_variables;\n",
+              "pub mod global_variables;\npub mod trigger_conversion;\npub mod yaml_files;\n",
+              "lib module declarations",
+          )
+          lib_path.write_text(lib, encoding="utf-8")
+
+          dynamic_path = Path("espanso-editor/src/dynamic_variables.rs")
+          dynamic = dynamic_path.read_text(encoding="utf-8")
+          new_builtin_fn = r'''
+          #[must_use]
+          pub fn newly_completed_builtin_definitions(
+              previous: &str,
+              current: &str,
+          ) -> Vec<VariableDefinition> {
+              let previous_names = builtin_definitions_in(previous)
+                  .into_iter()
+                  .map(|definition| definition.name)
+                  .collect::<std::collections::HashSet<_>>();
+              builtin_definitions_in(current)
+                  .into_iter()
+                  .filter(|definition| !previous_names.contains(&definition.name))
+                  .collect()
+          }
+
+          '''
+          dynamic = replace_once(
+              dynamic,
+              "pub fn canonical_definition(definition: &VariableDefinition) -> Result<VariableDefinition, String> {",
+              new_builtin_fn
+              + "pub fn canonical_definition(definition: &VariableDefinition) -> Result<VariableDefinition, String> {",
+              "new builtin detector insertion",
+          )
+          new_builtin_test = r'''
+              #[test]
+              fn detects_only_newly_completed_builtin_placeholders() {
+                  let definitions = newly_completed_builtin_definitions(
+                      "Дата {{dat",
+                      "Дата {{date}}, время {{time}}",
+                  );
+                  assert_eq!(
+                      definitions
+                          .iter()
+                          .map(|definition| definition.name.as_str())
+                          .collect::<Vec<_>>(),
+                      vec!["date", "time"]
+                  );
+                  assert!(newly_completed_builtin_definitions(
+                      "Дата {{date}}",
+                      "Дата: {{date}}"
+                  )
+                  .is_empty());
+              }
+
+          '''
+          dynamic = replace_once(
+              dynamic,
+              "    #[test]\n    fn time_alias_uses_date_extension() {",
+              new_builtin_test + "    #[test]\n    fn time_alias_uses_date_extension() {",
+              "new builtin detector test",
+          )
+          dynamic_path.write_text(dynamic, encoding="utf-8")
+
+          app_path = Path("espanso-editor/src/app.rs")
+          app = app_path.read_text(encoding="utf-8")
+          app = replace_once(
+              app,
+              "    dynamic_variables,\n",
+              "    dynamic_variables,\n    trigger_conversion,\n    yaml_files,\n",
+              "app module imports",
+          )
+          app = app.replace("use walkdir::WalkDir;\n", "", 1)
+          app = app.replace('const DISABLED_YAML_SUFFIX: &str = ".disabled";\n', "", 1)
+          app = app.replace(
+              'const DISABLED_IMPORTED_YAML_SUFFIX: &str = ".disabled.imported";\n',
+              "",
+              1,
+          )
+          app = replace_regex(
+              app,
+              r"\n#\[derive\(Debug, Clone\)\]\nstruct YamlFileEntry \{.*?\n\}\n",
+              "\n",
+              "YamlFileEntry extraction",
+          )
+
+          toggle_fn = r'''    fn set_yaml_file_enabled(&mut self, file: PathBuf, enabled: bool) {
+              if self.has_transfer_unsaved_changes() || self.settings.dirty() {
+                  "Сначала сохраните изменения, затем включайте или выключайте YAML-файл"
+                      .clone_into(&mut self.status);
+                  return;
+              }
+
+              let display_name = yaml_files::display_name(
+                  &self.config_root,
+                  &file,
+                  !yaml_files::is_disabled(&file),
+              );
+              let workspace_snapshot = self
+                  .workspace
+                  .as_ref()
+                  .map(MatchWorkspace::working_snapshot)
+                  .unwrap_or_default();
+              let result = (|| -> Result<PathBuf, String> {
+                  if !file.is_file() {
+                      return Err(format!("Файл не найден: {}", file.display()));
+                  }
+
+                  let workspace = self
+                      .workspace
+                      .as_mut()
+                      .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+                  let files = workspace.files();
+                  let base_file = yaml_imports::find_base_file(&files, workspace.match_root());
+                  let logical_enabled_path = if enabled {
+                      yaml_files::enabled_path(&file)
+                          .ok_or_else(|| format!("Файл {display_name} уже включён"))?
+                  } else {
+                      file.clone()
+                  };
+                  if base_file.as_ref() == Some(&logical_enabled_path) {
+                      return Err("Нельзя выключить основной base.yml/base.yaml".to_owned());
+                  }
+
+                  let mut base_update = None;
+                  let target = if enabled {
+                      let target = logical_enabled_path;
+                      if yaml_files::is_imported_disabled(&file) {
+                          if let Some(base_file) = &base_file {
+                              let base_content = workspace
+                                  .raw_file(base_file)
+                                  .map_err(|error| ru_message(&error.to_string()))?
+                                  .to_owned();
+                              let updated = yaml_imports::update_import(
+                                  &base_content,
+                                  base_file,
+                                  &target,
+                                  true,
+                              )?;
+                              base_update = Some((base_file.clone(), updated));
+                          }
+                      }
+                      target
+                  } else {
+                      let mut was_imported = false;
+                      if let Some(base_file) = &base_file {
+                          let base_content = workspace
+                              .raw_file(base_file)
+                              .map_err(|error| ru_message(&error.to_string()))?
+                              .to_owned();
+                          was_imported =
+                              yaml_imports::import_entries(&files, base_file, &base_content)?
+                                  .into_iter()
+                                  .any(|entry| entry.path == file && entry.enabled);
+                          if was_imported {
+                              let updated = yaml_imports::update_import(
+                                  &base_content,
+                                  base_file,
+                                  &file,
+                                  false,
+                              )?;
+                              base_update = Some((base_file.clone(), updated));
+                          }
+                      }
+                      yaml_files::disabled_path(&file, was_imported)
+                  };
+
+                  if target.exists() {
+                      return Err(format!("Целевой файл уже существует: {}", target.display()));
+                  }
+
+                  fs::rename(&file, &target).map_err(|error| {
+                      format!(
+                          "Не удалось переименовать {} в {}: {error}",
+                          file.display(),
+                          target.display()
+                      )
+                  })?;
+
+                  if let Some((base_file, updated)) = base_update {
+                      let update_result = workspace
+                          .set_raw_file(&base_file, updated)
+                          .map_err(|error| ru_message(&error.to_string()))
+                          .and_then(|()| {
+                              workspace
+                                  .save_all()
+                                  .map(|_| ())
+                                  .map_err(|error| ru_message(&error.to_string()))
+                          });
+                      if let Err(error) = update_result {
+                          workspace.restore_working_snapshot(&workspace_snapshot);
+                          let rollback = fs::rename(&target, &file);
+                          return Err(match rollback {
+                              Ok(()) => format!(
+                                  "Не удалось обновить imports; переименование и рабочая копия восстановлены: {error}"
+                              ),
+                              Err(rollback_error) => format!(
+                                  "Не удалось обновить imports ({error}); файл сохранён по адресу {} и не удалось вернуть исходное имя ({rollback_error})",
+                                  target.display()
+                              ),
+                          });
+                      }
+                  }
+                  Ok(target)
+              })();
+
+              match result {
+                  Ok(target) => {
+                      self.selected = None;
+                      self.raw_rule.clear();
+                      self.reload();
+                      self.file_filter = Some(target);
+                      self.status = if enabled {
+                          format!(
+                              "Файл {display_name} включён; прежняя запись imports восстановлена. Перезагрузите конфигурацию или перезапустите rEspanso"
+                          )
+                      } else {
+                          format!(
+                              "Файл {display_name} выключен расширением .disabled и больше не загружается. Состояние imports сохранено для обратного включения"
+                          )
+                      };
+                  }
+                  Err(error) => {
+                      self.status = format!("Не удалось изменить состояние {display_name}: {error}");
+                  }
+              }
+          }
+
+          '''
+          app = replace_regex(
+              app,
+              r"    fn set_yaml_file_enabled\(.*?\n    fn create_yaml_file",
+              toggle_fn + "    fn create_yaml_file",
+              "transactional YAML toggle",
+          )
+
+          delete_fn = r'''    fn delete_yaml_file(&mut self, path: PathBuf) -> bool {
+              if self.has_transfer_unsaved_changes() || self.settings.dirty() {
+                  "Сначала сохраните текущие изменения, затем удалите YAML-файл"
+                      .clone_into(&mut self.status);
+                  return false;
+              }
+
+              let disabled = yaml_files::is_disabled(&path);
+              let logical_path = if disabled {
+                  let Some(path) = yaml_files::enabled_path(&path) else {
+                      "Не удалось определить исходное имя выключенного YAML-файла"
+                          .clone_into(&mut self.status);
+                      return false;
+                  };
+                  path
+              } else {
+                  path.clone()
+              };
+              let display_name =
+                  yaml_files::display_name(&self.config_root, &path, !disabled);
+              let workspace_snapshot = self
+                  .workspace
+                  .as_ref()
+                  .map(MatchWorkspace::working_snapshot)
+                  .unwrap_or_default();
+
+              let result = (|| -> Result<PathBuf, String> {
+                  let workspace = self
+                      .workspace
+                      .as_mut()
+                      .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+                  let files = workspace.files();
+                  if disabled {
+                      if !path.is_file() {
+                          return Err(
+                              "Выбранный выключенный YAML-файл больше не существует".to_owned(),
+                          );
+                      }
+                  } else if !files.iter().any(|file| file == &path) {
+                      return Err(
+                          "Выбранный YAML-файл больше не входит в рабочую область".to_owned(),
+                      );
+                  }
+
+                  let base_file = yaml_imports::find_base_file(&files, workspace.match_root());
+                  if base_file.as_ref() == Some(&logical_path) {
+                      return Err("Нельзя удалить основной base.yml/base.yaml".to_owned());
+                  }
+
+                  let mut base_update = None;
+                  if let Some(base_file) = base_file {
+                      let base_content = workspace
+                          .raw_file(&base_file)
+                          .map_err(|error| {
+                              format!(
+                                  "Не удалось прочитать imports перед удалением {display_name}: {}",
+                                  ru_message(&error.to_string())
+                              )
+                          })?
+                          .to_owned();
+                      let updated = yaml_imports::update_import(
+                          &base_content,
+                          &base_file,
+                          &logical_path,
+                          false,
+                      )?;
+                      if updated != base_content {
+                          base_update = Some((base_file, updated));
+                      }
+                  }
+
+                  let quarantine = yaml_files::deletion_quarantine_path(&path)?;
+                  if quarantine.exists() {
+                      return Err(format!(
+                          "Удаление остановлено: уже существует файл безопасного карантина {}",
+                          quarantine.display()
+                      ));
+                  }
+                  fs::rename(&path, &quarantine).map_err(|error| {
+                      format!(
+                          "Не удалось переместить {display_name} в безопасный карантин {}: {error}",
+                          quarantine.display()
+                      )
+                  })?;
+
+                  if let Some((base_file, updated)) = base_update {
+                      let save_result = workspace
+                          .set_raw_file(&base_file, updated)
+                          .map_err(|error| ru_message(&error.to_string()))
+                          .and_then(|()| {
+                              workspace
+                                  .save_all()
+                                  .map(|_| ())
+                                  .map_err(|error| ru_message(&error.to_string()))
+                          });
+                      if let Err(error) = save_result {
+                          workspace.restore_working_snapshot(&workspace_snapshot);
+                          let rollback = fs::rename(&quarantine, &path);
+                          return Err(match rollback {
+                              Ok(()) => format!(
+                                  "Удаление отменено: imports не сохранены ({error}); исходный файл и рабочая копия восстановлены"
+                              ),
+                              Err(rollback_error) => format!(
+                                  "Удаление imports отменено ({error}), но файл остался в карантине {} и не вернулся на место ({rollback_error})",
+                                  quarantine.display()
+                              ),
+                          });
+                      }
+                  }
+                  Ok(quarantine)
+              })();
+
+              match result {
+                  Ok(quarantine) => {
+                      let cleanup_error = fs::remove_file(&quarantine).err();
+                      self.file_filter = None;
+                      self.selected = None;
+                      self.raw_rule.clear();
+                      self.reload();
+                      self.status = cleanup_error.map_or_else(
+                          || format!(
+                              "Удалён {display_name}; связанные imports также очищены"
+                          ),
+                          |error| {
+                              format!(
+                                  "{display_name} отключён и исключён из imports, но карантинный файл {} не удалось окончательно удалить: {error}",
+                                  quarantine.display()
+                              )
+                          },
+                      );
+                      true
+                  }
+                  Err(error) => {
+                      self.status = format!("Удаление {display_name} остановлено: {error}");
+                      false
+                  }
+              }
+          }
+
+          '''
+          app = replace_regex(
+              app,
+              r"    fn delete_yaml_file\(.*?\n    fn global_variable_records",
+              delete_fn + "    fn global_variable_records",
+              "transactional YAML deletion",
+          )
+
+          sync_fn = r'''    fn sync_builtin_variables(
+              &mut self,
+              definitions: Vec<dynamic_variables::VariableDefinition>,
+          ) -> Result<usize, String> {
+              if definitions.is_empty() {
+                  return Ok(0);
+              }
+
+              let mut existing = self
+                  .global_variable_records()?
+                  .into_iter()
+                  .map(|record| record.definition.name)
+                  .collect::<HashSet<_>>();
+              let missing = definitions
+                  .into_iter()
+                  .filter(|definition| existing.insert(definition.name.clone()))
+                  .collect::<Vec<_>>();
+              if missing.is_empty() {
+                  return Ok(0);
+              }
+
+              let base_file = self.global_variable_base_file()?;
+              let workspace = self
+                  .workspace
+                  .as_mut()
+                  .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+              let mut content = workspace
+                  .raw_file(&base_file)
+                  .map_err(|error| ru_message(&error.to_string()))?
+                  .to_owned();
+              let mut added = 0_usize;
+              for definition in missing {
+                  let (updated, was_added) =
+                      global_variables::ensure_global_variable(&content, &definition)?;
+                  content = updated;
+                  added += usize::from(was_added);
+              }
+              workspace
+                  .set_raw_file(&base_file, content)
+                  .map_err(|error| ru_message(&error.to_string()))?;
+              Ok(added)
+          }
+
+          '''
+          app = replace_regex(
+              app,
+              r"    fn sync_builtin_variables\(.*?\n    fn insert_global_placeholder",
+              sync_fn + "    fn insert_global_placeholder",
+              "builtin synchronization service",
+          )
+
+          apply_fn = r'''    fn apply_structured(
+              &mut self,
+              builtin_definitions: Vec<dynamic_variables::VariableDefinition>,
+          ) {
+              let Some(id) = self.selected.clone() else {
+                  return;
+              };
+              let result = self
+                  .workspace
+                  .as_mut()
+                  .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())
+                  .and_then(|workspace| {
+                      workspace
+                          .update_rule(&id, &self.draft)
+                          .map_err(|error| ru_message(&error.to_string()))?;
+                      workspace
+                          .rule(&id)
+                          .map(|rule| rule.raw)
+                          .map_err(|error| ru_message(&error.to_string()))
+                  });
+
+              match result {
+                  Ok(raw) => {
+                      self.raw_rule = raw;
+                      match self.sync_builtin_variables(builtin_definitions) {
+                          Ok(0) => {
+                              "Изменения ожидают сохранения (Ctrl+S)"
+                                  .clone_into(&mut self.status);
+                          }
+                          Ok(count) => {
+                              self.status = format!(
+                                  "Изменения ожидают сохранения. Автоматически объявлено общих переменных: {count}"
+                              );
+                          }
+                          Err(error) => {
+                              self.status = format!(
+                                  "Правило изменено, но общую переменную объявить не удалось: {error}"
+                              );
+                          }
+                      }
+                  }
+                  Err(error) => self.status = error,
+              }
+          }
+
+          '''
+          app = replace_regex(
+              app,
+              r"    fn apply_structured\(.*?\n    fn apply_raw",
+              apply_fn + "    fn apply_raw",
+              "structured apply refactor",
+          )
+
+          old_transition = '''        if previous_draft.kind == MatchKind::Trigger && self.draft.kind == MatchKind::Regex {
+              if self.draft.regex.trim().is_empty() {
+                  self.draft.regex = literal_trigger_regex(&previous_draft.triggers);
+              }
+              let examples = previous_draft
+                  .triggers
+                  .iter()
+                  .map(String::as_str)
+                  .filter(|trigger| !trigger.trim().is_empty())
+                  .collect::<Vec<_>>();
+              if !examples.is_empty() {
+                  self.regex_examples_text = examples.join("\\n");
+              }
+              self.refresh_regex_examples();
+          }
+          '''
+          new_transition = '''        if previous_draft.kind == MatchKind::Trigger && self.draft.kind == MatchKind::Regex {
+              let conversion = trigger_conversion::from_triggers(&previous_draft.triggers);
+              self.draft.regex = conversion.pattern;
+              if !conversion.examples.is_empty() {
+                  self.regex_examples_text = conversion.examples;
+              }
+              self.refresh_regex_examples();
+          }
+          '''
+          app = replace_once(
+              app,
+              old_transition,
+              new_transition,
+              "trigger to regexp transition",
+          )
+
+          app = replace_once(
+              app,
+              '''        if self.draft != previous_draft {
+              self.apply_structured();
+          }
+          ''',
+              '''        if self.draft != previous_draft {
+              let new_builtins = dynamic_variables::newly_completed_builtin_definitions(
+                  &previous_draft.replace,
+                  &self.draft.replace,
+              );
+              self.apply_structured(new_builtins);
+          }
+          ''',
+              "structured editor apply call",
+          )
+
+          app = replace_regex(
+              app,
+              r"\nfn yaml_file_entries\(.*?\nfn relative_display",
+              "\nfn relative_display",
+              "YAML helper extraction",
+          )
+          app = replace_regex(
+              app,
+              r"\n#\[cfg\(test\)\]\nmod tests \{.*?\n\}\s*\Z",
+              "\n",
+              "app helper tests extraction",
+          )
+
+          replacements = {
+              "yaml_file_entries(": "yaml_files::entries(",
+              "yaml_display_name(": "yaml_files::display_name(",
+              "is_disabled_yaml_path(": "yaml_files::is_disabled(",
+              "enabled_yaml_path(": "yaml_files::enabled_path(",
+              "is_imported_disabled_yaml_path(": "yaml_files::is_imported_disabled(",
+              "disabled_yaml_path(": "yaml_files::disabled_path(",
+              "normalize_yaml_file_name(": "yaml_files::normalize_file_name(",
+          }
+          for old, new in replacements.items():
+              app = app.replace(old, new)
+
+          stale = [
+              "YamlFileEntry",
+              "WalkDir",
+              "literal_trigger_regex",
+              "fn yaml_file_entries",
+              "DISABLED_YAML_SUFFIX",
+              "DISABLED_IMPORTED_YAML_SUFFIX",
+              "self.apply_structured();",
+              "sync_builtin_variables(&id)",
+          ]
+          remaining = [item for item in stale if item in app]
+          if remaining:
+              raise SystemExit(f"stale app symbols after refactor: {remaining}")
+          app_path.write_text(app, encoding="utf-8")
+
+          audit = r'''# Технический аудит Match Studio — 31.07.2026
+
+          ## Область проверки
+
+          Проверены изменения PR №15 в ветке `feature/manual-build-dynamic-vars`: CRUD YAML-файлов, `global_vars`, конвертация триггеров в RegExp, рабочая копия и сохранение, диагностика, Windows portable workflow.
+
+          ## Выявленные риски
+
+          ### Критические
+
+          1. **Удаление YAML не было транзакционным.** Сначала сохранялось удаление из `imports`, затем выполнялся `remove_file`. При ошибке удаления конфигурация уже менялась, а файл оставался на месте.
+          2. **Откат включения/выключения YAML восстанавливал имя файла, но не рабочую копию `base.yml`.** После ошибки в памяти мог оставаться несохранённый вариант `imports`.
+          3. **Повторное переключение Trigger → RegExp могло использовать устаревшее скрытое выражение.** RegExp обновлялся только при пустом поле.
+
+          ### Высокие
+
+          1. Файловая логика, Windows-валидация имён и UI находились в одном `app.rs`, что затрудняло независимое тестирование.
+          2. На каждое изменение структурированного правила выполнялся полный сбор `global_vars` по проекту, даже когда пользователь менял название или печатал обычный текст.
+          3. Windows-имена вида `CON.backup.yml` и основы с завершающим пробелом не блокировались полностью.
+
+          ### Средние и остаточные
+
+          1. `app.rs` всё ещё остаётся крупным оркестратором. Следующий этап — вынести сервис глобальных переменных и диалоги CRUD в отдельные контроллеры.
+          2. Инвентаризация `global_vars` сейчас прекращается при ошибке разбора одного файла. В дальнейшем стоит показывать корректные переменные из остальных файлов вместе с локальной ошибкой.
+          3. Диагностика и файловый монитор выполняются в UI-потоке. Для очень больших наборов YAML нужен фоновый снимок с передачей результата в интерфейс.
+          4. Необходим ручной smoke-test на Windows для блокировки файла антивирусом/редактором в момент удаления и переименования.
+
+          ## Выполненный рефакторинг
+
+          - Файловые пути, `.disabled`, безопасный карантин и Windows-валидация вынесены в `yaml_files.rs`.
+          - Преобразование обычных триггеров в RegExp вынесено в `trigger_conversion.rs` и стало детерминированным.
+          - Удаление выполняется через переименование в карантин, сохранение `imports`, затем окончательное удаление. При ошибке файл и рабочая копия восстанавливаются.
+          - Включение/выключение YAML восстанавливает не только имя файла, но и снимок рабочей области.
+          - Автодобавление встроенных переменных запускается только при появлении нового завершённого `{{placeholder}}`, а не на каждый символ.
+          - Добавлены модульные тесты для суффиксов, карантина, Windows-имён, RegExp-конвертации и определения новых встроенных переменных.
+
+          ## Критерии приёмки
+
+          - `cargo fmt --all -- --check`
+          - `cargo test --locked -p espanso-editor --lib`
+          - `cargo clippy --locked -p espanso-editor --all-targets -- --deny warnings`
+          - release-сборка core, launcher и Match Studio на Windows MSVC
+          - формирование portable ZIP и проверка обязательных EXE и отсутствия BAT/CMD
+          '''
+          Path("docs/respanso/TECHNICAL_AUDIT_2026-07-31.ru.md").write_text(
+              audit, encoding="utf-8"
+          )
+
+      - name: Format source
+        run: cargo fmt --all
+
+      - name: Verify formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test Match Studio
+        run: cargo test --locked -p espanso-editor --lib
+
+      - name: Strict Clippy
+        run: cargo clippy --locked -p espanso-editor --all-targets -- --deny warnings
+
+      - name: Build rEspanso core and launcher
+        run: cargo build --locked --release -p espanso --bin espanso --bin respanso-portable
+
+      - name: Build Match Studio
+        run: cargo build --locked --release -p espanso-editor --bin espanso-editor
+
+      - name: Assemble and verify portable archive
+        shell: pwsh
+        run: |
+          $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
+          $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
+          $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
+          & "./scripts/build_windows_native_portable_with_studio.ps1"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Portable packaging failed with exit code $LASTEXITCODE"
+          }
+
+          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+          if (-not (Test-Path -Path $archive -PathType Leaf)) {
+            throw "Portable archive was not created"
+          }
+          $entries = tar -tf $archive
+          if ($LASTEXITCODE -ne 0) {
+            throw "Portable archive could not be listed"
+          }
+          if ($entries -match '\.(bat|cmd)$') {
+            throw "Portable archive contains BAT/CMD launchers"
+          }
+          foreach ($file in @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")) {
+            if (-not ($entries -match [regex]::Escape($file))) {
+              throw "Portable archive is missing $file"
+            }
+          }
+
+      - name: Commit audited refactor and remove temporary workflow
+        shell: pwsh
+        run: |
+          Remove-Item ".github/workflows/refactor-pr15-technical-audit.yml"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add espanso-editor/src/app.rs `
+            espanso-editor/src/dynamic_variables.rs `
+            espanso-editor/src/lib.rs `
+            espanso-editor/src/trigger_conversion.rs `
+            espanso-editor/src/yaml_files.rs `
+            docs/respanso/TECHNICAL_AUDIT_2026-07-31.ru.md `
+            .github/workflows/refactor-pr15-technical-audit.yml
+          git diff --cached --stat
+          git commit -m "refactor(editor): harden YAML operations and isolate services"
+          git push origin HEAD:feature/manual-build-dynamic-vars
+
+      - name: Upload audited portable archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-portable-audited
+          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-technical-audit-failure
+          path: |
+            target/build-logs/
+            target/package-logs/
+          if-no-files-found: warn
+          retention-days: 3
