@@ -1,0 +1,51 @@
+name: Repair temporary runtime patch script
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-runtime-patch-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.event.pull_request.head.ref == 'feature/manual-build-dynamic-vars'
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 0
+
+      - name: Repair Python string literals
+        shell: pwsh
+        run: |
+          $path = "scripts/apply_runtime_stability_branding_patch.py"
+          $lines = [System.Collections.Generic.List[string]](Get-Content -Path $path)
+          $indexes = for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i].Contains('$Shortcut.TargetPath = $env:TARGET_PATH; $Shortcut.Arguments = $env:TARGET_ARGS;')) { $i }
+          }
+          if ($indexes.Count -ne 2) {
+            throw "Expected exactly two shortcut string lines, found $($indexes.Count)"
+          }
+          $lines[$indexes[0]] = '    """$Shortcut.TargetPath = $env:TARGET_PATH; $Shortcut.Arguments = $env:TARGET_ARGS; $Shortcut.Save()""",'
+          $lines[$indexes[1]] = '    """$Shortcut.TargetPath = $env:TARGET_PATH; $Shortcut.Arguments = $env:TARGET_ARGS; $Shortcut.WorkingDirectory = Split-Path $env:TARGET_PATH; $Shortcut.IconLocation = $env:TARGET_PATH; $Shortcut.Save()""",'
+          [System.IO.File]::WriteAllLines((Resolve-Path $path), $lines, [System.Text.UTF8Encoding]::new($false))
+          python -m py_compile $path
+          if ($LASTEXITCODE -ne 0) { throw "Patch script still does not compile" }
+
+      - name: Remove repair workflow and commit
+        shell: pwsh
+        run: |
+          Remove-Item ".github/workflows/repair-runtime-patch-script.yml" -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: repair runtime patch script quoting"
+          git push origin HEAD:feature/manual-build-dynamic-vars
