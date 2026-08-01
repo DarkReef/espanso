@@ -1,1 +1,1 @@
-Retrigger the verified Windows runtime stability build after structural repair of the patch script and daemon IPC separation.
+Retrigger the verified Windows runtime stability build after replacing the portable fatal-error dialog with direct Win32 FFI.
