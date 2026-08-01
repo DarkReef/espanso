@@ -145,6 +145,9 @@ jobs:
               raise SystemExit(f'Technical user-facing labels remain: {remaining}')
           '@ | python -
 
+      - name: Format repaired Rust sources
+        run: cargo fmt --all
+
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
