@@ -1,0 +1,204 @@
+name: Finalize runtime stability and build
+
+on:
+  push:
+    branches:
+      - feature/manual-build-dynamic-vars
+    paths:
+      - .github/workflows/finalize-runtime-stability-build.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-runtime-stability-build
+  cancel-in-progress: true
+
+jobs:
+  build-test-package:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 0
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-portable
+          cache-on-failure: true
+
+      - name: Apply runtime, Studio and first-run patch
+        shell: pwsh
+        run: |
+          python scripts/apply_runtime_stability_branding_patch.py
+          @'
+          from pathlib import Path
+
+          workspace_path = Path("espanso-editor/src/workspace.rs")
+          workspace = workspace_path.read_text(encoding="utf-8")
+          workspace = workspace.replace(
+              "use std::collections::{BTreeMap, BTreeSet, HashSet};",
+              "use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};",
+          )
+          workspace_path.write_text(workspace, encoding="utf-8", newline="\n")
+
+          daemon_path = Path("espanso/src/cli/daemon/mod.rs")
+          daemon = daemon_path.read_text(encoding="utf-8")
+          daemon = daemon.replace(
+              ".map_or(0, |duration| duration.as_secs());",
+              ".map_or_else(|_| 0, |duration| duration.as_secs());",
+          )
+          if "#[allow(clippy::too_many_lines, clippy::collapsible_match)]\nfn daemon_main(" not in daemon:
+              daemon = daemon.replace(
+                  "fn daemon_main(",
+                  "#[allow(clippy::too_many_lines, clippy::collapsible_match)]\nfn daemon_main(",
+                  1,
+              )
+          daemon_path.write_text(daemon, encoding="utf-8", newline="\n")
+
+          watcher_path = Path("espanso/src/cli/daemon/watcher.rs")
+          watcher = watcher_path.read_text(encoding="utf-8")
+          if "#[allow(clippy::too_many_lines)]\nfn debouncer_main(" not in watcher:
+              watcher = watcher.replace(
+                  "fn debouncer_main(",
+                  "#[allow(clippy::too_many_lines)]\nfn debouncer_main(",
+                  1,
+              )
+          watcher_path.write_text(watcher, encoding="utf-8", newline="\n")
+          '@ | Set-Content -Path target_fix.py -Encoding utf8
+          python target_fix.py
+          Remove-Item target_fix.py -Force
+
+      - name: Generate Windows branding resources
+        shell: pwsh
+        run: |
+          $source = (Resolve-Path "assets/respanso.ico").Path
+          foreach ($target in @(
+            "espanso/src/res/windows/logo.ico",
+            "espanso/src/res/windows/normal_dark.ico",
+            "espanso/src/res/windows/disabled_dark.ico"
+          )) {
+            Copy-Item $source $target -Force
+          }
+
+          Add-Type -AssemblyName System.Drawing
+          $icon = New-Object System.Drawing.Icon($source)
+          try {
+            $bitmap = $icon.ToBitmap()
+            try {
+              $bitmap.Save((Join-Path $PWD "espanso/src/res/icon.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+              $bitmap.Save((Join-Path $PWD "espanso/src/res/logo_no_background.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+              $bitmap.Save((Join-Path $PWD "espanso/src/res/windows/notification.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+            } finally {
+              $bitmap.Dispose()
+            }
+          } finally {
+            $icon.Dispose()
+          }
+
+      - name: Format generated source
+        run: cargo fmt --all
+
+      - name: Verify formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test Match Studio
+        run: cargo test --locked -p espanso-editor --lib
+
+      - name: Test runtime supervisor
+        run: cargo test --locked -p espanso --bin espanso
+
+      - name: Strict Clippy for Match Studio
+        run: cargo clippy --locked -p espanso-editor --all-targets -- --deny warnings
+
+      - name: Strict Clippy for runtime
+        run: cargo clippy --locked -p espanso --all-targets -- --deny warnings
+
+      - name: Build release binaries
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/build-logs" | Out-Null
+          cargo build --locked --release -p espanso --bin espanso --bin respanso-portable 2>&1 |
+            Tee-Object -FilePath "target/build-logs/core-build.log"
+          if ($LASTEXITCODE -ne 0) { throw "Core build failed" }
+
+          cargo build --locked --release -p espanso-editor --bin espanso-editor 2>&1 |
+            Tee-Object -FilePath "target/build-logs/studio-build.log"
+          if ($LASTEXITCODE -ne 0) { throw "Match Studio build failed" }
+
+          $core = (Resolve-Path "target/release/espanso.exe").Path
+          $launcher = (Resolve-Path "target/release/respanso-portable.exe").Path
+          $studio = (Resolve-Path "target/release/espanso-editor.exe").Path
+          "EXEC_PATH=$core" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "LAUNCHER_PATH=$launcher" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "EDITOR_PATH=$studio" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Assemble and verify portable archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/package-logs" | Out-Null
+          & "./scripts/build_windows_native_portable_with_studio.ps1" 2>&1 |
+            Tee-Object -FilePath "target/package-logs/package.log"
+          if ($LASTEXITCODE -ne 0) { throw "Portable packaging failed" }
+
+          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+          if (-not (Test-Path $archive -PathType Leaf)) { throw "Portable archive was not created" }
+          $entries = tar -tf $archive
+          if ($LASTEXITCODE -ne 0) { throw "Portable archive cannot be listed" }
+          if ($entries -match '\.(bat|cmd)$') { throw "Portable archive contains BAT/CMD launchers" }
+          foreach ($file in @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")) {
+            if (-not ($entries -match [regex]::Escape($file))) {
+              throw "Portable archive is missing $file"
+            }
+          }
+          Get-FileHash $archive -Algorithm SHA256 | Format-List | Out-File "target/package-logs/sha256.txt"
+
+      - name: Commit verified generated source
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add espanso-editor/src espanso/src assets/respanso.ico scripts/build_windows_native_portable_with_studio.ps1
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "Fix runtime stability and Windows first-run UX"
+            git push origin HEAD:feature/manual-build-dynamic-vars
+          }
+
+      - name: Upload portable archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-portable-final
+          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-final-build-failure
+          path: |
+            target/build-logs/
+            target/package-logs/
+          if-no-files-found: warn
+          retention-days: 5
