@@ -1,0 +1,216 @@
+name: Temporary runtime stability and branding patch
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-runtime-stability-branding-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  patch-build-package:
+    if: github.event.pull_request.head.ref == 'feature/manual-build-dynamic-vars'
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 0
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-portable
+          cache-on-failure: true
+
+      - name: Apply source patch
+        run: python scripts/apply_runtime_stability_branding_patch.py
+
+      - name: Synchronize storm icon resources
+        shell: pwsh
+        run: |
+          $source = (Resolve-Path "assets/respanso.ico").Path
+          foreach ($target in @(
+            "espanso/src/res/windows/logo.ico",
+            "espanso/src/res/windows/normal_dark.ico",
+            "espanso/src/res/windows/disabled_dark.ico"
+          )) {
+            Copy-Item $source $target -Force
+          }
+
+          Add-Type -AssemblyName System.Drawing
+          $icon = New-Object System.Drawing.Icon($source)
+          try {
+            $bitmap = $icon.ToBitmap()
+            try {
+              $bitmap.Save((Join-Path $PWD "espanso/src/res/icon.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+              $bitmap.Save((Join-Path $PWD "espanso/src/res/logo_no_background.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+              $bitmap.Save((Join-Path $PWD "espanso/src/res/windows/notification.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+            } finally {
+              $bitmap.Dispose()
+            }
+          } finally {
+            $icon.Dispose()
+          }
+
+      - name: Format sources
+        run: cargo fmt --all
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test Match Studio
+        run: cargo test --locked -p espanso-editor --lib
+
+      - name: Test runtime and portable launcher
+        run: cargo test --locked -p espanso --bins
+
+      - name: Lint Match Studio
+        run: cargo clippy --locked -p espanso-editor --all-targets -- --deny warnings
+
+      - name: Lint runtime binaries
+        run: cargo clippy --locked -p espanso --bins -- --deny warnings
+
+      - name: Build rEspanso core and launcher
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/build-logs" | Out-Null
+          $log = "target/build-logs/windows-x64-core-build.jsonl"
+          $previousColor = $env:CARGO_TERM_COLOR
+          $env:CARGO_TERM_COLOR = "never"
+          try {
+            & cargo build --locked --release -p espanso --bin espanso --bin respanso-portable --message-format=json-diagnostic-rendered-ansi *>&1 |
+              Tee-Object -FilePath $log
+            $exitCode = $LASTEXITCODE
+            $messages = @(Get-Content -Path $log)
+            if ($exitCode -ne 0) {
+              throw "rEspanso core or launcher build failed with exit code $exitCode"
+            }
+
+            function Get-CargoExecutable([string]$binary) {
+              $paths = foreach ($line in $messages) {
+                try { $message = $line | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+                if ($message.reason -eq "compiler-artifact" -and $message.target.name -eq $binary -and -not [string]::IsNullOrWhiteSpace([string]$message.executable)) {
+                  [string]$message.executable
+                }
+              }
+              $path = @($paths) | Select-Object -Last 1
+              if ([string]::IsNullOrWhiteSpace([string]$path) -or -not (Test-Path -Path $path -PathType Leaf)) {
+                throw "Cargo did not report an existing executable for $binary"
+              }
+              return (Resolve-Path $path).Path
+            }
+
+            "EXEC_PATH=$(Get-CargoExecutable 'espanso')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "LAUNCHER_PATH=$(Get-CargoExecutable 'respanso-portable')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } finally {
+            $env:CARGO_TERM_COLOR = $previousColor
+          }
+
+      - name: Build Match Studio
+        shell: pwsh
+        run: |
+          $log = "target/build-logs/windows-x64-studio-build.jsonl"
+          $previousColor = $env:CARGO_TERM_COLOR
+          $env:CARGO_TERM_COLOR = "never"
+          try {
+            & cargo build --locked --release -p espanso-editor --bin espanso-editor --message-format=json-diagnostic-rendered-ansi *>&1 |
+              Tee-Object -FilePath $log
+            $exitCode = $LASTEXITCODE
+            $messages = @(Get-Content -Path $log)
+            if ($exitCode -ne 0) {
+              throw "Match Studio build failed with exit code $exitCode"
+            }
+            $paths = foreach ($line in $messages) {
+              try { $message = $line | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+              if ($message.reason -eq "compiler-artifact" -and $message.target.name -eq "espanso-editor" -and -not [string]::IsNullOrWhiteSpace([string]$message.executable)) {
+                [string]$message.executable
+              }
+            }
+            $editorPath = @($paths) | Select-Object -Last 1
+            if ([string]::IsNullOrWhiteSpace([string]$editorPath) -or -not (Test-Path -Path $editorPath -PathType Leaf)) {
+              throw "Cargo did not report an existing executable for espanso-editor"
+            }
+            "EDITOR_PATH=$((Resolve-Path $editorPath).Path)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } finally {
+            $env:CARGO_TERM_COLOR = $previousColor
+          }
+
+      - name: Assemble and verify portable archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/package-logs" | Out-Null
+          $log = "target/package-logs/windows-x64-package.log"
+          foreach ($binary in @($env:EXEC_PATH, $env:LAUNCHER_PATH, $env:EDITOR_PATH)) {
+            if ([string]::IsNullOrWhiteSpace([string]$binary) -or -not (Test-Path -Path $binary -PathType Leaf)) {
+              throw "Release binary path is missing or invalid: $binary"
+            }
+          }
+          & "./scripts/build_windows_native_portable_with_studio.ps1" *>&1 | Tee-Object -FilePath $log -Append
+          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+          if (-not (Test-Path -Path $archive -PathType Leaf)) { throw "Portable archive was not created" }
+          $entries = tar -tf $archive
+          if ($LASTEXITCODE -ne 0) { throw "Portable archive could not be listed" }
+          $entries | Tee-Object -FilePath $log -Append
+          if ($entries -match '\.(bat|cmd)$') { throw "Portable archive contains BAT/CMD launchers" }
+          foreach ($file in @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")) {
+            if (-not ($entries -match [regex]::Escape($file))) { throw "Portable archive is missing $file" }
+          }
+
+      - name: Remove temporary patch automation
+        shell: pwsh
+        run: |
+          Remove-Item ".github/workflows/fix-runtime-stability-branding.yml" -Force
+          Remove-Item "scripts/apply_runtime_stability_branding_patch.py" -Force
+
+      - name: Commit verified patch
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(runtime): supervise reloads and unify rEspanso branding"
+          git push origin HEAD:feature/manual-build-dynamic-vars
+
+      - name: Upload diagnostic logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-runtime-stability-build-failure
+          path: |
+            target/build-logs/
+            target/package-logs/
+          if-no-files-found: warn
+          retention-days: 5
+
+      - name: Upload portable archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-portable-stable
+          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
