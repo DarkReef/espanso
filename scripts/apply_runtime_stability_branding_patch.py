@@ -13,6 +13,8 @@ def replace(path: str, old: str, new: str, count: int = -1) -> None:
     target = ROOT / path
     text = target.read_text(encoding="utf-8")
     if old not in text:
+        if new in text:
+            return
         raise RuntimeError(f"anchor not found in {path}: {old[:120]!r}")
     updated = text.replace(old, new, count)
     target.write_text(updated, encoding="utf-8", newline="\n")
@@ -182,7 +184,7 @@ use crate::{
     common_flags::*,
     exit_code::{
         DAEMON_ALREADY_RUNNING, DAEMON_FATAL_CONFIG_ERROR, DAEMON_GENERAL_ERROR, DAEMON_SUCCESS,
-        WORKER_ERROR_EXIT_NO_CODE, WORKER_EXIT_ALL_PROCESSES, WORKER_RESTART, WORKER_SUCCESS,
+        WORKER_ERROR_EXIT_NO_CODE, WORKER_EXIT_ALL_PROCESSES, WORKER_RESTART,
     },
     ipc::{create_ipc_client_to_worker, IPCEvent},
     lock::{acquire_daemon_lock, acquire_worker_lock},
@@ -273,6 +275,7 @@ fn daemon_main(args: CliModuleArgs) -> i32 {
     }
 
     let (exit_notify, exit_signal) = unbounded::<WorkerExitEvent>();
+    let (daemon_notify, daemon_signal) = unbounded::<i32>();
     let mut current_worker_pid = match spawn_worker_with_retry(
         &paths_overrides,
         exit_notify.clone(),
@@ -288,13 +291,26 @@ fn daemon_main(args: CliModuleArgs) -> i32 {
     let mut worker_started_at = Instant::now();
     let mut consecutive_failures = 0_u32;
 
-    if let Err(error) = ipc::initialize_and_spawn(&paths.runtime, exit_notify.clone()) {
+    if let Err(error) = ipc::initialize_and_spawn(&paths.runtime, daemon_notify) {
         error!("unable to initialize ipc server for daemon: {error}");
         return DAEMON_GENERAL_ERROR;
     }
 
     loop {
         select! {
+          recv(daemon_signal) -> code => {
+            match code {
+              Ok(DAEMON_SUCCESS) => {
+                info!("daemon exit requested through IPC");
+                break;
+              }
+              Ok(other) => warn!("unexpected daemon IPC exit code: {other}"),
+              Err(error) => {
+                error!("daemon IPC channel closed unexpectedly: {error}");
+                return DAEMON_GENERAL_ERROR;
+              }
+            }
+          }
           recv(watcher_signal) -> signal => {
             if signal.is_err() {
                 error!("config watcher channel closed unexpectedly");
