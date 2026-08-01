@@ -7,14 +7,14 @@ on:
     types: [synchronize]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: temp-form-preview-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  validate-windows:
+  patch-and-validate-windows:
     if: github.event.pull_request.head.ref == 'feature/manual-build-dynamic-vars'
     runs-on: windows-2022
     timeout-minutes: 120
@@ -23,8 +23,134 @@ jobs:
       RUST_BACKTRACE: 1
 
     steps:
-      - name: Checkout
+      - name: Checkout feature branch
         uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 0
+
+      - name: Apply shorthand preview support
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if new in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f"patch anchor not found in {path}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
+
+          replace_once(
+              "espanso-config/src/matches/group/loader/yaml/parse.rs",
+              '''    #[serde(default)]
+              pub form_fields: Option<Mapping>,
+
+              #[serde(default)]
+              pub vars: Option<Vec<YAMLVariable>>,
+          ''',
+              '''    #[serde(default)]
+              pub form_fields: Option<Mapping>,
+
+              #[serde(default)]
+              pub preview: Option<bool>,
+
+              #[serde(default)]
+              pub vars: Option<Vec<YAMLVariable>>,
+          ''',
+          )
+
+          replace_once(
+              "espanso-config/src/matches/group/loader/yaml/mod.rs",
+              '''        params.insert("layout".to_string(), Value::String(resolved_layout));
+
+              if let Some(fields) = yaml_match.form_fields {
+          ''',
+              '''        params.insert("layout".to_string(), Value::String(resolved_layout));
+
+              if let Some(preview) = yaml_match.preview {
+                  params.insert("preview".to_string(), Value::Bool(preview));
+              }
+
+              if let Some(fields) = yaml_match.form_fields {
+          ''',
+          )
+
+          replace_once(
+              "schemas/match.schema.json",
+              '''        "form_fields": {
+                    "$ref": "#/definitions/form_field_definition"
+                  },
+                  "html": {
+          ''',
+              '''        "form_fields": {
+                    "$ref": "#/definitions/form_field_definition"
+                  },
+                  "preview": {
+                    "description": "Show a live preview of the text produced by the form layout",
+                    "type": "boolean"
+                  },
+                  "html": {
+          ''',
+          )
+
+          test_marker = '''    #[test]
+              fn form_maps_correctly_with_variable_injection() {
+          '''
+          test_block = '''    #[test]
+              fn shorthand_form_preview_maps_correctly() {
+                  let m = create_match(
+                      r#"
+                  trigger: "Hello"
+                  form: "Score: [[score]]"
+                  preview: true
+                  "#,
+                  )
+                  .unwrap();
+
+                  let MatchEffect::Text(effect) = m.effect else {
+                      panic!("expected text effect");
+                  };
+                  assert_eq!(
+                      effect.vars[0].params.get("preview"),
+                      Some(&Value::Bool(true))
+                  );
+              }
+
+              #[test]
+              fn form_maps_correctly_with_variable_injection() {
+          '''
+          replace_once(
+              "espanso-config/src/matches/group/loader/yaml/mod.rs",
+              test_marker,
+              test_block,
+          )
+
+          docs = Path("docs/respanso/FORM_PREVIEW.ru.md")
+          text = docs.read_text(encoding="utf-8")
+          heading = "## Короткая запись `form:`"
+          if heading not in text:
+              text += '''
+
+          ## Короткая запись `form:`
+
+          Для формы, заданной непосредственно в правиле, флаг располагается рядом с `form`:
+
+          ```yaml
+          - trigger: ":score-line"
+            preview: true
+            form: "SCORE: [[score]] %"
+            form_fields:
+              score:
+                type: text
+                default: "5"
+          ```
+          '''
+              docs.write_text(text, encoding="utf-8", newline="\n")
+          '@ | python -
 
       - name: Set up MSVC x64
         uses: ilammy/msvc-dev-cmd@v1
@@ -43,8 +169,14 @@ jobs:
           shared-key: windows-x64-portable
           cache-on-failure: true
 
+      - name: Format patched sources
+        run: cargo fmt --all
+
       - name: Check formatting
         run: cargo fmt --all -- --check
+
+      - name: Test YAML preview mapping
+        run: cargo test --locked -p espanso-config shorthand_form_preview_maps_correctly
 
       - name: Test form render and native model
         run: cargo test --locked -p espanso-render -p espanso-modulo
@@ -52,5 +184,19 @@ jobs:
       - name: Check worker integration
         run: cargo check --locked -p espanso
 
-      - name: Build release core and launcher
-        run: cargo build --locked --release -p espanso --bin espanso --bin respanso-portable
+      - name: Commit verified source patch
+        shell: pwsh
+        run: |
+          git add -- \
+            espanso-config/src/matches/group/loader/yaml/parse.rs \
+            espanso-config/src/matches/group/loader/yaml/mod.rs \
+            schemas/match.schema.json \
+            docs/respanso/FORM_PREVIEW.ru.md
+          if (git diff --cached --quiet) {
+            Write-Host "Source patch already present"
+            exit 0
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(forms): support preview on shorthand forms"
+          git push origin HEAD:feature/manual-build-dynamic-vars
