@@ -24,6 +24,8 @@ use crate::sys::form::types::{
 };
 use std::collections::HashMap;
 
+const PREVIEW_SENTINEL_ID: &str = "__respanso_preview__";
+
 pub fn generate(config: FormConfig) -> Form {
     let structure = super::parser::layout::parse_layout(&config.layout);
     build_form(config, structure)
@@ -95,11 +97,55 @@ fn build_form(form: FormConfig, structure: Vec<Vec<Token>>) -> Form {
         fields.push(current_field);
     }
 
+    if form.preview {
+        fields.push(Field {
+            id: Some(PREVIEW_SENTINEL_ID.to_owned()),
+            field_type: FieldType::Label(LabelMetadata {
+                text: String::new(),
+            }),
+        });
+    }
+
     Form {
         title: form.title,
         icon: form.icon,
         fields,
         max_form_width: form.max_form_width,
         max_form_height: form.max_form_height,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn form_config(preview: bool) -> FormConfig {
+        FormConfig {
+            title: "test".to_owned(),
+            icon: None,
+            layout: "Result: [[value]]".to_owned(),
+            fields: HashMap::new(),
+            preview,
+            max_form_width: 700,
+            max_form_height: 500,
+        }
+    }
+
+    #[test]
+    fn preview_adds_native_marker() {
+        let form = generate(form_config(true));
+        assert_eq!(
+            form.fields.last().and_then(|field| field.id.as_deref()),
+            Some(PREVIEW_SENTINEL_ID)
+        );
+    }
+
+    #[test]
+    fn disabled_preview_keeps_original_fields() {
+        let form = generate(form_config(false));
+        assert!(form
+            .fields
+            .iter()
+            .all(|field| field.id.as_deref() != Some(PREVIEW_SENTINEL_ID)));
     }
 }

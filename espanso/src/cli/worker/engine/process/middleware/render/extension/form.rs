@@ -38,9 +38,15 @@ impl<'a> FormProviderAdapter<'a> {
 }
 
 impl FormProvider for FormProviderAdapter<'_> {
-    fn show(&self, layout: &str, fields: &Params, _: &Params) -> FormProviderResult {
+    fn show(&self, layout: &str, fields: &Params, options: &Params) -> FormProviderResult {
         let fields = convert_fields(fields);
-        match self.form_ui.show(layout, &fields) {
+        let preview = options
+            .get("preview")
+            .and_then(Value::as_bool)
+            .copied()
+            .unwrap_or(false);
+
+        match self.form_ui.show(layout, &fields, preview) {
             Ok(Some(results)) => FormProviderResult::Success(results),
             Ok(None) => FormProviderResult::Aborted,
             Err(err) => FormProviderResult::Error(err),

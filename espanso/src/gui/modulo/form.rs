@@ -54,11 +54,13 @@ impl FormUI for ModuloFormUI<'_> {
         &self,
         layout: &str,
         fields: &HashMap<String, FormField>,
+        preview: bool,
     ) -> anyhow::Result<Option<HashMap<String, String>>> {
         let modulo_form_config = ModuloFormConfig {
             title: "rrEspanso",
             layout,
             fields: convert_fields_into_object(fields),
+            preview,
             max_form_width: self.option_provider.get_max_form_width(),
             max_form_height: self.option_provider.get_max_form_height(),
         };
@@ -95,6 +97,7 @@ struct ModuloFormConfig<'a> {
     title: &'a str,
     layout: &'a str,
     fields: Map<String, Value>,
+    preview: bool,
     max_form_width: usize,
     max_form_height: usize,
 }
