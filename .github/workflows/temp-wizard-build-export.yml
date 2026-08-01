@@ -51,6 +51,7 @@ jobs:
         run: |
           @'
           from pathlib import Path
+          import re
           import textwrap
 
           original_workflow = Path('.github/workflows/temp-wizard-full-russian.yml')
@@ -64,27 +65,19 @@ jobs:
           end = "\n          '@ | python -"
           if start not in tail or end not in tail:
               raise SystemExit('Embedded localization script boundaries were not found')
-          embedded = tail.split(start, 1)[1].split(end, 1)[0]
-          embedded = textwrap.dedent(embedded)
-          embedded = embedded.replace(
-              '                      dialog.SetCancelLabel(ui_text("Пропустить"));\n',
-              '',
-          )
-          if 'SetCancelLabel' in embedded:
-              raise SystemExit('Unsupported SetCancelLabel call remains')
-          exec(compile(embedded, '<wizard-localization>', 'exec'), {'__name__': '__main__'})
 
-          workflow = workflow.replace(
-              '                      dialog.SetCancelLabel(ui_text("Пропустить"));\n',
+          embedded = textwrap.dedent(tail.split(start, 1)[1].split(end, 1)[0])
+          embedded, removed = re.subn(
+              r'^[ \t]*dialog\.SetCancelLabel\(ui_text\("Пропустить"\)\);\r?\n',
               '',
+              embedded,
+              flags=re.MULTILINE,
           )
-          workflow = workflow.replace(
-              '          if \'dialog.SetCancelLabel(ui_text("Пропустить"))\' not in wizard:\n              raise SystemExit("Russian dialog buttons are missing")',
-              '          if wizard.count(\'dialog.SetOKLabel(ui_text("Повторить"))\') != 2:\n              raise SystemExit("Russian retry buttons are missing")',
-          )
-          if 'SetCancelLabel' in workflow:
-              raise SystemExit('Unsupported SetCancelLabel call remains in workflow')
-          original_workflow.write_text(workflow, encoding='utf-8', newline='\n')
+          if removed != 2:
+              raise SystemExit(f'Expected two unsupported SetCancelLabel calls, removed {removed}')
+          if 'SetCancelLabel' in embedded:
+              raise SystemExit('Unsupported SetCancelLabel call remains in localization script')
+          exec(compile(embedded, '<wizard-localization>', 'exec'), {'__name__': '__main__'})
 
           app_path = Path('espanso-editor/src/app.rs')
           app = app_path.read_text(encoding='utf-8')
@@ -184,12 +177,10 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path verified-source/espanso-modulo/src/sys/wizard | Out-Null
           New-Item -ItemType Directory -Force -Path verified-source/espanso-editor/src | Out-Null
-          New-Item -ItemType Directory -Force -Path verified-source/.github/workflows | Out-Null
           Copy-Item espanso-modulo/src/sys/wizard/wizard.cpp verified-source/espanso-modulo/src/sys/wizard/wizard.cpp
           Copy-Item espanso-modulo/src/sys/wizard/wizard_gui.cpp verified-source/espanso-modulo/src/sys/wizard/wizard_gui.cpp
           Copy-Item espanso-editor/src/app.rs verified-source/espanso-editor/src/app.rs
           Copy-Item espanso-editor/src/global_variables.rs verified-source/espanso-editor/src/global_variables.rs
-          Copy-Item .github/workflows/temp-wizard-full-russian.yml verified-source/.github/workflows/temp-wizard-full-russian.yml
 
       - name: Upload verified build and sources
         uses: actions/upload-artifact@v4
