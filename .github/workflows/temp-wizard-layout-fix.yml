@@ -1,0 +1,228 @@
+name: Temporary wizard encoding and layout fix
+
+on:
+  push:
+    branches:
+      - feature/manual-build-dynamic-vars
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wizard-layout-fix
+  cancel-in-progress: true
+
+jobs:
+  patch-test-build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 0
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-portable
+          cache-on-failure: true
+
+      - name: Patch wizard encoding and welcome layout
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          gui_path = Path("espanso-modulo/src/sys/wizard/wizard_gui.cpp")
+          gui = gui_path.read_text(encoding="utf-8-sig")
+
+          replacements = [
+              (
+                  '''    m_scrolledWindow2 =
+                      new wxScrolledWindow(welcome_panel, wxID_ANY, wxDefaultPosition,
+                                           wxDefaultSize, wxHSCROLL | wxVSCROLL);
+                  m_scrolledWindow2->SetScrollRate(5, 5);
+          ''',
+                  '''    m_scrolledWindow2 =
+                      new wxScrolledWindow(welcome_panel, wxID_ANY, wxDefaultPosition,
+                                           wxDefaultSize, wxTAB_TRAVERSAL);
+                  m_scrolledWindow2->SetScrollRate(0, 0);
+          ''',
+              ),
+              (
+                  '''    welcome_image =
+                      new wxStaticBitmap(m_scrolledWindow2, wxID_ANY, wxNullBitmap,
+                                         wxDefaultPosition, wxSize(256, 256), 0);
+                  welcome_image->SetMinSize(wxSize(256, 256));
+          ''',
+                  '''    welcome_image =
+                      new wxStaticBitmap(m_scrolledWindow2, wxID_ANY, wxNullBitmap,
+                                         wxDefaultPosition, wxSize(160, 160), 0);
+                  welcome_image->SetMinSize(wxSize(160, 160));
+          ''',
+              ),
+              (
+                  '    bSizer2->Add(welcome_title_text, 0, wxALIGN_CENTER_HORIZONTAL | wxTOP, 20);',
+                  '    bSizer2->Add(welcome_title_text, 0, wxALIGN_CENTER_HORIZONTAL | wxTOP, 12);',
+              ),
+              (
+                  '    welcome_description_text->Wrap(-1);',
+                  '    welcome_description_text->Wrap(500);',
+              ),
+              (
+                  '    bSizer2->Fit(m_scrolledWindow2);\n',
+                  '',
+              ),
+          ]
+
+          for old, new in replacements:
+              if old in gui:
+                  gui = gui.replace(old, new, 1)
+              elif new not in gui:
+                  raise SystemExit(f"wizard_gui.cpp anchor not found: {old[:80]!r}")
+
+          # UTF-8 BOM makes MSVC decode readable Cyrillic literals consistently.
+          gui_path.write_text(gui, encoding="utf-8-sig", newline="\n")
+
+          wizard_path = Path("espanso-modulo/src/sys/wizard/wizard.cpp")
+          wizard = wizard_path.read_text(encoding="utf-8-sig")
+
+          if '#include <algorithm>\n' not in wizard:
+              include_anchor = '#include <memory>\n'
+              if include_anchor not in wizard:
+                  raise SystemExit("wizard.cpp include anchor not found")
+              wizard = wizard.replace(include_anchor, '#include <algorithm>\n' + include_anchor, 1)
+
+          old_image = '''    if (wizard_metadata->welcome_image_path) {
+                  wxBitmap welcomeBitmap =
+                      wxBitmap(wxString::FromUTF8(wizard_metadata->welcome_image_path),
+                               wxBITMAP_TYPE_PNG);
+                  this->welcome_image->SetBitmap(welcomeBitmap);
+              }
+          '''
+          new_image = '''    if (wizard_metadata->welcome_image_path) {
+                  wxImage welcomeImage(
+                      wxString::FromUTF8(wizard_metadata->welcome_image_path),
+                      wxBITMAP_TYPE_PNG);
+                  if (welcomeImage.IsOk()) {
+                      constexpr int kWelcomeImageMaxWidth = 160;
+                      constexpr int kWelcomeImageMaxHeight = 160;
+                      const int sourceWidth = welcomeImage.GetWidth();
+                      const int sourceHeight = welcomeImage.GetHeight();
+
+                      if (sourceWidth > kWelcomeImageMaxWidth ||
+                          sourceHeight > kWelcomeImageMaxHeight) {
+                          const double widthScale =
+                              static_cast<double>(kWelcomeImageMaxWidth) / sourceWidth;
+                          const double heightScale =
+                              static_cast<double>(kWelcomeImageMaxHeight) / sourceHeight;
+                          const double scale = std::min(widthScale, heightScale);
+                          welcomeImage.Rescale(
+                              std::max(1, static_cast<int>(sourceWidth * scale)),
+                              std::max(1, static_cast<int>(sourceHeight * scale)),
+                              wxIMAGE_QUALITY_HIGH);
+                      }
+
+                      this->welcome_image->SetBitmap(wxBitmap(welcomeImage));
+                  } else {
+                      this->welcome_image->Hide();
+                  }
+              } else {
+                  this->welcome_image->Hide();
+              }
+          '''
+          if old_image in wizard:
+              wizard = wizard.replace(old_image, new_image, 1)
+          elif new_image not in wizard:
+              raise SystemExit("wizard.cpp welcome image anchor not found")
+
+          old_version = '''    this->welcome_version_text->SetLabel(
+                  wxString::Format("Версия %s", wizard_metadata->version));
+          '''
+          new_version = '''    this->welcome_version_text->SetLabel(
+                  wxString::FromUTF8(u8"Версия ") +
+                  wxString::FromUTF8(wizard_metadata->version));
+              this->welcome_panel->Layout();
+          '''
+          if old_version in wizard:
+              wizard = wizard.replace(old_version, new_version, 1)
+          elif new_version not in wizard:
+              raise SystemExit("wizard.cpp version label anchor not found")
+
+          wizard_path.write_text(wizard, encoding="utf-8-sig", newline="\n")
+          '@ | python -
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test runtime binaries
+        run: cargo test --locked -p espanso --bins
+
+      - name: Lint runtime binaries
+        run: cargo clippy --locked -p espanso --bins -- --deny warnings
+
+      - name: Build rEspanso core and launcher
+        run: cargo build --locked --release -p espanso --bin espanso --bin respanso-portable
+
+      - name: Build Match Studio
+        run: cargo build --locked --release -p espanso-editor --bin espanso-editor
+
+      - name: Assemble and verify portable archive
+        shell: pwsh
+        run: |
+          $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
+          $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
+          $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
+          & "./scripts/build_windows_native_portable_with_studio.ps1"
+          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+          if (-not (Test-Path -Path $archive -PathType Leaf)) {
+            throw "Portable archive was not created"
+          }
+          $entries = tar -tf $archive
+          if ($LASTEXITCODE -ne 0) {
+            throw "Portable archive could not be listed"
+          }
+          if ($entries -match '\.(bat|cmd)$') {
+            throw "Portable archive contains BAT/CMD launchers"
+          }
+          foreach ($file in @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")) {
+            if (-not ($entries -match [regex]::Escape($file))) {
+              throw "Portable archive is missing $file"
+            }
+          }
+
+      - name: Remove temporary workflow and commit verified fix
+        shell: pwsh
+        run: |
+          Remove-Item ".github/workflows/temp-wizard-layout-fix.yml" -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add espanso-modulo/src/sys/wizard/wizard_gui.cpp espanso-modulo/src/sys/wizard/wizard.cpp .github/workflows/temp-wizard-layout-fix.yml
+          git commit -m "fix(wizard): preserve Cyrillic and constrain welcome artwork"
+          git push origin HEAD:feature/manual-build-dynamic-vars
+
+      - name: Upload portable archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-wizard-layout-fix
+          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
