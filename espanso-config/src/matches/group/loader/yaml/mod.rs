@@ -280,6 +280,10 @@ pub fn try_convert_into_match(
         let mut params = Params::new();
         params.insert("layout".to_string(), Value::String(resolved_layout));
 
+        if let Some(preview) = yaml_match.preview {
+            params.insert("preview".to_string(), Value::Bool(preview));
+        }
+
         if let Some(fields) = yaml_match.form_fields {
             params.insert("fields".to_string(), Value::Object(convert_params(fields)?));
         }
@@ -648,6 +652,26 @@ mod tests {
                 }),
                 ..Default::default()
             }
+        );
+    }
+
+    #[test]
+    fn shorthand_form_preview_maps_correctly() {
+        let m = create_match(
+            r#"
+        trigger: "Hello"
+        form: "Score: [[score]]"
+        preview: true
+        "#,
+        )
+        .unwrap();
+
+        let MatchEffect::Text(effect) = m.effect else {
+            panic!("expected text effect");
+        };
+        assert_eq!(
+            effect.vars[0].params.get("preview"),
+            Some(&Value::Bool(true))
         );
     }
 
