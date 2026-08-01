@@ -23,6 +23,8 @@ use std::path::{Path, PathBuf};
 
 const ICON_BINARY: &[u8] = include_bytes!("res/icon.png");
 const LOGO_NO_BACKGROUND_BINARY: &[u8] = include_bytes!("res/logo_no_background.png");
+#[cfg(target_os = "windows")]
+const WINDOWS_NOTIFICATION_BINARY: &[u8] = include_bytes!("res/windows/notification.png");
 
 #[cfg(target_os = "windows")]
 const WINDOWS_NORMAL_DARK_ICO_BINARY: &[u8] = include_bytes!("res/windows/normal_dark.ico");
@@ -63,6 +65,7 @@ pub struct IconPaths {
 
     pub logo: Option<PathBuf>,
     pub logo_no_background: Option<PathBuf>,
+    pub notification_icon: Option<PathBuf>,
 }
 
 #[cfg(target_os = "windows")]
@@ -70,29 +73,36 @@ pub fn load_icon_paths(runtime_dir: &Path) -> Result<IconPaths> {
     Ok(IconPaths {
         form_icon: Some(extract_icon(
             WINDOWS_LOGO_ICO_BINARY,
-            &runtime_dir.join("formv2.ico"),
+            &runtime_dir.join("respanso-form-v4.ico"),
         )?),
         search_icon: Some(extract_icon(ICON_BINARY, &runtime_dir.join("search.png"))?),
         wizard_icon: Some(extract_icon(
             WINDOWS_LOGO_ICO_BINARY,
-            &runtime_dir.join("wizardv2.ico"),
+            &runtime_dir.join("respanso-wizard-v4.ico"),
         )?),
         tray_icon_normal: Some(extract_icon(
             WINDOWS_NORMAL_DARK_ICO_BINARY,
-            &runtime_dir.join("normalv2.ico"),
+            &runtime_dir.join("respanso-tray-active-v4.ico"),
         )?),
         tray_icon_disabled: Some(extract_icon(
             WINDOWS_DISABLED_DARK_ICO_BINARY,
-            &runtime_dir.join("disabledv2.ico"),
+            &runtime_dir.join("respanso-tray-disabled-v4.ico"),
         )?),
-        logo: Some(extract_icon(ICON_BINARY, &runtime_dir.join("iconv2.png"))?),
+        logo: Some(extract_icon(
+            ICON_BINARY,
+            &runtime_dir.join("respanso-logo-v4.png"),
+        )?),
         logo_no_background: Some(extract_icon(
             LOGO_NO_BACKGROUND_BINARY,
-            &runtime_dir.join("icon_no_backgroundv2.png"),
+            &runtime_dir.join("respanso-welcome-v4.png"),
         )?),
         tray_explain_image: Some(extract_icon(
             WINDOWS_TRAY_EXPLAIN_IMAGE,
             &runtime_dir.join("tray_explain_image.png"),
+        )?),
+        notification_icon: Some(extract_icon(
+            WINDOWS_NOTIFICATION_BINARY,
+            &runtime_dir.join("respanso-notification-v4.png"),
         )?),
         ..Default::default()
     })

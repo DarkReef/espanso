@@ -48,7 +48,7 @@ WizardFrame::WizardFrame(wxWindow *parent, wxWindowID id, const wxString &title,
     bSizer2->Add(welcome_image, 0, wxALIGN_CENTER | wxALL, 0);
 
     welcome_title_text = new wxStaticText(m_scrolledWindow2, wxID_ANY,
-                                          wxT("Welcome to Espanso!"),
+                                          wxT("Добро пожаловать в rEspanso"),
                                           wxDefaultPosition, wxDefaultSize, 0);
     welcome_title_text->Wrap(-1);
     welcome_title_text->SetFont(wxFont(18, wxFONTFAMILY_DEFAULT,
@@ -67,8 +67,9 @@ WizardFrame::WizardFrame(wxWindow *parent, wxWindowID id, const wxString &title,
 
     welcome_description_text = new wxStaticText(
         m_scrolledWindow2, wxID_ANY,
-        wxT("This wizard will help you to quickly get started with espanso. "
-            "\n\nClick \"Start\" when you are ready"),
+        wxT("Быстрая подстановка текста, гибкие шаблоны и локальная "
+            "автоматизация. Настройка займёт меньше минуты.\n\nНажмите "
+            "\"Начать\", чтобы продолжить."),
         wxDefaultPosition, wxDefaultSize, 0);
     welcome_description_text->Wrap(-1);
     bSizer2->Add(welcome_description_text, 0, wxALL, 10);
@@ -80,7 +81,7 @@ WizardFrame::WizardFrame(wxWindow *parent, wxWindowID id, const wxString &title,
     bSizer2->Fit(m_scrolledWindow2);
     bSizer13->Add(m_scrolledWindow2, 1, wxEXPAND | wxALL, 5);
 
-    welcome_start_button = new wxButton(welcome_panel, wxID_ANY, wxT("Start"),
+    welcome_start_button = new wxButton(welcome_panel, wxID_ANY, wxT("Начать"),
                                         wxDefaultPosition, wxDefaultSize, 0);
 
     welcome_start_button->SetDefault();
@@ -244,7 +245,7 @@ WizardFrame::WizardFrame(wxWindow *parent, wxWindowID id, const wxString &title,
     bSizer213->Add(0, 0, 1, wxEXPAND, 5);
 
     wrong_edition_button =
-        new wxButton(wrong_edition_panel, wxID_ANY, wxT("Quit Espanso"),
+        new wxButton(wrong_edition_panel, wxID_ANY, wxT("Закрыть rEspanso"),
                      wxDefaultPosition, wxDefaultSize, 0);
 
     wrong_edition_button->SetDefault();

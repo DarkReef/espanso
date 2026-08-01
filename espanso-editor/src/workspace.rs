@@ -679,7 +679,6 @@ impl MatchWorkspace {
         }
 
         let rules = self.rules();
-        let mut causes: HashMap<String, Vec<RuleId>> = HashMap::new();
         for rule in &rules {
             match rule.draft.kind {
                 MatchKind::Trigger => {
@@ -693,8 +692,7 @@ impl MatchWorkspace {
                             rule: Some(rule.id.clone()),
                         });
                     }
-                    // Identical simple triggers intentionally open the selection window.
-                    // Only duplicate RegExp causes are diagnostic.
+                    // Identical triggers intentionally open the selection window.
                 }
                 MatchKind::Regex => {
                     if rule.draft.regex.is_empty() {
@@ -712,23 +710,7 @@ impl MatchWorkspace {
                             rule: Some(rule.id.clone()),
                         });
                     }
-                    causes
-                        .entry(format!("regex:{}", rule.draft.regex))
-                        .or_default()
-                        .push(rule.id.clone());
-                }
-            }
-        }
-
-        for (cause, ids) in causes {
-            if ids.len() > 1 {
-                for id in ids {
-                    diagnostics.push(Diagnostic {
-                        level: DiagnosticLevel::Warning,
-                        message: format!("Duplicate match cause: {}", cause.replace(':', ": ")),
-                        file: Some(id.file.clone()),
-                        rule: Some(id),
-                    });
+                    // Identical RegExp causes are also valid selection alternatives.
                 }
             }
         }
@@ -1612,7 +1594,7 @@ matches:
     }
 
     #[test]
-    fn simple_trigger_duplicates_are_not_reported_but_regex_duplicates_are() {
+    fn trigger_and_regexp_duplicates_are_valid_selection_alternatives() {
         let (_temp, mut workspace, _base, extra) = fixture();
         workspace
             .create_rule(
@@ -1624,11 +1606,6 @@ matches:
                 },
             )
             .expect("create simple duplicate");
-        assert!(!workspace
-            .diagnostics()
-            .iter()
-            .any(|diagnostic| diagnostic.message.contains("trigger:")));
-
         workspace
             .create_rule(
                 &extra,
@@ -1640,10 +1617,11 @@ matches:
                 },
             )
             .expect("create regexp duplicate");
-        assert!(workspace
+
+        assert!(!workspace
             .diagnostics()
             .iter()
-            .any(|diagnostic| diagnostic.message.contains("Duplicate match cause: regex:")));
+            .any(|diagnostic| diagnostic.message.contains("Duplicate match cause")));
     }
 
     #[test]

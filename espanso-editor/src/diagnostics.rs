@@ -323,15 +323,13 @@ fn diagnostic_kind(message: &str) -> String {
         ("empty regexp", "empty-regexp"),
         ("invalid regexp", "invalid-regexp"),
         ("invalid rule block", "invalid-rule-block"),
-        ("duplicate match cause", "duplicate-match"),
         ("duplicate global variable", "duplicate-global-variable"),
         ("global variable parse error", "global-variable-parse"),
         ("missing import", "missing-import"),
         ("not imported", "not-imported"),
     ] {
         if lower.contains(needle) {
-            if code == "duplicate-match"
-                || code == "duplicate-global-variable"
+            if code == "duplicate-global-variable"
                 || code == "missing-import"
                 || code == "not-imported"
             {

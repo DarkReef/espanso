@@ -123,7 +123,7 @@ DerivedFrame::DerivedFrame(wxWindow *parent) : WizardFrame(parent) {
     }
 
     this->welcome_version_text->SetLabel(
-        wxString::Format("( version %s )", wizard_metadata->version));
+        wxString::Format("Версия %s", wizard_metadata->version));
 
     // Accessiblity images
 
@@ -229,7 +229,7 @@ void DerivedFrame::auto_start_continue_clicked(wxCommandEvent &event) {
             } else {
                 wxMessageDialog *dialog = new wxMessageDialog(
                     this,
-                    "An error occurred while registering Espanso as a service, "
+                    "Не удалось зарегистрировать rEspanso в автозапуске. "
                     "please check the logs for more information.\nDo you want "
                     "to retry? You can always configure this option later",
                     "Operation failed",
