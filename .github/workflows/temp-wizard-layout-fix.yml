@@ -1,19 +1,21 @@
 name: Temporary wizard encoding and layout fix
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/manual-build-dynamic-vars
+      - rEspanso-feature
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
 
 concurrency:
-  group: wizard-layout-fix
+  group: wizard-layout-fix-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   patch-test-build:
+    if: github.event.pull_request.head.ref == 'feature/manual-build-dynamic-vars'
     runs-on: windows-2022
     timeout-minutes: 120
     env:
@@ -98,7 +100,6 @@ jobs:
               elif new not in gui:
                   raise SystemExit(f"wizard_gui.cpp anchor not found: {old[:80]!r}")
 
-          # UTF-8 BOM makes MSVC decode readable Cyrillic literals consistently.
           gui_path.write_text(gui, encoding="utf-8-sig", newline="\n")
 
           wizard_path = Path("espanso-modulo/src/sys/wizard/wizard.cpp")
