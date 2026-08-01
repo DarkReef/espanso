@@ -1049,16 +1049,28 @@ fn report_fatal_error(error: &str) {
 
 #[cfg(target_os = "windows")]
 fn show_error_message(message: &str) {
-    use windows::core::PCWSTR;
-    use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+    use std::ffi::c_void;
+
+    const MB_OK: u32 = 0;
+    const MB_ICONERROR: u32 = 0x10;
+
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn MessageBoxW(
+            window: *mut c_void,
+            text: *const u16,
+            caption: *const u16,
+            kind: u32,
+        ) -> i32;
+    }
 
     let title = "rEspanso\0".encode_utf16().collect::<Vec<_>>();
     let message = format!("{message}\0").encode_utf16().collect::<Vec<_>>();
     unsafe {
         let _ = MessageBoxW(
-            None,
-            PCWSTR(message.as_ptr()),
-            PCWSTR(title.as_ptr()),
+            std::ptr::null_mut(),
+            message.as_ptr(),
+            title.as_ptr(),
             MB_OK | MB_ICONERROR,
         );
     }
