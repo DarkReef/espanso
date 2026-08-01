@@ -1,0 +1,108 @@
+name: Temporary wizard repair on PR
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-wizard-pr-repair-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.event.pull_request.head.ref == 'feature/manual-build-dynamic-vars'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 0
+
+      - name: Repair source and visible labels
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow_path = Path('.github/workflows/temp-wizard-full-russian.yml')
+          app_path = Path('espanso-editor/src/app.rs')
+          variables_path = Path('espanso-editor/src/global_variables.rs')
+
+          def replace_or_verify(text: str, old: str, new: str, label: str, expected: int = 1) -> str:
+              old_count = text.count(old)
+              if old_count == expected:
+                  return text.replace(old, new)
+              if old_count == 0 and text.count(new) >= expected:
+                  return text
+              raise SystemExit(f'{label}: expected {expected} old occurrence(s), found {old_count}')
+
+          workflow = workflow_path.read_text(encoding='utf-8')
+          workflow = replace_or_verify(
+              workflow,
+              '                      dialog.SetCancelLabel(ui_text("Пропустить"));\n',
+              '',
+              'unsupported wxWidgets SetCancelLabel calls',
+              2,
+          )
+          workflow = replace_or_verify(
+              workflow,
+              '          if \'dialog.SetCancelLabel(ui_text("Пропустить"))\' not in wizard:\n              raise SystemExit("Russian dialog buttons are missing")',
+              '          if wizard.count(\'dialog.SetOKLabel(ui_text("Повторить"))\') != 2:\n              raise SystemExit("Russian retry buttons are missing")',
+              'wizard button verification',
+          )
+          workflow_path.write_text(workflow, encoding='utf-8', newline='\n')
+
+          app = app_path.read_text(encoding='utf-8')
+          for old, new in {
+              'Имена global_vars должны быть уникальны во всём проекте': 'Имена общих переменных должны быть уникальны во всём проекте',
+              'Просмотр, создание и изменение общих global_vars': 'Просмотр, создание и изменение общих переменных',
+              'Повторы обычных триггеров не считаются ошибкой и открывают окно выбора. Повторы RegExp и имён global_vars отображаются как проблемы.': 'Повторы обычных сокращений не считаются ошибкой и открывают окно выбора. Повторы регулярных выражений и имён общих переменных отображаются как проблемы.',
+              'Не удалось прочитать global_vars: {error}': 'Не удалось прочитать общие переменные: {error}',
+          }.items():
+              app = replace_or_verify(app, old, new, f'app label: {old}')
+          app_path.write_text(app, encoding='utf-8', newline='\n')
+
+          variables = variables_path.read_text(encoding='utf-8')
+          for old, new in {
+              'egui::Window::new("Глобальные переменные")': 'egui::Window::new("Общие переменные")',
+              'Переменные из global_vars доступны всем включённым правилам. Новые переменные сохраняются в base.yml/base.yaml.': 'Эти переменные доступны всем включённым правилам. Новые переменные сохраняются в основной файл конфигурации.',
+              'Локальные vars существующих правил не удаляются автоматически, но Studio больше не создаёт новые локальные переменные.': 'Переменные, уже встроенные в отдельные правила, сохранятся. Новые переменные Studio создаёт общими.',
+              'Глобальные переменные пока не объявлены': 'Общие переменные пока не созданы',
+              'Будет добавлена в основной base.yml/base.yaml': 'Будет добавлена в основной файл конфигурации',
+              'Сохранить global_vars и добавить {{имя}} в выбранное правило': 'Сохранить общую переменную и добавить {{имя}} в выбранное правило',
+              'Удалить глобальную переменную': 'Удалить общую переменную',
+              'Глобальная переменная {} уже объявлена в этом файле': 'Общая переменная {} уже объявлена в этом файле',
+              'Не удалось прочитать global_vars: {error}': 'Не удалось прочитать общие переменные: {error}',
+              'Секция global_vars содержит комментарий или YAML-якорь': 'Раздел общих переменных содержит комментарий или YAML-якорь',
+              'После изменения global_vars YAML стал некорректным: {error}': 'После изменения общих переменных файл YAML стал некорректным: {error}',
+          }.items():
+              variables = replace_or_verify(variables, old, new, f'variable label: {old}')
+          variables_path.write_text(variables, encoding='utf-8', newline='\n')
+
+          for temporary in (
+              Path('.github/workflows/temp-repair-wizard-build.yml'),
+              Path('.github/workflows/temp-repair-wizard-pr.yml'),
+          ):
+              if temporary.exists():
+                  temporary.unlink()
+          PY
+
+      - name: Commit repaired branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/temp-wizard-full-russian.yml \
+                  .github/workflows/temp-repair-wizard-build.yml \
+                  .github/workflows/temp-repair-wizard-pr.yml \
+                  espanso-editor/src/app.rs \
+                  espanso-editor/src/global_variables.rs
+          git diff --cached --check
+          git commit -m "fix(wizard): restore Windows build and simplify diagnostics"
+          git push origin HEAD:feature/manual-build-dynamic-vars
