@@ -248,33 +248,78 @@ impl espanso_engine::process::SelectionMatchResolver for CombinedMatchCache<'_> 
                     }
                 }
                 MatchCause::Regex(cause) => {
-                    let pattern = format!("^(?:{})$", cause.regex);
-                    let Ok(regex) = Regex::new(&pattern) else {
-                        continue;
-                    };
-                    let Some(captures) = regex.captures(selection) else {
-                        continue;
-                    };
-
-                    let mut args = HashMap::new();
-                    args.insert("selection".to_owned(), selection.to_owned());
-                    for name in regex.capture_names().flatten() {
-                        if let Some(value) = captures.name(name) {
-                            args.insert(name.to_owned(), value.as_str().to_owned());
-                        }
+                    if let Some(args) = selection_regex_args(&cause.regex, selection) {
+                        detected.push(DetectedMatch {
+                            id: m.id,
+                            trigger: None,
+                            args,
+                            ..Default::default()
+                        });
                     }
-
-                    detected.push(DetectedMatch {
-                        id: m.id,
-                        trigger: None,
-                        args,
-                        ..Default::default()
-                    });
                 }
                 MatchCause::None => {}
             }
         }
 
         detected
+    }
+}
+
+fn selection_regex_args(pattern: &str, selection: &str) -> Option<HashMap<String, String>> {
+    let anchored_pattern = format!("^(?:{pattern})$");
+    let regex = Regex::new(&anchored_pattern).ok()?;
+    let virtual_terminated_selection = format!("{selection} ");
+
+    for candidate in [selection, virtual_terminated_selection.as_str()] {
+        let Some(captures) = regex.captures(candidate) else {
+            continue;
+        };
+
+        let mut args = HashMap::new();
+        args.insert("selection".to_owned(), selection.to_owned());
+        for name in regex.capture_names().flatten() {
+            if let Some(value) = captures.name(name) {
+                args.insert(name.to_owned(), value.as_str().to_owned());
+            }
+        }
+        return Some(args);
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod selection_regex_tests {
+    use super::*;
+
+    #[test]
+    fn selected_regex_preserves_named_captures() {
+        let args = selection_regex_args(r"\.анемия_(?P<hb>\d{2,3})$", ".анемия_60")
+            .expect("selection should match");
+
+        assert_eq!(args.get("hb").map(String::as_str), Some("60"));
+        assert_eq!(
+            args.get("selection").map(String::as_str),
+            Some(".анемия_60")
+        );
+    }
+
+    #[test]
+    fn selected_regex_accepts_virtual_trailing_whitespace() {
+        let args = selection_regex_args(r"\.анемия_(?P<hb>\d{2,3})\s$", ".анемия_60")
+            .expect("virtual trailing space should satisfy the normal typing terminator");
+
+        assert_eq!(args.get("hb").map(String::as_str), Some("60"));
+        assert_eq!(
+            args.get("selection").map(String::as_str),
+            Some(".анемия_60")
+        );
+    }
+
+    #[test]
+    fn selected_regex_still_requires_the_entire_selection() {
+        assert!(
+            selection_regex_args(r"\.анемия_(?P<hb>\d{2,3})$", "до .анемия_60 после",).is_none()
+        );
     }
 }
