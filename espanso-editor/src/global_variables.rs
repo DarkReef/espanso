@@ -52,18 +52,18 @@ impl GlobalVariableEditor {
         let mut preset = None;
         let mut select_record = None;
 
-        egui::Window::new("Глобальные переменные")
+        egui::Window::new("Общие переменные")
             .open(open)
             .default_width(920.0)
             .default_height(620.0)
             .resizable(true)
             .show(context, |ui| {
                 ui.label(
-                    "Переменные из global_vars доступны всем включённым правилам. Новые переменные сохраняются в base.yml/base.yaml.",
+                    "Эти переменные доступны всем включённым правилам. Новые переменные сохраняются в основной файл конфигурации.",
                 );
                 ui.label(
                     egui::RichText::new(
-                        "Локальные vars существующих правил не удаляются автоматически, но Studio больше не создаёт новые локальные переменные.",
+                        "Переменные, уже встроенные в отдельные правила, сохранятся. Новые переменные Studio создаёт общими.",
                     )
                     .weak(),
                 );
@@ -127,7 +127,7 @@ impl GlobalVariableEditor {
                                 ui.separator();
                             }
                             if records.is_empty() {
-                                ui.label("Глобальные переменные пока не объявлены");
+                                ui.label("Общие переменные пока не созданы");
                             }
                         });
 
@@ -142,7 +142,7 @@ impl GlobalVariableEditor {
                         );
                     } else {
                         columns[1].label(
-                            egui::RichText::new("Будет добавлена в основной base.yml/base.yaml")
+                            egui::RichText::new("Будет добавлена в основной файл конфигурации")
                                 .weak(),
                         );
                     }
@@ -203,7 +203,7 @@ impl GlobalVariableEditor {
                         }
                         if ui
                             .add_enabled(can_insert, egui::Button::new("Сохранить и вставить"))
-                            .on_hover_text("Сохранить global_vars и добавить {{имя}} в выбранное правило")
+                            .on_hover_text("Сохранить общую переменную и добавить {{имя}} в выбранное правило")
                             .clicked()
                         {
                             action = self.save_action(true);
@@ -227,7 +227,7 @@ impl GlobalVariableEditor {
                     columns[1].horizontal(|ui| {
                         if let Some((file, original_name)) = &self.selected {
                             if ui
-                                .button("Удалить глобальную переменную")
+                                .button("Удалить общую переменную")
                                 .on_hover_text("Удаляет объявление, но не меняет тексты правил")
                                 .clicked()
                             {
@@ -368,7 +368,7 @@ pub fn upsert_global_variable(
         .any(|(index, variable)| variable.name == definition.name && Some(index) != existing_index)
     {
         return Err(format!(
-            "Глобальная переменная {} уже объявлена в этом файле",
+            "Общая переменная {} уже объявлена в этом файле",
             definition.placeholder()
         ));
     }
@@ -445,7 +445,7 @@ where
 
 fn parse_holder(content: &str) -> Result<GlobalVarsHolder, String> {
     serde_norway::from_str(content)
-        .map_err(|error| format!("Не удалось прочитать global_vars: {error}"))
+        .map_err(|error| format!("Не удалось прочитать общие переменные: {error}"))
 }
 
 fn parse_params(params_yaml: &str) -> Result<Option<Value>, String> {
@@ -507,7 +507,7 @@ fn ensure_rewrite_safe(content: &str) -> Result<(), String> {
     });
     if let Some(line) = unsafe_line {
         return Err(format!(
-            "Секция global_vars содержит комментарий или YAML-якорь ('{}'). Чтобы не потерять оформление, измените её в исходном YAML",
+            "Раздел общих переменных содержит комментарий или YAML-якорь ('{}'). Чтобы не потерять оформление, измените её в исходном YAML",
             line.trim()
         ));
     }
@@ -575,7 +575,9 @@ fn render_global_vars(variables: &[StoredVariable], newline: &str) -> Result<Str
 fn validate_document(content: &str) -> Result<(), String> {
     serde_norway::from_str::<Value>(content)
         .map(|_| ())
-        .map_err(|error| format!("После изменения global_vars YAML стал некорректным: {error}"))
+        .map_err(|error| {
+            format!("После изменения общих переменных файл YAML стал некорректным: {error}")
+        })
 }
 
 fn top_level_section(content: &str, key: &str) -> Option<(usize, usize)> {

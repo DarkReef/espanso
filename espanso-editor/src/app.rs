@@ -1101,7 +1101,7 @@ impl MatchStudioApp {
                     });
                     if let Some(existing) = conflict {
                         return Err(format!(
-                            "Переменная {} уже объявлена в {}. Имена global_vars должны быть уникальны во всём проекте",
+                            "Переменная {} уже объявлена в {}. Имена общих переменных должны быть уникальны во всём проекте",
                             definition.placeholder(),
                             relative_display(&self.config_root, &existing.file)
                         ));
@@ -1582,7 +1582,7 @@ impl MatchStudioApp {
                         }
                         if ui
                             .button("Переменные")
-                            .on_hover_text("Просмотр, создание и изменение общих global_vars")
+                            .on_hover_text("Просмотр, создание и изменение общих переменных")
                             .clicked()
                         {
                             self.show_global_variables = true;
@@ -2424,7 +2424,7 @@ impl MatchStudioApp {
                 ui.label(egui::RichText::new(format!("Активных проблем: {active_count}")).weak());
                 ui.label(
                     egui::RichText::new(
-                        "Повторы обычных триггеров не считаются ошибкой и открывают окно выбора. Повторы RegExp и имён global_vars отображаются как проблемы.",
+                        "Повторы обычных сокращений не считаются ошибкой и открывают окно выбора. Повторы регулярных выражений и имён общих переменных отображаются как проблемы.",
                     )
                     .weak(),
                 );
@@ -2562,7 +2562,7 @@ impl MatchStudioApp {
             let records = match self.global_variable_records() {
                 Ok(records) => records,
                 Err(error) => {
-                    self.status = format!("Не удалось прочитать global_vars: {error}");
+                    self.status = format!("Не удалось прочитать общие переменные: {error}");
                     Vec::new()
                 }
             };
