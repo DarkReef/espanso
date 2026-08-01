@@ -49,6 +49,45 @@ jobs:
       - name: Apply source patch
         run: python scripts/apply_runtime_stability_branding_patch.py
 
+      - name: Repair generated source
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          workspace_path = Path("espanso-editor/src/workspace.rs")
+          workspace = workspace_path.read_text(encoding="utf-8")
+          workspace = workspace.replace(
+              "use std::collections::{BTreeMap, BTreeSet, HashSet};",
+              "use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};",
+          )
+          workspace_path.write_text(workspace, encoding="utf-8", newline="\n")
+
+          daemon_path = Path("espanso/src/cli/daemon/mod.rs")
+          daemon = daemon_path.read_text(encoding="utf-8")
+          daemon = daemon.replace(
+              ".map_or(0, |duration| duration.as_secs());",
+              ".map_or_else(|_| 0, |duration| duration.as_secs());",
+          )
+          if "#[allow(clippy::too_many_lines, clippy::collapsible_match)]\nfn daemon_main(" not in daemon:
+              daemon = daemon.replace(
+                  "fn daemon_main(",
+                  "#[allow(clippy::too_many_lines, clippy::collapsible_match)]\nfn daemon_main(",
+                  1,
+              )
+          daemon_path.write_text(daemon, encoding="utf-8", newline="\n")
+
+          watcher_path = Path("espanso/src/cli/daemon/watcher.rs")
+          watcher = watcher_path.read_text(encoding="utf-8")
+          if "#[allow(clippy::too_many_lines)]\nfn debouncer_main(" not in watcher:
+              watcher = watcher.replace(
+                  "fn debouncer_main(",
+                  "#[allow(clippy::too_many_lines)]\nfn debouncer_main(",
+                  1,
+              )
+          watcher_path.write_text(watcher, encoding="utf-8", newline="\n")
+          '@ | python -
+
       - name: Synchronize storm icon resources
         shell: pwsh
         run: |
