@@ -41,66 +41,34 @@ jobs:
               if new in text:
                   return
               if old not in text:
-                  raise SystemExit(f"patch anchor not found in {path}")
+                  raise SystemExit(f"patch anchor not found in {path}: {old!r}")
               file.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
 
           replace_once(
               "espanso-config/src/matches/group/loader/yaml/parse.rs",
-              '''    #[serde(default)]
-              pub form_fields: Option<Mapping>,
-
-              #[serde(default)]
-              pub vars: Option<Vec<YAMLVariable>>,
-          ''',
-              '''    #[serde(default)]
-              pub form_fields: Option<Mapping>,
-
-              #[serde(default)]
-              pub preview: Option<bool>,
-
-              #[serde(default)]
-              pub vars: Option<Vec<YAMLVariable>>,
-          ''',
+              "    #[serde(default)]\n    pub form_fields: Option<Mapping>,\n\n    #[serde(default)]\n    pub vars: Option<Vec<YAMLVariable>>,\n",
+              "    #[serde(default)]\n    pub form_fields: Option<Mapping>,\n\n    #[serde(default)]\n    pub preview: Option<bool>,\n\n    #[serde(default)]\n    pub vars: Option<Vec<YAMLVariable>>,\n",
           )
 
-          replace_once(
-              "espanso-config/src/matches/group/loader/yaml/mod.rs",
-              '''        params.insert("layout".to_string(), Value::String(resolved_layout));
+          loader = Path("espanso-config/src/matches/group/loader/yaml/mod.rs")
+          text = loader.read_text(encoding="utf-8")
+          preview_block = '''        if let Some(preview) = yaml_match.preview {
+              params.insert("preview".to_string(), Value::Bool(preview));
+          }
 
-              if let Some(fields) = yaml_match.form_fields {
-          ''',
-              '''        params.insert("layout".to_string(), Value::String(resolved_layout));
-
-              if let Some(preview) = yaml_match.preview {
-                  params.insert("preview".to_string(), Value::Bool(preview));
-              }
-
-              if let Some(fields) = yaml_match.form_fields {
-          ''',
-          )
-
-          replace_once(
-              "schemas/match.schema.json",
-              '''        "form_fields": {
-                    "$ref": "#/definitions/form_field_definition"
-                  },
-                  "html": {
-          ''',
-              '''        "form_fields": {
-                    "$ref": "#/definitions/form_field_definition"
-                  },
-                  "preview": {
-                    "description": "Show a live preview of the text produced by the form layout",
-                    "type": "boolean"
-                  },
-                  "html": {
-          ''',
-          )
-
-          test_marker = '''    #[test]
-              fn form_maps_correctly_with_variable_injection() {
           '''
-          test_block = '''    #[test]
+          fields_anchor = "        if let Some(fields) = yaml_match.form_fields {"
+          if preview_block.strip() not in text:
+              if fields_anchor not in text:
+                  raise SystemExit("form_fields loader anchor not found")
+              text = text.replace(fields_anchor, preview_block + fields_anchor, 1)
+
+          test_name = "    fn shorthand_form_preview_maps_correctly() {"
+          test_anchor = "    #[test]\n    fn form_maps_correctly_with_variable_injection() {"
+          if test_name not in text:
+              if test_anchor not in text:
+                  raise SystemExit("form preview test anchor not found")
+              test_block = '''    #[test]
               fn shorthand_form_preview_maps_correctly() {
                   let m = create_match(
                       r#"
@@ -120,13 +88,14 @@ jobs:
                   );
               }
 
-              #[test]
-              fn form_maps_correctly_with_variable_injection() {
           '''
+              text = text.replace(test_anchor, test_block + test_anchor, 1)
+          loader.write_text(text, encoding="utf-8", newline="\n")
+
           replace_once(
-              "espanso-config/src/matches/group/loader/yaml/mod.rs",
-              test_marker,
-              test_block,
+              "schemas/match.schema.json",
+              '        "form_fields": {\n          "$ref": "#/definitions/form_field_definition"\n        },\n        "html": {',
+              '        "form_fields": {\n          "$ref": "#/definitions/form_field_definition"\n        },\n        "preview": {\n          "description": "Show a live preview of the text produced by the form layout",\n          "type": "boolean"\n        },\n        "html": {',
           )
 
           docs = Path("docs/respanso/FORM_PREVIEW.ru.md")
@@ -187,12 +156,9 @@ jobs:
       - name: Commit verified source patch
         shell: pwsh
         run: |
-          git add -- \
-            espanso-config/src/matches/group/loader/yaml/parse.rs \
-            espanso-config/src/matches/group/loader/yaml/mod.rs \
-            schemas/match.schema.json \
-            docs/respanso/FORM_PREVIEW.ru.md
-          if (git diff --cached --quiet) {
+          git add -- espanso-config/src/matches/group/loader/yaml/parse.rs espanso-config/src/matches/group/loader/yaml/mod.rs schemas/match.schema.json docs/respanso/FORM_PREVIEW.ru.md
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
             Write-Host "Source patch already present"
             exit 0
           }
