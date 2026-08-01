@@ -1,1 +1,1 @@
-Retrigger the verified Windows runtime stability build after repairing the temporary patch script.
+Retrigger the verified Windows runtime stability build after structural repair of the patch script and daemon IPC separation.
