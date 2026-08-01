@@ -1,4 +1,4 @@
-/*
+﻿/*
  * This file is part of modulo.
  *
  * Copyright (C) 2020-2021 Federico Terzi
@@ -23,6 +23,7 @@
 #include "../interop/interop.h"
 #include "./wizard_gui.h"
 
+#include <algorithm>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -116,14 +117,40 @@ DerivedFrame::DerivedFrame(wxWindow *parent) : WizardFrame(parent) {
     // Welcome images
 
     if (wizard_metadata->welcome_image_path) {
-        wxBitmap welcomeBitmap =
-            wxBitmap(wxString::FromUTF8(wizard_metadata->welcome_image_path),
-                     wxBITMAP_TYPE_PNG);
-        this->welcome_image->SetBitmap(welcomeBitmap);
+        wxImage welcomeImage(
+            wxString::FromUTF8(wizard_metadata->welcome_image_path),
+            wxBITMAP_TYPE_PNG);
+        if (welcomeImage.IsOk()) {
+            constexpr int kWelcomeImageMaxWidth = 160;
+            constexpr int kWelcomeImageMaxHeight = 160;
+            const int sourceWidth = welcomeImage.GetWidth();
+            const int sourceHeight = welcomeImage.GetHeight();
+
+            if (sourceWidth > kWelcomeImageMaxWidth ||
+                sourceHeight > kWelcomeImageMaxHeight) {
+                const double widthScale =
+                    static_cast<double>(kWelcomeImageMaxWidth) / sourceWidth;
+                const double heightScale =
+                    static_cast<double>(kWelcomeImageMaxHeight) / sourceHeight;
+                const double scale = std::min(widthScale, heightScale);
+                welcomeImage.Rescale(
+                    std::max(1, static_cast<int>(sourceWidth * scale)),
+                    std::max(1, static_cast<int>(sourceHeight * scale)),
+                    wxIMAGE_QUALITY_HIGH);
+            }
+
+            this->welcome_image->SetBitmap(wxBitmap(welcomeImage));
+        } else {
+            this->welcome_image->Hide();
+        }
+    } else {
+        this->welcome_image->Hide();
     }
 
     this->welcome_version_text->SetLabel(
-        wxString::Format("Версия %s", wizard_metadata->version));
+        wxString::FromUTF8("Версия ") +
+        wxString::FromUTF8(wizard_metadata->version));
+    this->welcome_panel->Layout();
 
     // Accessiblity images
 

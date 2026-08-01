@@ -1,4 +1,4 @@
-///////////////////////////////////////////////////////////////////////////
+﻿///////////////////////////////////////////////////////////////////////////
 // C++ code generated with wxFormBuilder (version Oct 26 2018)
 // http://www.wxformbuilder.org/
 //
@@ -35,15 +35,15 @@ WizardFrame::WizardFrame(wxWindow *parent, wxWindowID id, const wxString &title,
 
     m_scrolledWindow2 =
         new wxScrolledWindow(welcome_panel, wxID_ANY, wxDefaultPosition,
-                             wxDefaultSize, wxHSCROLL | wxVSCROLL);
-    m_scrolledWindow2->SetScrollRate(5, 5);
+                             wxDefaultSize, wxTAB_TRAVERSAL);
+    m_scrolledWindow2->SetScrollRate(0, 0);
     wxBoxSizer *bSizer2;
     bSizer2 = new wxBoxSizer(wxVERTICAL);
 
     welcome_image =
         new wxStaticBitmap(m_scrolledWindow2, wxID_ANY, wxNullBitmap,
-                           wxDefaultPosition, wxSize(256, 256), 0);
-    welcome_image->SetMinSize(wxSize(256, 256));
+                           wxDefaultPosition, wxSize(160, 160), 0);
+    welcome_image->SetMinSize(wxSize(160, 160));
 
     bSizer2->Add(welcome_image, 0, wxALIGN_CENTER | wxALL, 0);
 
@@ -55,7 +55,7 @@ WizardFrame::WizardFrame(wxWindow *parent, wxWindowID id, const wxString &title,
                                        wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD,
                                        false, wxEmptyString));
 
-    bSizer2->Add(welcome_title_text, 0, wxALIGN_CENTER_HORIZONTAL | wxTOP, 20);
+    bSizer2->Add(welcome_title_text, 0, wxALIGN_CENTER_HORIZONTAL | wxTOP, 12);
 
     welcome_version_text =
         new wxStaticText(m_scrolledWindow2, wxID_ANY, wxT("(version 1.2.3)"),
@@ -71,14 +71,13 @@ WizardFrame::WizardFrame(wxWindow *parent, wxWindowID id, const wxString &title,
             "автоматизация. Настройка займёт меньше минуты.\n\nНажмите "
             "\"Начать\", чтобы продолжить."),
         wxDefaultPosition, wxDefaultSize, 0);
-    welcome_description_text->Wrap(-1);
+    welcome_description_text->Wrap(500);
     bSizer2->Add(welcome_description_text, 0, wxALL, 10);
 
     bSizer2->Add(0, 0, 1, wxEXPAND, 5);
 
     m_scrolledWindow2->SetSizer(bSizer2);
     m_scrolledWindow2->Layout();
-    bSizer2->Fit(m_scrolledWindow2);
     bSizer13->Add(m_scrolledWindow2, 1, wxEXPAND | wxALL, 5);
 
     welcome_start_button = new wxButton(welcome_panel, wxID_ANY, wxT("Начать"),
