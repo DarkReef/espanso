@@ -1,0 +1,54 @@
+name: Temporary form preview validation
+
+on:
+  push:
+    branches:
+      - feature/manual-build-dynamic-vars
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temp-form-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-windows:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-portable
+          cache-on-failure: true
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test form render and native model
+        run: cargo test --locked -p espanso-render -p espanso-modulo
+
+      - name: Check worker integration
+        run: cargo check --locked -p espanso
+
+      - name: Build release core and launcher
+        run: cargo build --locked --release -p espanso --bin espanso --bin respanso-portable
