@@ -1,0 +1,251 @@
+name: Temporary selected RegExp execution build
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: selected-regex-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  patch-test-build:
+    if: github.event.pull_request.head.ref == 'feature/manual-build-dynamic-vars'
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 0
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-portable
+          cache-on-failure: true
+
+      - name: Patch selected RegExp execution
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          path = Path("espanso/src/cli/worker/match_cache.rs")
+          text = path.read_text(encoding="utf-8")
+          old = '''                MatchCause::Regex(cause) => {
+                      let pattern = format!("^(?:{})$", cause.regex);
+                      let Ok(regex) = Regex::new(&pattern) else {
+                          continue;
+                      };
+                      let Some(captures) = regex.captures(selection) else {
+                          continue;
+                      };
+
+                      let mut args = HashMap::new();
+                      args.insert("selection".to_owned(), selection.to_owned());
+                      for name in regex.capture_names().flatten() {
+                          if let Some(value) = captures.name(name) {
+                              args.insert(name.to_owned(), value.as_str().to_owned());
+                          }
+                      }
+
+                      detected.push(DetectedMatch {
+                          id: m.id,
+                          trigger: None,
+                          args,
+                          ..Default::default()
+                      });
+                  }
+          '''
+          new = '''                MatchCause::Regex(cause) => {
+                      if let Some(args) = selection_regex_args(&cause.regex, selection) {
+                          detected.push(DetectedMatch {
+                              id: m.id,
+                              trigger: None,
+                              args,
+                              ..Default::default()
+                          });
+                      }
+                  }
+          '''
+          if old not in text:
+              raise SystemExit("RegExp selection resolver anchor not found")
+          text = text.replace(old, new, 1)
+
+          tail = '''        detected
+              }
+          }
+          '''
+          replacement = r'''        detected
+              }
+          }
+
+          fn selection_regex_args(pattern: &str, selection: &str) -> Option<HashMap<String, String>> {
+              let anchored_pattern = format!("^(?:{pattern})$");
+              let regex = Regex::new(&anchored_pattern).ok()?;
+              let virtual_terminated_selection = format!("{selection} ");
+
+              for candidate in [selection, virtual_terminated_selection.as_str()] {
+                  let Some(captures) = regex.captures(candidate) else {
+                      continue;
+                  };
+
+                  let mut args = HashMap::new();
+                  args.insert("selection".to_owned(), selection.to_owned());
+                  for name in regex.capture_names().flatten() {
+                      if let Some(value) = captures.name(name) {
+                          args.insert(name.to_owned(), value.as_str().to_owned());
+                      }
+                  }
+                  return Some(args);
+              }
+
+              None
+          }
+
+          #[cfg(test)]
+          mod selection_regex_tests {
+              use super::*;
+
+              #[test]
+              fn selected_regex_preserves_named_captures() {
+                  let args = selection_regex_args(
+                      r"\.анемия_(?P<hb>\d{2,3})$",
+                      ".анемия_60",
+                  )
+                  .expect("selection should match");
+
+                  assert_eq!(args.get("hb").map(String::as_str), Some("60"));
+                  assert_eq!(
+                      args.get("selection").map(String::as_str),
+                      Some(".анемия_60")
+                  );
+              }
+
+              #[test]
+              fn selected_regex_accepts_virtual_trailing_whitespace() {
+                  let args = selection_regex_args(
+                      r"\.анемия_(?P<hb>\d{2,3})\s$",
+                      ".анемия_60",
+                  )
+                  .expect("virtual trailing space should satisfy the normal typing terminator");
+
+                  assert_eq!(args.get("hb").map(String::as_str), Some("60"));
+                  assert_eq!(
+                      args.get("selection").map(String::as_str),
+                      Some(".анемия_60")
+                  );
+              }
+
+              #[test]
+              fn selected_regex_still_requires_the_entire_selection() {
+                  assert!(selection_regex_args(
+                      r"\.анемия_(?P<hb>\d{2,3})$",
+                      "до .анемия_60 после",
+                  )
+                  .is_none());
+              }
+          }
+          '''
+          if tail not in text:
+              raise SystemExit("match_cache tail anchor not found")
+          text = text.replace(tail, replacement, 1)
+          path.write_text(text, encoding="utf-8", newline="\n")
+
+          docs_path = Path("docs/respanso/MATCH_STUDIO.ru.md")
+          docs = docs_path.read_text(encoding="utf-8")
+          anchor = "В справке также указан глобальный хоткей `Ctrl+Alt+M` — поиск триггера по выделенному тексту."
+          updated = anchor + " Хоткей выполняет как обычные триггеры, так и RegExp с именованными группами; для правил с завершающим `\\s$` при ручном запуске используется виртуальный пробел, который не попадает в документ."
+          if anchor not in docs:
+              raise SystemExit("documentation anchor not found")
+          docs_path.write_text(docs.replace(anchor, updated, 1), encoding="utf-8", newline="\n")
+          '@ | python -
+
+      - name: Format sources
+        run: cargo fmt --all
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test runtime and portable launcher
+        run: cargo test --locked -p espanso --bins
+
+      - name: Test Match Studio
+        run: cargo test --locked -p espanso-editor --lib
+
+      - name: Lint runtime binaries
+        run: cargo clippy --locked -p espanso --bins -- --deny warnings
+
+      - name: Lint Match Studio
+        run: cargo clippy --locked -p espanso-editor --all-targets -- --deny warnings
+
+      - name: Build rEspanso core and launcher
+        run: cargo build --locked --release -p espanso --bin espanso --bin respanso-portable
+
+      - name: Build Match Studio
+        run: cargo build --locked --release -p espanso-editor --bin espanso-editor
+
+      - name: Assemble and verify portable archive
+        shell: pwsh
+        run: |
+          $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
+          $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
+          $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
+          & "./scripts/build_windows_native_portable_with_studio.ps1"
+          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+          if (-not (Test-Path -Path $archive -PathType Leaf)) {
+            throw "Portable archive was not created"
+          }
+          $entries = tar -tf $archive
+          if ($LASTEXITCODE -ne 0) {
+            throw "Portable archive could not be listed"
+          }
+          if ($entries -match '\.(bat|cmd)$') {
+            throw "Portable archive contains BAT/CMD launchers"
+          }
+          foreach ($file in @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")) {
+            if (-not ($entries -match [regex]::Escape($file))) {
+              throw "Portable archive is missing $file"
+            }
+          }
+
+      - name: Remove temporary workflow and commit verified patch
+        shell: pwsh
+        run: |
+          Remove-Item ".github/workflows/temp-selection-regex-build.yml" -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(runtime): execute selected RegExp matches"
+          git push origin HEAD:feature/manual-build-dynamic-vars
+
+      - name: Upload portable archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-selected-regex
+          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
