@@ -1227,8 +1227,8 @@ replace(
 )
 replace(
     "espanso/src/cli/service/win.rs",
-    '$Shortcut.TargetPath = $env:TARGET_PATH; $Shortcut.Arguments = $env:TARGET_ARGS; $Shortcut.Save()",
-    '$Shortcut.TargetPath = $env:TARGET_PATH; $Shortcut.Arguments = $env:TARGET_ARGS; $Shortcut.WorkingDirectory = Split-Path $env:TARGET_PATH; $Shortcut.IconLocation = $env:TARGET_PATH; $Shortcut.Save()',
+    """$Shortcut.TargetPath = $env:TARGET_PATH; $Shortcut.Arguments = $env:TARGET_ARGS; $Shortcut.Save()""",
+    """$Shortcut.TargetPath = $env:TARGET_PATH; $Shortcut.Arguments = $env:TARGET_ARGS; $Shortcut.WorkingDirectory = Split-Path $env:TARGET_PATH; $Shortcut.IconLocation = $env:TARGET_PATH; $Shortcut.Save()""",
 )
 
 # Documentation reflects the new semantics and recovery contract.
