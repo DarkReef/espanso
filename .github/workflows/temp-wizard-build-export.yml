@@ -1,0 +1,204 @@
+name: Build repaired Russian wizard
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repaired-wizard-build-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event.pull_request.head.ref == 'feature/manual-build-dynamic-vars'
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/manual-build-dynamic-vars
+          fetch-depth: 0
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-portable
+          cache-on-failure: true
+
+      - name: Apply wizard localization and UI cleanup
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import textwrap
+
+          original_workflow = Path('.github/workflows/temp-wizard-full-russian.yml')
+          workflow = original_workflow.read_text(encoding='utf-8')
+
+          marker = '      - name: Localize every wizard page and dialog\n'
+          if marker not in workflow:
+              raise SystemExit('Localization step was not found')
+          tail = workflow.split(marker, 1)[1]
+          start = "        run: |\n          @'\n"
+          end = "\n          '@ | python -"
+          if start not in tail or end not in tail:
+              raise SystemExit('Embedded localization script boundaries were not found')
+          embedded = tail.split(start, 1)[1].split(end, 1)[0]
+          embedded = textwrap.dedent(embedded)
+          embedded = embedded.replace(
+              '                      dialog.SetCancelLabel(ui_text("Пропустить"));\n',
+              '',
+          )
+          if 'SetCancelLabel' in embedded:
+              raise SystemExit('Unsupported SetCancelLabel call remains')
+          exec(compile(embedded, '<wizard-localization>', 'exec'), {'__name__': '__main__'})
+
+          workflow = workflow.replace(
+              '                      dialog.SetCancelLabel(ui_text("Пропустить"));\n',
+              '',
+          )
+          workflow = workflow.replace(
+              '          if \'dialog.SetCancelLabel(ui_text("Пропустить"))\' not in wizard:\n              raise SystemExit("Russian dialog buttons are missing")',
+              '          if wizard.count(\'dialog.SetOKLabel(ui_text("Повторить"))\') != 2:\n              raise SystemExit("Russian retry buttons are missing")',
+          )
+          if 'SetCancelLabel' in workflow:
+              raise SystemExit('Unsupported SetCancelLabel call remains in workflow')
+          original_workflow.write_text(workflow, encoding='utf-8', newline='\n')
+
+          app_path = Path('espanso-editor/src/app.rs')
+          app = app_path.read_text(encoding='utf-8')
+          app_replacements = {
+              'Имена global_vars должны быть уникальны во всём проекте': 'Имена общих переменных должны быть уникальны во всём проекте',
+              'Просмотр, создание и изменение общих global_vars': 'Просмотр, создание и изменение общих переменных',
+              'Повторы обычных триггеров не считаются ошибкой и открывают окно выбора. Повторы RegExp и имён global_vars отображаются как проблемы.': 'Повторы обычных сокращений не считаются ошибкой и открывают окно выбора. Повторы регулярных выражений и имён общих переменных отображаются как проблемы.',
+              'Не удалось прочитать global_vars: {error}': 'Не удалось прочитать общие переменные: {error}',
+          }
+          for old, new in app_replacements.items():
+              if old not in app and new not in app:
+                  raise SystemExit(f'App label not found: {old}')
+              app = app.replace(old, new)
+          app_path.write_text(app, encoding='utf-8', newline='\n')
+
+          variables_path = Path('espanso-editor/src/global_variables.rs')
+          variables = variables_path.read_text(encoding='utf-8')
+          variable_replacements = {
+              'egui::Window::new("Глобальные переменные")': 'egui::Window::new("Общие переменные")',
+              'Переменные из global_vars доступны всем включённым правилам. Новые переменные сохраняются в base.yml/base.yaml.': 'Эти переменные доступны всем включённым правилам. Новые переменные сохраняются в основной файл конфигурации.',
+              'Локальные vars существующих правил не удаляются автоматически, но Studio больше не создаёт новые локальные переменные.': 'Переменные, уже встроенные в отдельные правила, сохранятся. Новые переменные Studio создаёт общими.',
+              'Глобальные переменные пока не объявлены': 'Общие переменные пока не созданы',
+              'Будет добавлена в основной base.yml/base.yaml': 'Будет добавлена в основной файл конфигурации',
+              'Сохранить global_vars и добавить {{имя}} в выбранное правило': 'Сохранить общую переменную и добавить {{имя}} в выбранное правило',
+              'Удалить глобальную переменную': 'Удалить общую переменную',
+              'Глобальная переменная {} уже объявлена в этом файле': 'Общая переменная {} уже объявлена в этом файле',
+              'Не удалось прочитать global_vars: {error}': 'Не удалось прочитать общие переменные: {error}',
+              'Секция global_vars содержит комментарий или YAML-якорь': 'Раздел общих переменных содержит комментарий или YAML-якорь',
+              'После изменения global_vars YAML стал некорректным: {error}': 'После изменения общих переменных файл YAML стал некорректным: {error}',
+          }
+          for old, new in variable_replacements.items():
+              if old not in variables and new not in variables:
+                  raise SystemExit(f'Variable label not found: {old}')
+              variables = variables.replace(old, new)
+          variables_path.write_text(variables, encoding='utf-8', newline='\n')
+          '@ | python -
+
+      - name: Verify repaired sources
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          wizard = Path('espanso-modulo/src/sys/wizard/wizard.cpp').read_text(encoding='utf-8-sig')
+          app = Path('espanso-editor/src/app.rs').read_text(encoding='utf-8')
+          variables = Path('espanso-editor/src/global_variables.rs').read_text(encoding='utf-8')
+          if 'SetCancelLabel' in wizard:
+              raise SystemExit('Unsupported SetCancelLabel remains')
+          if wizard.count('dialog.SetOKLabel(ui_text("Повторить"))') != 2:
+              raise SystemExit('Russian retry labels are missing')
+          forbidden = [
+              'Имена global_vars',
+              'общих global_vars',
+              'имён global_vars',
+              'Не удалось прочитать global_vars',
+              'Переменные из global_vars',
+              'Сохранить global_vars',
+              'Секция global_vars',
+              'После изменения global_vars',
+              'Локальные vars',
+          ]
+          visible = app + '\n' + variables
+          remaining = [item for item in forbidden if item in visible]
+          if remaining:
+              raise SystemExit(f'Technical user-facing labels remain: {remaining}')
+          '@ | python -
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test runtime binaries
+        run: cargo test --locked -p espanso --bins
+
+      - name: Lint runtime binaries
+        run: cargo clippy --locked -p espanso --bins -- --deny warnings
+
+      - name: Build release binaries
+        run: |
+          cargo build --locked --release -p espanso --bin espanso --bin respanso-portable
+          cargo build --locked --release -p espanso-editor --bin espanso-editor
+
+      - name: Assemble portable archive
+        shell: pwsh
+        run: |
+          $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
+          $env:LAUNCHER_PATH = (Resolve-Path "target/release/respanso-portable.exe").Path
+          $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
+          & "./scripts/build_windows_native_portable_with_studio.ps1"
+          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+          if (-not (Test-Path -Path $archive -PathType Leaf)) {
+            throw "Portable archive was not created"
+          }
+          (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLower() | Set-Content "$archive.sha256"
+
+      - name: Stage verified deliverables
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path verified-source/espanso-modulo/src/sys/wizard | Out-Null
+          New-Item -ItemType Directory -Force -Path verified-source/espanso-editor/src | Out-Null
+          New-Item -ItemType Directory -Force -Path verified-source/.github/workflows | Out-Null
+          Copy-Item espanso-modulo/src/sys/wizard/wizard.cpp verified-source/espanso-modulo/src/sys/wizard/wizard.cpp
+          Copy-Item espanso-modulo/src/sys/wizard/wizard_gui.cpp verified-source/espanso-modulo/src/sys/wizard/wizard_gui.cpp
+          Copy-Item espanso-editor/src/app.rs verified-source/espanso-editor/src/app.rs
+          Copy-Item espanso-editor/src/global_variables.rs verified-source/espanso-editor/src/global_variables.rs
+          Copy-Item .github/workflows/temp-wizard-full-russian.yml verified-source/.github/workflows/temp-wizard-full-russian.yml
+
+      - name: Upload verified build and sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-repaired-Russian-wizard
+          path: |
+            target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+            target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip.sha256
+            verified-source
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
