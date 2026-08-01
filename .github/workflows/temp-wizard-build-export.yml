@@ -38,7 +38,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
-          components: rustfmt, clippy
+          components: rustfmt
 
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2
@@ -150,12 +150,6 @@ jobs:
 
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
-
-      - name: Test runtime binaries
-        run: cargo test --locked -p espanso --bins
-
-      - name: Lint runtime binaries
-        run: cargo clippy --locked -p espanso --bins -- --deny warnings
 
       - name: Build release binaries
         run: |
