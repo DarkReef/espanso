@@ -2,8 +2,7 @@ name: Temporary wizard encoding and layout fix
 
 on:
   pull_request:
-    branches:
-      - rEspanso-feature
+    branches: [rEspanso-feature]
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -18,30 +17,23 @@ jobs:
     if: github.event.pull_request.head.ref == 'feature/manual-build-dynamic-vars'
     runs-on: windows-2022
     timeout-minutes: 120
-    env:
-      CARGO_TERM_COLOR: always
-      RUST_BACKTRACE: 1
 
     steps:
-      - name: Checkout feature branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: feature/manual-build-dynamic-vars
           fetch-depth: 0
 
-      - name: Set up MSVC x64
-        uses: ilammy/msvc-dev-cmd@v1
+      - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
           components: rustfmt, clippy
 
-      - name: Restore Cargo cache
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           shared-key: windows-x64-portable
           cache-on-failure: true
@@ -51,73 +43,78 @@ jobs:
         run: |
           @'
           from pathlib import Path
+          import re
+
+          def replace_once(text, old, new, label):
+              if old in text:
+                  return text.replace(old, new, 1)
+              if new in text:
+                  return text
+              raise SystemExit(f"{label} anchor not found")
 
           gui_path = Path("espanso-modulo/src/sys/wizard/wizard_gui.cpp")
           gui = gui_path.read_text(encoding="utf-8-sig")
 
-          replacements = [
-              (
-                  '''    m_scrolledWindow2 =
-                      new wxScrolledWindow(welcome_panel, wxID_ANY, wxDefaultPosition,
-                                           wxDefaultSize, wxHSCROLL | wxVSCROLL);
-                  m_scrolledWindow2->SetScrollRate(5, 5);
-          ''',
-                  '''    m_scrolledWindow2 =
-                      new wxScrolledWindow(welcome_panel, wxID_ANY, wxDefaultPosition,
-                                           wxDefaultSize, wxTAB_TRAVERSAL);
-                  m_scrolledWindow2->SetScrollRate(0, 0);
-          ''',
-              ),
-              (
-                  '''    welcome_image =
-                      new wxStaticBitmap(m_scrolledWindow2, wxID_ANY, wxNullBitmap,
-                                         wxDefaultPosition, wxSize(256, 256), 0);
-                  welcome_image->SetMinSize(wxSize(256, 256));
-          ''',
-                  '''    welcome_image =
-                      new wxStaticBitmap(m_scrolledWindow2, wxID_ANY, wxNullBitmap,
-                                         wxDefaultPosition, wxSize(160, 160), 0);
-                  welcome_image->SetMinSize(wxSize(160, 160));
-          ''',
-              ),
-              (
-                  '    bSizer2->Add(welcome_title_text, 0, wxALIGN_CENTER_HORIZONTAL | wxTOP, 20);',
-                  '    bSizer2->Add(welcome_title_text, 0, wxALIGN_CENTER_HORIZONTAL | wxTOP, 12);',
-              ),
-              (
-                  '    welcome_description_text->Wrap(-1);',
-                  '    welcome_description_text->Wrap(500);',
-              ),
-              (
-                  '    bSizer2->Fit(m_scrolledWindow2);\n',
-                  '',
-              ),
-          ]
-
-          for old, new in replacements:
-              if old in gui:
-                  gui = gui.replace(old, new, 1)
-              elif new not in gui:
-                  raise SystemExit(f"wizard_gui.cpp anchor not found: {old[:80]!r}")
-
+          gui = replace_once(
+              gui,
+              '''    m_scrolledWindow2 =
+                  new wxScrolledWindow(welcome_panel, wxID_ANY, wxDefaultPosition,
+                                       wxDefaultSize, wxHSCROLL | wxVSCROLL);
+              m_scrolledWindow2->SetScrollRate(5, 5);''',
+              '''    m_scrolledWindow2 =
+                  new wxScrolledWindow(welcome_panel, wxID_ANY, wxDefaultPosition,
+                                       wxDefaultSize, wxTAB_TRAVERSAL);
+              m_scrolledWindow2->SetScrollRate(0, 0);''',
+              "welcome scroll container",
+          )
+          gui = replace_once(
+              gui,
+              '''    welcome_image =
+                  new wxStaticBitmap(m_scrolledWindow2, wxID_ANY, wxNullBitmap,
+                                     wxDefaultPosition, wxSize(256, 256), 0);
+              welcome_image->SetMinSize(wxSize(256, 256));''',
+              '''    welcome_image =
+                  new wxStaticBitmap(m_scrolledWindow2, wxID_ANY, wxNullBitmap,
+                                     wxDefaultPosition, wxSize(160, 160), 0);
+              welcome_image->SetMinSize(wxSize(160, 160));''',
+              "welcome image placeholder",
+          )
+          gui = replace_once(
+              gui,
+              "    bSizer2->Add(welcome_title_text, 0, wxALIGN_CENTER_HORIZONTAL | wxTOP, 20);",
+              "    bSizer2->Add(welcome_title_text, 0, wxALIGN_CENTER_HORIZONTAL | wxTOP, 12);",
+              "welcome title spacing",
+          )
+          gui = replace_once(
+              gui,
+              "    welcome_description_text->Wrap(-1);",
+              "    welcome_description_text->Wrap(500);",
+              "welcome description wrapping",
+          )
+          gui = replace_once(
+              gui,
+              "    bSizer2->Fit(m_scrolledWindow2);\n",
+              "",
+              "welcome forced fit",
+          )
           gui_path.write_text(gui, encoding="utf-8-sig", newline="\n")
 
           wizard_path = Path("espanso-modulo/src/sys/wizard/wizard.cpp")
           wizard = wizard_path.read_text(encoding="utf-8-sig")
-
-          if '#include <algorithm>\n' not in wizard:
-              include_anchor = '#include <memory>\n'
-              if include_anchor not in wizard:
-                  raise SystemExit("wizard.cpp include anchor not found")
-              wizard = wizard.replace(include_anchor, '#include <algorithm>\n' + include_anchor, 1)
+          if "#include <algorithm>\n" not in wizard:
+              wizard = replace_once(
+                  wizard,
+                  "#include <memory>\n",
+                  "#include <algorithm>\n#include <memory>\n",
+                  "algorithm include",
+              )
 
           old_image = '''    if (wizard_metadata->welcome_image_path) {
                   wxBitmap welcomeBitmap =
                       wxBitmap(wxString::FromUTF8(wizard_metadata->welcome_image_path),
                                wxBITMAP_TYPE_PNG);
                   this->welcome_image->SetBitmap(welcomeBitmap);
-              }
-          '''
+              }'''
           new_image = '''    if (wizard_metadata->welcome_image_path) {
                   wxImage welcomeImage(
                       wxString::FromUTF8(wizard_metadata->welcome_image_path),
@@ -147,45 +144,31 @@ jobs:
                   }
               } else {
                   this->welcome_image->Hide();
-              }
-          '''
-          if old_image in wizard:
-              wizard = wizard.replace(old_image, new_image, 1)
-          elif new_image not in wizard:
-              raise SystemExit("wizard.cpp welcome image anchor not found")
-
-          old_version = '''    this->welcome_version_text->SetLabel(
-                  wxString::Format("Версия %s", wizard_metadata->version));
-          '''
-          new_version = '''    this->welcome_version_text->SetLabel(
-                  wxString::FromUTF8(u8"Версия ") +
+              }'''
+          wizard = replace_once(wizard, old_image, new_image, "welcome image loader")
+          wizard = replace_once(
+              wizard,
+              '''    this->welcome_version_text->SetLabel(
+                  wxString::Format("Версия %s", wizard_metadata->version));''',
+              '''    this->welcome_version_text->SetLabel(
+                  wxString::FromUTF8("Версия ") +
                   wxString::FromUTF8(wizard_metadata->version));
-              this->welcome_panel->Layout();
-          '''
-          if old_version in wizard:
-              wizard = wizard.replace(old_version, new_version, 1)
-          elif new_version not in wizard:
-              raise SystemExit("wizard.cpp version label anchor not found")
-
+              this->welcome_panel->Layout();''',
+              "welcome version label",
+          )
           wizard_path.write_text(wizard, encoding="utf-8-sig", newline="\n")
           '@ | python -
 
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
+      - name: Validate and build
+        shell: pwsh
+        run: |
+          cargo fmt --all -- --check
+          cargo test --locked -p espanso --bins
+          cargo clippy --locked -p espanso --bins -- --deny warnings
+          cargo build --locked --release -p espanso --bin espanso --bin respanso-portable
+          cargo build --locked --release -p espanso-editor --bin espanso-editor
 
-      - name: Test runtime binaries
-        run: cargo test --locked -p espanso --bins
-
-      - name: Lint runtime binaries
-        run: cargo clippy --locked -p espanso --bins -- --deny warnings
-
-      - name: Build rEspanso core and launcher
-        run: cargo build --locked --release -p espanso --bin espanso --bin respanso-portable
-
-      - name: Build Match Studio
-        run: cargo build --locked --release -p espanso-editor --bin espanso-editor
-
-      - name: Assemble and verify portable archive
+      - name: Assemble portable archive
         shell: pwsh
         run: |
           $env:EXEC_PATH = (Resolve-Path "target/release/espanso.exe").Path
@@ -193,34 +176,24 @@ jobs:
           $env:EDITOR_PATH = (Resolve-Path "target/release/espanso-editor.exe").Path
           & "./scripts/build_windows_native_portable_with_studio.ps1"
           $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
-          if (-not (Test-Path -Path $archive -PathType Leaf)) {
-            throw "Portable archive was not created"
-          }
+          if (-not (Test-Path $archive)) { throw "Portable archive was not created" }
           $entries = tar -tf $archive
-          if ($LASTEXITCODE -ne 0) {
-            throw "Portable archive could not be listed"
-          }
-          if ($entries -match '\.(bat|cmd)$') {
-            throw "Portable archive contains BAT/CMD launchers"
-          }
+          if ($entries -match '\.(bat|cmd)$') { throw "Archive contains BAT/CMD launchers" }
           foreach ($file in @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")) {
-            if (-not ($entries -match [regex]::Escape($file))) {
-              throw "Portable archive is missing $file"
-            }
+            if (-not ($entries -match [regex]::Escape($file))) { throw "Archive is missing $file" }
           }
 
-      - name: Remove temporary workflow and commit verified fix
+      - name: Commit verified fix and remove temporary workflow
         shell: pwsh
         run: |
           Remove-Item ".github/workflows/temp-wizard-layout-fix.yml" -Force
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add espanso-modulo/src/sys/wizard/wizard_gui.cpp espanso-modulo/src/sys/wizard/wizard.cpp .github/workflows/temp-wizard-layout-fix.yml
+          git add -A
           git commit -m "fix(wizard): preserve Cyrillic and constrain welcome artwork"
           git push origin HEAD:feature/manual-build-dynamic-vars
 
-      - name: Upload portable archive
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: rEspanso-Windows-x64-wizard-layout-fix
           path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
