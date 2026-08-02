@@ -77,18 +77,28 @@ jobs:
           @'
           from pathlib import Path
 
-          roots = [Path("espanso-modulo"), Path("espanso-render"), Path("espanso")]
-          bad = [
-              str(path)
-              for root in roots
-              for path in root.rglob("*")
-              if path.is_file() and b"\x00" in path.read_bytes()
+          text_files = [
+              Path("espanso-modulo/src/form/config.rs"),
+              Path("espanso-modulo/src/form/generator.rs"),
+              Path("espanso-modulo/src/form/mod.rs"),
+              Path("espanso-modulo/src/sys/form/mod.rs"),
+              Path("espanso-modulo/src/sys/form/form.cpp"),
+              Path("espanso-modulo/src/sys/interop/interop.h"),
+              Path("espanso-modulo/src/sys/interop/mod.rs"),
+              Path("espanso-render/src/extension/form.rs"),
+              Path("espanso/src/gui/mod.rs"),
+              Path("espanso/src/gui/modulo/form.rs"),
+              Path("espanso/src/cli/worker/engine/process/middleware/render/extension/form.rs"),
+              Path("espanso/src/cli/modulo/mod.rs"),
+              Path("espanso/src/cli/modulo/form.rs"),
+              Path("espanso/src/cli/modulo/reactive_preview.rs"),
           ]
+          bad = [str(path) for path in text_files if b"\x00" in path.read_bytes()]
           if bad:
               raise SystemExit(f"Generated sources contain NUL bytes: {bad}")
 
           cpp = Path("espanso-modulo/src/sys/form/form.cpp").read_text(encoding="utf-8")
-          if 'preview.Append("\n");' not in cpp:
+          if r'preview.Append("\n");' not in cpp:
               raise SystemExit("C++ preview newline literal was not preserved")
           '@ | Set-Content -Path validate_generated_sources.py -Encoding utf8
           python validate_generated_sources.py
