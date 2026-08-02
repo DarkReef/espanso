@@ -65,19 +65,26 @@ jobs:
           python extract_reactive_patch.py
           python reactive_patch.py
 
-      - name: Repair evaluator test borrow
+      - name: Repair legacy evaluator test borrow when present
         shell: pwsh
         run: |
           @'
           from pathlib import Path
+          import re
 
           path = Path("espanso/src/cli/modulo/reactive_preview.rs")
-          old = "let incoming = evaluator.provider();"
-          new = "let incoming = evaluator.provider().clone();"
           text = path.read_text(encoding="utf-8-sig")
-          if text.count(old) != 1:
-              raise SystemExit("expected exactly one evaluator borrow anchor")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
+          updated, count = re.subn(
+              r"let\s+incoming\s*=\s*evaluator\.provider\(\)\s*;",
+              "let incoming = evaluator.provider().clone();",
+              text,
+              count=1,
+          )
+          if count:
+              path.write_text(updated, encoding="utf-8", newline="\n")
+              print("repaired legacy evaluator test borrow")
+          else:
+              print("legacy evaluator test borrow is absent; no repair required")
           '@ | Set-Content -Path repair_reactive_borrow.py -Encoding utf8
           python repair_reactive_borrow.py
 
