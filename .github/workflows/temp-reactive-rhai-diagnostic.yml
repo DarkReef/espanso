@@ -82,7 +82,12 @@ jobs:
         run: cargo test --locked -p espanso-render --lib
 
       - name: Test reactive preview module
-        run: cargo test --locked -p espanso reactive_preview -- --nocapture
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force 'target/diagnostics' | Out-Null
+          & cargo test --locked -p espanso reactive_preview -- --nocapture *>&1 | Tee-Object -FilePath 'target/diagnostics/reactive-test.log'
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "Reactive preview tests failed with exit code $exitCode" }
 
       - name: Check espanso integration
         run: cargo check --locked -p espanso --all-targets
@@ -99,6 +104,7 @@ jobs:
         with:
           name: reactive-rhai-diagnostic-sources
           path: |
+            target/diagnostics/reactive-test.log
             espanso-modulo/src/form/
             espanso-modulo/src/sys/form/
             espanso-modulo/src/sys/interop/
