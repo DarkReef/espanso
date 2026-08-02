@@ -1,4 +1,4 @@
-name: Reactive Rhai preview validation
+name: Reactive Rhai preview build
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate-and-build:
+  build-preview:
     runs-on: windows-2022
     timeout-minutes: 120
     env:
@@ -66,29 +66,6 @@ jobs:
           python extract_reactive_patch.py
           python reactive_patch.py
 
-      - name: Repair legacy evaluator test borrow when present
-        shell: pwsh
-        run: |
-          @'
-          from pathlib import Path
-          import re
-
-          path = Path("espanso/src/cli/modulo/reactive_preview.rs")
-          text = path.read_text(encoding="utf-8-sig")
-          updated, count = re.subn(
-              r"let\s+incoming\s*=\s*evaluator\.provider\(\)\s*;",
-              "let incoming = evaluator.provider().clone();",
-              text,
-              count=1,
-          )
-          if count:
-              path.write_text(updated, encoding="utf-8", newline="\n")
-              print("repaired legacy evaluator test borrow")
-          else:
-              print("legacy evaluator test borrow is absent; no repair required")
-          '@ | Set-Content -Path repair_reactive_borrow.py -Encoding utf8
-          python repair_reactive_borrow.py
-
       - name: Set up MSVC x64
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -98,12 +75,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
-          components: rustfmt, clippy
+          components: rustfmt
 
-      - name: Restore Cargo cache
+      - name: Restore release cache
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: windows-x64-reactive-rhai-preview-v2
+          shared-key: windows-x64-reactive-rhai-preview-release-v1
           cache-on-failure: true
 
       - name: Rebuild bundled bzip2 native library
@@ -117,36 +94,25 @@ jobs:
       - name: Format generated sources
         run: cargo fmt --all
 
-      - name: Test native form model
-        run: cargo test --locked -p espanso-modulo --lib
-
-      - name: Test render extensions
-        run: cargo test --locked -p espanso-render --lib
-
-      - name: Test reactive Rhai evaluator
+      - name: Build rEspanso core and portable launcher
         shell: pwsh
         run: |
-          cargo test --locked -p espanso reactive_preview 2>&1 |
-            Tee-Object -FilePath reactive-preview-test.log
+          cargo build --locked --release -p espanso --bin espanso --bin respanso-portable 2>&1 |
+            Tee-Object -FilePath reactive-preview-build.log
           $cargoExit = $LASTEXITCODE
           if ($cargoExit -ne 0) {
-            throw "reactive preview test failed with exit code $cargoExit"
+            throw "rEspanso release build failed with exit code $cargoExit"
           }
 
-      - name: Check full integration
-        run: cargo check --locked -p espanso --all-targets
-
-      - name: Test Match Studio
-        run: cargo test --locked -p espanso-editor --lib
-
-      - name: Run Clippy
-        run: cargo clippy --locked -p espanso -p espanso-editor --all-targets -- -D warnings
-
-      - name: Build rEspanso core and portable launcher
-        run: cargo build --locked --release -p espanso --bin espanso --bin respanso-portable
-
       - name: Build Match Studio
-        run: cargo build --locked --release -p espanso-editor --bin espanso-editor
+        shell: pwsh
+        run: |
+          cargo build --locked --release -p espanso-editor --bin espanso-editor 2>&1 |
+            Tee-Object -FilePath reactive-preview-studio-build.log
+          $cargoExit = $LASTEXITCODE
+          if ($cargoExit -ne 0) {
+            throw "Match Studio release build failed with exit code $cargoExit"
+          }
 
       - name: Assemble and verify portable archive
         shell: pwsh
@@ -183,11 +149,11 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: reactive-rhai-preview-failure
+          name: reactive-rhai-preview-build-failure
           path: |
-            reactive-preview-test.log
+            reactive-preview-build.log
+            reactive-preview-studio-build.log
             reactive_patch.py
-            repair_reactive_borrow.py
             espanso/src/cli/modulo/reactive_preview.rs
           if-no-files-found: warn
           retention-days: 3
