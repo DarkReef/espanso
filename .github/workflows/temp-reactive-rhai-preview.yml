@@ -1,0 +1,175 @@
+name: Temporary reactive Rhai preview build
+
+on:
+  push:
+    branches:
+      - feature/reactive-rhai-preview
+    paths:
+      - .github/workflows/temp-reactive-rhai-preview.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reactive-rhai-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  patch-test-build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout reactive preview branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/reactive-rhai-preview
+          fetch-depth: 0
+
+      - name: Decode and apply reactive Rhai patch
+        shell: pwsh
+        run: |
+          @'
+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
+'@ | Set-Content -Path reactive_patch.b64 -NoNewline -Encoding ascii
+          python -c "import base64,gzip,pathlib; pathlib.Path('reactive_patch.py').write_bytes(gzip.decompress(base64.b64decode(pathlib.Path('reactive_patch.b64').read_bytes())))"
+          python reactive_patch.py
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-portable
+          cache-on-failure: true
+
+      - name: Format sources
+        run: cargo fmt --all
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test native form model
+        run: cargo test --locked -p espanso-modulo --lib
+
+      - name: Test render extensions
+        run: cargo test --locked -p espanso-render --lib
+
+      - name: Test reactive Rhai evaluator
+        run: cargo test --locked -p espanso reactive_preview
+
+      - name: Check full worker and CLI integration
+        run: cargo check --locked -p espanso --all-targets
+
+      - name: Test Match Studio
+        run: cargo test --locked -p espanso-editor --lib
+
+      - name: Lint changed Rust crates
+        run: cargo clippy --locked -p espanso-modulo -p espanso-render -p espanso --all-targets -- --deny warnings
+
+      - name: Build rEspanso core and launcher
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/build-logs" | Out-Null
+          $log = "target/build-logs/reactive-rhai-core-build.jsonl"
+          $previousColor = $env:CARGO_TERM_COLOR
+          $env:CARGO_TERM_COLOR = "never"
+          try {
+            & cargo build --locked --release -p espanso --bin espanso --bin respanso-portable --message-format=json-diagnostic-rendered-ansi *>&1 |
+              Tee-Object -FilePath $log
+            $exitCode = $LASTEXITCODE
+            $messages = @(Get-Content -Path $log)
+            if ($exitCode -ne 0) { throw "Core build failed with exit code $exitCode" }
+            function Get-CargoExecutable([string]$binary) {
+              $paths = foreach ($line in $messages) {
+                try { $message = $line | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+                if ($message.reason -eq "compiler-artifact" -and $message.target.name -eq $binary -and -not [string]::IsNullOrWhiteSpace([string]$message.executable)) { [string]$message.executable }
+              }
+              $path = @($paths) | Select-Object -Last 1
+              if ([string]::IsNullOrWhiteSpace([string]$path) -or -not (Test-Path $path -PathType Leaf)) { throw "Missing executable $binary" }
+              return (Resolve-Path $path).Path
+            }
+            "EXEC_PATH=$(Get-CargoExecutable 'espanso')" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+            "LAUNCHER_PATH=$(Get-CargoExecutable 'respanso-portable')" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          } finally { $env:CARGO_TERM_COLOR = $previousColor }
+
+      - name: Build Match Studio
+        shell: pwsh
+        run: |
+          $log = "target/build-logs/reactive-rhai-studio-build.jsonl"
+          $previousColor = $env:CARGO_TERM_COLOR
+          $env:CARGO_TERM_COLOR = "never"
+          try {
+            & cargo build --locked --release -p espanso-editor --bin espanso-editor --message-format=json-diagnostic-rendered-ansi *>&1 | Tee-Object -FilePath $log
+            if ($LASTEXITCODE -ne 0) { throw "Studio build failed" }
+            $messages = @(Get-Content -Path $log)
+            $paths = foreach ($line in $messages) {
+              try { $message = $line | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+              if ($message.reason -eq "compiler-artifact" -and $message.target.name -eq "espanso-editor" -and -not [string]::IsNullOrWhiteSpace([string]$message.executable)) { [string]$message.executable }
+            }
+            $editorPath = @($paths) | Select-Object -Last 1
+            if ([string]::IsNullOrWhiteSpace([string]$editorPath) -or -not (Test-Path $editorPath -PathType Leaf)) { throw "Missing Match Studio executable" }
+            "EDITOR_PATH=$((Resolve-Path $editorPath).Path)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          } finally { $env:CARGO_TERM_COLOR = $previousColor }
+
+      - name: Assemble portable archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/package-logs" | Out-Null
+          & "./scripts/build_windows_native_portable_with_studio.ps1" *>&1 | Tee-Object -FilePath "target/package-logs/reactive-rhai-package.log"
+          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+          if (-not (Test-Path $archive -PathType Leaf)) { throw "Portable archive was not created" }
+          $entries = tar -tf $archive
+          if ($LASTEXITCODE -ne 0) { throw "Portable archive could not be listed" }
+          foreach ($file in @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")) {
+            if (-not ($entries -match [regex]::Escape($file))) { throw "Archive is missing $file" }
+          }
+          if ($entries -match '\.(bat|cmd)$') { throw "Archive contains BAT/CMD launchers" }
+          Get-FileHash $archive -Algorithm SHA256 | Format-List | Out-File "target/windows/reactive-rhai-preview.sha256.txt"
+
+      - name: Commit verified implementation
+        shell: pwsh
+        run: |
+          Remove-Item reactive_patch.py, reactive_patch.b64 -ErrorAction SilentlyContinue
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add espanso-modulo/src/form/config.rs espanso-modulo/src/form/generator.rs espanso-modulo/src/form/mod.rs espanso-modulo/src/sys/form/mod.rs espanso-modulo/src/sys/form/form.cpp espanso-modulo/src/sys/interop/interop.h espanso-modulo/src/sys/interop/mod.rs espanso-render/src/extension/form.rs espanso/src/gui/mod.rs espanso/src/gui/modulo/form.rs espanso/src/cli/worker/engine/process/middleware/render/extension/form.rs espanso/src/cli/modulo/mod.rs espanso/src/cli/modulo/form.rs espanso/src/cli/modulo/reactive_preview.rs docs/respanso/REACTIVE_RHAI_PREVIEW.ru.md docs/respanso/FORM_PREVIEW.ru.md examples/medical-calculators/medical-calculators.yml
+          git diff --cached --check
+          git commit -m "feat(forms): add reactive Rhai computed previews"
+          git push origin HEAD:feature/reactive-rhai-preview
+
+      - name: Upload portable archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-reactive-rhai-preview
+          path: |
+            target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+            target/windows/reactive-rhai-preview.sha256.txt
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reactive-rhai-preview-failure
+          path: |
+            target/build-logs/
+            target/package-logs/
+            reactive_patch.py
+          if-no-files-found: warn
+          retention-days: 3
