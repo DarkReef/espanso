@@ -34,21 +34,24 @@ jobs:
         run: |
           @'
           from pathlib import Path
+          import re
 
           path = Path("espanso-config/src/matches/group/loader/yaml/mod.rs")
           text = path.read_text(encoding="utf-8")
-          block = '''        if let Some(preview) = yaml_match.preview {
-              params.insert("preview".to_string(), Value::Bool(preview));
-          }
-
-          '''
-          count = text.count(block)
-          if count == 0:
+          start = text.index('        params.insert("layout".to_string(), Value::String(resolved_layout));')
+          end = text.index('        if let Some(fields) = yaml_match.form_fields {', start)
+          segment = text[start:end]
+          pattern = re.compile(
+              r'(?ms)^\s*if let Some\(preview\) = yaml_match\.preview \{\r?\n'
+              r'^\s*params\.insert\("preview"\.to_string\(\), Value::Bool\(preview\)\);\r?\n'
+              r'^\s*\}\r?\n'
+          )
+          matches = list(pattern.finditer(segment))
+          if not matches:
               raise SystemExit("preview mapping block is missing")
-          while text.count(block) > 1:
-              first = text.find(block)
-              second = text.find(block, first + len(block))
-              text = text[:second] + text[second + len(block):]
+          for match in reversed(matches[1:]):
+              segment = segment[:match.start()] + segment[match.end():]
+          text = text[:start] + segment + text[end:]
           path.write_text(text, encoding="utf-8", newline="\n")
           '@ | python -
 
