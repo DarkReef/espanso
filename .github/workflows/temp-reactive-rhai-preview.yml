@@ -1,9 +1,9 @@
-name: Temporary reactive Rhai preview build
+name: Reactive Rhai preview fixed build
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/reactive-rhai-preview
+      - rEspanso-feature
     paths:
       - .github/workflows/temp-reactive-rhai-preview.yml
 
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: reactive-rhai-preview-${{ github.ref }}
+  group: reactive-rhai-preview-feature
   cancel-in-progress: true
 
 jobs:
