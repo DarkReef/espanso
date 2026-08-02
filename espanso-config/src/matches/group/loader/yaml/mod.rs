@@ -284,10 +284,6 @@ pub fn try_convert_into_match(
             params.insert("preview".to_string(), Value::Bool(preview));
         }
 
-        if let Some(preview) = yaml_match.preview {
-            params.insert("preview".to_string(), Value::Bool(preview));
-        }
-
         if let Some(fields) = yaml_match.form_fields {
             params.insert("fields".to_string(), Value::Object(convert_params(fields)?));
         }
