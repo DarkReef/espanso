@@ -124,7 +124,14 @@ jobs:
         run: cargo test --locked -p espanso-render --lib
 
       - name: Test reactive Rhai evaluator
-        run: cargo test --locked -p espanso reactive_preview
+        shell: pwsh
+        run: |
+          cargo test --locked -p espanso reactive_preview 2>&1 |
+            Tee-Object -FilePath reactive-preview-test.log
+          $cargoExit = $LASTEXITCODE
+          if ($cargoExit -ne 0) {
+            throw "reactive preview test failed with exit code $cargoExit"
+          }
 
       - name: Check full integration
         run: cargo check --locked -p espanso --all-targets
@@ -178,6 +185,7 @@ jobs:
         with:
           name: reactive-rhai-preview-failure
           path: |
+            reactive-preview-test.log
             reactive_patch.py
             repair_reactive_borrow.py
             espanso/src/cli/modulo/reactive_preview.rs
