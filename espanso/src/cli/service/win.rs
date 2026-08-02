@@ -122,7 +122,7 @@ fn get_startup_dir() -> Result<PathBuf> {
 
 fn get_startup_shortcut_file() -> Result<PathBuf> {
     let parent = get_startup_dir()?;
-    Ok(parent.join("espanso.lnk"))
+    Ok(parent.join("rEspanso.lnk"))
 }
 
 fn get_shortcut_target_file(shortcut_path: &Path) -> Result<PathBuf> {
@@ -148,7 +148,7 @@ fn create_shortcut_target_file(
 ) -> Result<()> {
     let mut command = Command::new("powershell");
     command.arg("-c");
-    command.arg("$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut($env:SHORTCUT_PATH); $Shortcut.TargetPath = $env:TARGET_PATH; $Shortcut.Arguments = $env:TARGET_ARGS; $Shortcut.Save()");
+    command.arg("$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut($env:SHORTCUT_PATH); $Shortcut.TargetPath = $env:TARGET_PATH; $Shortcut.Arguments = $env:TARGET_ARGS; $Shortcut.WorkingDirectory = Split-Path $env:TARGET_PATH; $Shortcut.IconLocation = $env:TARGET_PATH; $Shortcut.Save()");
     command.env("SHORTCUT_PATH", shortcut_path.to_string_lossy().to_string());
     command.env("TARGET_PATH", target_path.to_string_lossy().to_string());
     command.env("TARGET_ARGS", arguments);

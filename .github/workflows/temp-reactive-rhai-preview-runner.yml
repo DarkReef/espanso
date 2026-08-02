@@ -1,0 +1,182 @@
+name: Reactive Rhai preview build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/reactive-rhai-preview
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reactive-rhai-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-preview:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout reactive preview branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/reactive-rhai-preview
+          fetch-depth: 0
+
+      - name: Extract and apply reactive preview implementation
+        shell: pwsh
+        run: |
+          @'
+          import base64
+          import gzip
+          from pathlib import Path
+          import re
+          import subprocess
+
+          source_commit = "1eca9078c69c3254d8488a16d5737b175ea56b8e"
+          source = subprocess.check_output(
+              ["git", "show", f"{source_commit}:.github/workflows/temp-reactive-rhai-preview.yml"],
+              text=True,
+              encoding="utf-8",
+          )
+          match = re.search(
+              r"@'\n(?P<data>[A-Za-z0-9+/=]+)\n'@ \| Set-Content -Path reactive_patch\.b64",
+              source,
+          )
+          if not match:
+              raise SystemExit("encoded reactive preview patch was not found")
+
+          patch = gzip.decompress(base64.b64decode(match.group("data"))).decode("utf-8")
+          old = "updated, count = re.subn(pattern, replacement, text, count=1, flags=flags)"
+          new = "updated, count = re.subn(pattern, lambda _match: replacement, text, count=1, flags=flags)"
+          if patch.count(old) != 1:
+              raise SystemExit("regex helper repair anchor was not found exactly once")
+          Path("reactive_patch.py").write_text(
+              patch.replace(old, new, 1), encoding="utf-8", newline="\n"
+          )
+          '@ | Set-Content -Path extract_reactive_patch.py -Encoding utf8
+          python extract_reactive_patch.py
+          python reactive_patch.py
+
+      - name: Repair generated reactive dependency ordering
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          path = Path("espanso/src/cli/modulo/reactive_preview.rs")
+          text = path.read_text(encoding="utf-8-sig")
+          replacements = {
+              "let mut resolved = Vec::new();":
+                  "let mut resolved: Vec<(String, ComputedConfig)> = Vec::new();",
+              "computed[*name].depends_on.iter().all(|dependency| {":
+                  "computed[name].depends_on.iter().all(|dependency| {",
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one generated source anchor: {old}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8", newline="\n")
+          '@ | Set-Content -Path repair_reactive_source.py -Encoding utf8
+          python repair_reactive_source.py
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt
+
+      - name: Restore release cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-reactive-rhai-preview-release-v1
+          cache-on-failure: true
+
+      - name: Rebuild bundled bzip2 native library
+        shell: pwsh
+        run: |
+          cargo clean -p bzip2-sys
+          if ($LASTEXITCODE -ne 0) {
+            throw "failed to clean stale bzip2-sys artifacts"
+          }
+
+      - name: Format generated sources
+        run: cargo fmt --all
+
+      - name: Build rEspanso core and portable launcher
+        shell: pwsh
+        run: |
+          cargo build --locked --release -p espanso --bin espanso --bin respanso-portable 2>&1 |
+            Tee-Object -FilePath reactive-preview-build.log
+          $cargoExit = $LASTEXITCODE
+          if ($cargoExit -ne 0) {
+            throw "rEspanso release build failed with exit code $cargoExit"
+          }
+
+      - name: Build Match Studio
+        shell: pwsh
+        run: |
+          cargo build --locked --release -p espanso-editor --bin espanso-editor 2>&1 |
+            Tee-Object -FilePath reactive-preview-studio-build.log
+          $cargoExit = $LASTEXITCODE
+          if ($cargoExit -ne 0) {
+            throw "Match Studio release build failed with exit code $cargoExit"
+          }
+
+      - name: Assemble and verify portable archive
+        shell: pwsh
+        run: |
+          ./scripts/build_windows_native_portable_with_studio.ps1
+          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+          if (-not (Test-Path $archive -PathType Leaf)) {
+            throw "portable archive was not created"
+          }
+          $entries = tar -tf $archive
+          foreach ($file in @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")) {
+            if (-not ($entries -match [regex]::Escape($file))) {
+              throw "archive is missing $file"
+            }
+          }
+          if ($entries -match '\.(bat|cmd)$') {
+            throw "archive contains BAT/CMD launchers"
+          }
+          (Get-FileHash $archive -Algorithm SHA256).Hash |
+            Set-Content "target/windows/reactive-rhai-preview.sha256.txt"
+
+      - name: Upload reactive preview build
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-reactive-rhai-preview
+          path: |
+            target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+            target/windows/reactive-rhai-preview.sha256.txt
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reactive-rhai-preview-build-failure
+          path: |
+            reactive-preview-build.log
+            reactive-preview-studio-build.log
+            reactive_patch.py
+            repair_reactive_source.py
+            espanso/src/cli/modulo/reactive_preview.rs
+          if-no-files-found: warn
+          retention-days: 3

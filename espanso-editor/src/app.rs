@@ -1,19 +1,26 @@
 use crate::{
     config_transfer::{self, PackageSummary},
     diagnostics::{collect_project_diagnostics, DiagnosticManager, DiagnosticState},
+    dynamic_variables,
     file_monitor::{FileMonitor, PollResult},
+    global_variables::{
+        self, GlobalVariableEditor, GlobalVariableEditorAction, GlobalVariableRecord,
+    },
     rhai_lab::RhaiLab,
     runtime::RuntimeMonitor,
     settings::SettingsEditor,
-    storm_logo,
+    storm_logo, trigger_conversion,
     workspace::{
         DiagnosticLevel, MatchKind, MatchWorkspace, PlaygroundResult, RegexBuilderSpec,
         RegexExampleResult, RuleDraft, RuleId,
     },
-    yaml_imports,
+    yaml_files, yaml_imports,
 };
 use eframe::egui;
 use std::{
+    collections::HashSet,
+    fs,
+    io::Write as _,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -21,6 +28,7 @@ use std::{
 const APP_TITLE: &str = "rEspanso Match Studio";
 const FILE_CHECK_INTERVAL: Duration = Duration::from_secs(3);
 const FILE_STABILITY_RECHECK: Duration = Duration::from_millis(850);
+const ESPANSO_REGEXP_DOCS_URL: &str = "https://espanso.org/docs/matches/regex-triggers/";
 
 pub fn run(config_root: PathBuf) -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -76,6 +84,12 @@ pub struct MatchStudioApp {
     builder_error: Option<String>,
     show_diagnostics: bool,
     show_shortcuts: bool,
+    show_global_variables: bool,
+    global_variables: GlobalVariableEditor,
+    show_create_yaml_file: bool,
+    new_yaml_file_name: String,
+    confirm_delete_yaml_file: bool,
+    pending_delete_yaml_file: Option<PathBuf>,
     confirm_delete: bool,
     confirm_reload: bool,
     reload_all_after_confirm: bool,
@@ -135,6 +149,12 @@ impl MatchStudioApp {
             builder_error: None,
             show_diagnostics: true,
             show_shortcuts: false,
+            show_global_variables: false,
+            global_variables: GlobalVariableEditor::default(),
+            show_create_yaml_file: false,
+            new_yaml_file_name: "rules.yml".to_owned(),
+            confirm_delete_yaml_file: false,
+            pending_delete_yaml_file: None,
             confirm_delete: false,
             confirm_reload: false,
             reload_all_after_confirm: false,
@@ -564,7 +584,7 @@ impl MatchStudioApp {
                 } else {
                     self.reload_all_from_disk();
                     self.status = format!(
-                        "Проверен устойчивый снимок проекта: изменено файлов {changed_files}"
+                        "Проект проверен после устойчивого изменения файлов: изменено {changed_files}"
                     );
                 }
             }
@@ -659,43 +679,549 @@ impl MatchStudioApp {
         }
     }
 
-    fn set_file_import_enabled(&mut self, file: PathBuf, enabled: bool) {
-        let display_name = relative_display(&self.config_root, &file);
-        let result = (|| -> Result<String, String> {
+    fn set_yaml_file_enabled(&mut self, file: PathBuf, enabled: bool) {
+        if self.has_transfer_unsaved_changes() || self.settings.dirty() {
+            "Сначала сохраните изменения, затем включайте или выключайте YAML-файл"
+                .clone_into(&mut self.status);
+            return;
+        }
+
+        let display_name =
+            yaml_files::display_name(&self.config_root, &file, !yaml_files::is_disabled(&file));
+        let workspace_snapshot = self
+            .workspace
+            .as_ref()
+            .map(MatchWorkspace::working_snapshot)
+            .unwrap_or_default();
+        let result = (|| -> Result<PathBuf, String> {
+            if !file.is_file() {
+                return Err(format!("Файл не найден: {}", file.display()));
+            }
+
             let workspace = self
                 .workspace
                 .as_mut()
                 .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
             let files = workspace.files();
-            let base_file = yaml_imports::find_base_file(&files, workspace.match_root())
-                .ok_or_else(|| "Не найден match/base.yml или match/base.yaml".to_owned())?;
-            let base_content = workspace
-                .raw_file(&base_file)
-                .map_err(|error| ru_message(&error.to_string()))?
-                .to_owned();
-            let updated = yaml_imports::update_import(&base_content, &base_file, &file, enabled)?;
-
-            if updated != base_content {
-                workspace
-                    .set_raw_file(&base_file, updated)
-                    .map_err(|error| ru_message(&error.to_string()))?;
+            let base_file = yaml_imports::find_base_file(&files, workspace.match_root());
+            let logical_enabled_path = if enabled {
+                yaml_files::enabled_path(&file)
+                    .ok_or_else(|| format!("Файл {display_name} уже включён"))?
+            } else {
+                file.clone()
+            };
+            if base_file.as_ref() == Some(&logical_enabled_path) {
+                return Err("Нельзя выключить основной base.yml/base.yaml".to_owned());
             }
 
-            Ok(if enabled {
-                format!(
-                    "Файл {display_name} подключён через base.yml. Сохраните изменения (Ctrl+S)"
-                )
+            let mut base_update = None;
+            let target = if enabled {
+                let target = logical_enabled_path;
+                if yaml_files::is_imported_disabled(&file) {
+                    if let Some(base_file) = &base_file {
+                        let base_content = workspace
+                            .raw_file(base_file)
+                            .map_err(|error| ru_message(&error.to_string()))?
+                            .to_owned();
+                        let updated =
+                            yaml_imports::update_import(&base_content, base_file, &target, true)?;
+                        base_update = Some((base_file.clone(), updated));
+                    }
+                }
+                target
             } else {
+                let mut was_imported = false;
+                if let Some(base_file) = &base_file {
+                    let base_content = workspace
+                        .raw_file(base_file)
+                        .map_err(|error| ru_message(&error.to_string()))?
+                        .to_owned();
+                    was_imported = yaml_imports::import_entries(&files, base_file, &base_content)?
+                        .into_iter()
+                        .any(|entry| entry.path == file && entry.enabled);
+                    if was_imported {
+                        let updated =
+                            yaml_imports::update_import(&base_content, base_file, &file, false)?;
+                        base_update = Some((base_file.clone(), updated));
+                    }
+                }
+                yaml_files::disabled_path(&file, was_imported)
+            };
+
+            if target.exists() {
+                return Err(format!("Целевой файл уже существует: {}", target.display()));
+            }
+
+            fs::rename(&file, &target).map_err(|error| {
                 format!(
-                    "Файл {display_name} исключён из imports base.yml. Сохраните изменения (Ctrl+S)"
+                    "Не удалось переименовать {} в {}: {error}",
+                    file.display(),
+                    target.display()
                 )
-            })
+            })?;
+
+            if let Some((base_file, updated)) = base_update {
+                let update_result = workspace
+                    .set_raw_file(&base_file, updated)
+                    .map_err(|error| ru_message(&error.to_string()))
+                    .and_then(|()| {
+                        workspace
+                            .save_all()
+                            .map(|_| ())
+                            .map_err(|error| ru_message(&error.to_string()))
+                    });
+                if let Err(error) = update_result {
+                    workspace.restore_working_snapshot(&workspace_snapshot);
+                    let rollback = fs::rename(&target, &file);
+                    return Err(match rollback {
+                        Ok(()) => format!(
+                            "Не удалось обновить imports; переименование и рабочая копия восстановлены: {error}"
+                        ),
+                        Err(rollback_error) => format!(
+                            "Не удалось обновить imports ({error}); файл сохранён по адресу {} и не удалось вернуть исходное имя ({rollback_error})",
+                            target.display()
+                        ),
+                    });
+                }
+            }
+            Ok(target)
         })();
 
-        self.status = match result {
-            Ok(message) => message,
-            Err(error) => format!("Не удалось изменить imports base.yml: {error}"),
+        match result {
+            Ok(target) => {
+                self.selected = None;
+                self.raw_rule.clear();
+                self.reload();
+                self.file_filter = Some(target);
+                self.status = if enabled {
+                    format!(
+                        "Файл {display_name} включён; прежняя запись imports восстановлена. Перезагрузите конфигурацию или перезапустите rEspanso"
+                    )
+                } else {
+                    format!(
+                        "Файл {display_name} выключен расширением .disabled и больше не загружается. Состояние imports сохранено для обратного включения"
+                    )
+                };
+            }
+            Err(error) => {
+                self.status = format!("Не удалось изменить состояние {display_name}: {error}");
+            }
+        }
+    }
+
+    fn create_yaml_file(&mut self) -> bool {
+        if self.has_transfer_unsaved_changes() || self.settings.dirty() {
+            "Сначала сохраните текущие изменения, затем создайте YAML-файл"
+                .clone_into(&mut self.status);
+            return false;
+        }
+
+        let name = match yaml_files::normalize_file_name(&self.new_yaml_file_name) {
+            Ok(name) => name,
+            Err(error) => {
+                self.status = error;
+                return false;
+            }
         };
+        let path = self.config_root.join("match").join(&name);
+        let result = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .and_then(|mut file| {
+                file.write_all(b"matches:\n  - trigger: \":new\"\n    replace: \"\"\n")
+            });
+        if let Err(error) = result {
+            self.status = if path.exists() {
+                format!("YAML-файл {name} уже существует")
+            } else {
+                format!("Не удалось создать YAML-файл {name}: {error}")
+            };
+            return false;
+        }
+
+        self.reload();
+        if self.load_error.is_some() {
+            return false;
+        }
+        self.file_filter = Some(path.clone());
+        self.select_rule(RuleId {
+            file: path,
+            ordinal: 0,
+        });
+        "rules.yml".clone_into(&mut self.new_yaml_file_name);
+        self.status = format!("Создан match\\{name}. Добавьте правила и сохраните их Ctrl+S");
+        true
+    }
+
+    fn delete_yaml_file(&mut self, path: PathBuf) -> bool {
+        if self.has_transfer_unsaved_changes() || self.settings.dirty() {
+            "Сначала сохраните текущие изменения, затем удалите YAML-файл"
+                .clone_into(&mut self.status);
+            return false;
+        }
+
+        let disabled = yaml_files::is_disabled(&path);
+        let logical_path = if disabled {
+            let Some(path) = yaml_files::enabled_path(&path) else {
+                "Не удалось определить исходное имя выключенного YAML-файла"
+                    .clone_into(&mut self.status);
+                return false;
+            };
+            path
+        } else {
+            path.clone()
+        };
+        let display_name = yaml_files::display_name(&self.config_root, &path, !disabled);
+        let workspace_snapshot = self
+            .workspace
+            .as_ref()
+            .map(MatchWorkspace::working_snapshot)
+            .unwrap_or_default();
+
+        let result = (|| -> Result<PathBuf, String> {
+            let workspace = self
+                .workspace
+                .as_mut()
+                .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+            let files = workspace.files();
+            if disabled {
+                if !path.is_file() {
+                    return Err("Выбранный выключенный YAML-файл больше не существует".to_owned());
+                }
+            } else if !files.iter().any(|file| file == &path) {
+                return Err("Выбранный YAML-файл больше не входит в рабочую область".to_owned());
+            }
+
+            let base_file = yaml_imports::find_base_file(&files, workspace.match_root());
+            if base_file.as_ref() == Some(&logical_path) {
+                return Err("Нельзя удалить основной base.yml/base.yaml".to_owned());
+            }
+
+            let mut base_update = None;
+            if let Some(base_file) = base_file {
+                let base_content = workspace
+                    .raw_file(&base_file)
+                    .map_err(|error| {
+                        format!(
+                            "Не удалось прочитать imports перед удалением {display_name}: {}",
+                            ru_message(&error.to_string())
+                        )
+                    })?
+                    .to_owned();
+                let updated =
+                    yaml_imports::update_import(&base_content, &base_file, &logical_path, false)?;
+                if updated != base_content {
+                    base_update = Some((base_file, updated));
+                }
+            }
+
+            let quarantine = yaml_files::deletion_quarantine_path(&path)?;
+            if quarantine.exists() {
+                return Err(format!(
+                    "Удаление остановлено: уже существует файл безопасного карантина {}",
+                    quarantine.display()
+                ));
+            }
+            fs::rename(&path, &quarantine).map_err(|error| {
+                format!(
+                    "Не удалось переместить {display_name} в безопасный карантин {}: {error}",
+                    quarantine.display()
+                )
+            })?;
+
+            if let Some((base_file, updated)) = base_update {
+                let save_result = workspace
+                    .set_raw_file(&base_file, updated)
+                    .map_err(|error| ru_message(&error.to_string()))
+                    .and_then(|()| {
+                        workspace
+                            .save_all()
+                            .map(|_| ())
+                            .map_err(|error| ru_message(&error.to_string()))
+                    });
+                if let Err(error) = save_result {
+                    workspace.restore_working_snapshot(&workspace_snapshot);
+                    let rollback = fs::rename(&quarantine, &path);
+                    return Err(match rollback {
+                        Ok(()) => format!(
+                            "Удаление отменено: imports не сохранены ({error}); исходный файл и рабочая копия восстановлены"
+                        ),
+                        Err(rollback_error) => format!(
+                            "Удаление imports отменено ({error}), но файл остался в карантине {} и не вернулся на место ({rollback_error})",
+                            quarantine.display()
+                        ),
+                    });
+                }
+            }
+            Ok(quarantine)
+        })();
+
+        match result {
+            Ok(quarantine) => {
+                let cleanup_error = fs::remove_file(&quarantine).err();
+                self.file_filter = None;
+                self.selected = None;
+                self.raw_rule.clear();
+                self.reload();
+                self.status = cleanup_error.map_or_else(
+                    || format!("Удалён {display_name}; связанные imports также очищены"),
+                    |error| {
+                        format!(
+                            "{display_name} отключён и исключён из imports, но карантинный файл {} не удалось окончательно удалить: {error}",
+                            quarantine.display()
+                        )
+                    },
+                );
+                true
+            }
+            Err(error) => {
+                self.status = format!("Удаление {display_name} остановлено: {error}");
+                false
+            }
+        }
+    }
+
+    fn global_variable_records(&self) -> Result<Vec<GlobalVariableRecord>, String> {
+        let workspace = self
+            .workspace
+            .as_ref()
+            .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+        let mut records = Vec::new();
+        for file in workspace.files() {
+            let content = workspace
+                .raw_file(&file)
+                .map_err(|error| ru_message(&error.to_string()))?;
+            records.extend(global_variables::list_global_variables(&file, content)?);
+        }
+        records.sort_by(|left, right| {
+            left.definition
+                .name
+                .cmp(&right.definition.name)
+                .then_with(|| left.file.cmp(&right.file))
+        });
+        Ok(records)
+    }
+
+    fn global_variable_base_file(&self) -> Result<PathBuf, String> {
+        let workspace = self
+            .workspace
+            .as_ref()
+            .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+        let files = workspace.files();
+        yaml_imports::find_base_file(&files, workspace.match_root())
+            .ok_or_else(|| "Не найден основной match/base.yml или match/base.yaml".to_owned())
+    }
+
+    fn sync_builtin_variables(
+        &mut self,
+        definitions: Vec<dynamic_variables::VariableDefinition>,
+    ) -> Result<usize, String> {
+        if definitions.is_empty() {
+            return Ok(0);
+        }
+
+        let mut existing = self
+            .global_variable_records()?
+            .into_iter()
+            .map(|record| record.definition.name)
+            .collect::<HashSet<_>>();
+        let missing = definitions
+            .into_iter()
+            .filter(|definition| existing.insert(definition.name.clone()))
+            .collect::<Vec<_>>();
+        if missing.is_empty() {
+            return Ok(0);
+        }
+
+        let base_file = self.global_variable_base_file()?;
+        let workspace = self
+            .workspace
+            .as_mut()
+            .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+        let mut content = workspace
+            .raw_file(&base_file)
+            .map_err(|error| ru_message(&error.to_string()))?
+            .to_owned();
+        let mut added = 0_usize;
+        for definition in missing {
+            let (updated, was_added) =
+                global_variables::ensure_global_variable(&content, &definition)?;
+            content = updated;
+            added += usize::from(was_added);
+        }
+        workspace
+            .set_raw_file(&base_file, content)
+            .map_err(|error| ru_message(&error.to_string()))?;
+        Ok(added)
+    }
+
+    fn insert_global_placeholder(&mut self, name: &str) -> Result<String, String> {
+        let id = self
+            .selected
+            .clone()
+            .ok_or_else(|| "Сначала выберите правило для вставки переменной".to_owned())?;
+        let placeholder = format!("{{{{{name}}}}}");
+        self.draft.replace.push_str(&placeholder);
+        let workspace = self
+            .workspace
+            .as_mut()
+            .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+        workspace
+            .update_rule(&id, &self.draft)
+            .map_err(|error| ru_message(&error.to_string()))?;
+        self.raw_rule = workspace
+            .rule(&id)
+            .map(|rule| rule.raw)
+            .map_err(|error| ru_message(&error.to_string()))?;
+        Ok(placeholder)
+    }
+
+    fn apply_global_variable_action(&mut self, action: GlobalVariableEditorAction) {
+        match action {
+            GlobalVariableEditorAction::Save {
+                file,
+                original_name,
+                definition,
+                insert,
+            } => {
+                let workspace_snapshot = self
+                    .workspace
+                    .as_ref()
+                    .map(MatchWorkspace::working_snapshot)
+                    .unwrap_or_default();
+                let previous_draft = self.draft.clone();
+                let previous_raw = self.raw_rule.clone();
+                let result = (|| -> Result<(bool, Option<String>, usize), String> {
+                    let records = self.global_variable_records()?;
+                    let conflict = records.into_iter().find(|record| {
+                        let same_record = file.as_ref() == Some(&record.file)
+                            && original_name.as_deref() == Some(record.definition.name.as_str());
+                        !same_record && record.definition.name == definition.name
+                    });
+                    if let Some(existing) = conflict {
+                        return Err(format!(
+                            "Переменная {} уже объявлена в {}. Имена общих переменных должны быть уникальны во всём проекте",
+                            definition.placeholder(),
+                            relative_display(&self.config_root, &existing.file)
+                        ));
+                    }
+
+                    let target = match file.clone() {
+                        Some(file) => file,
+                        None => self.global_variable_base_file()?,
+                    };
+                    let (added, renamed_uses) = {
+                        let workspace = self
+                            .workspace
+                            .as_mut()
+                            .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+                        let content = workspace
+                            .raw_file(&target)
+                            .map_err(|error| ru_message(&error.to_string()))?
+                            .to_owned();
+                        let (updated, added) = global_variables::upsert_global_variable(
+                            &content,
+                            original_name.as_deref(),
+                            &definition,
+                        )?;
+                        workspace
+                            .set_raw_file(&target, updated)
+                            .map_err(|error| ru_message(&error.to_string()))?;
+                        let renamed_uses = match original_name.as_deref() {
+                            Some(old_name) if old_name != definition.name => workspace
+                                .rename_placeholder_in_replacements(old_name, &definition.name)
+                                .map_err(|error| ru_message(&error.to_string()))?,
+                            _ => 0,
+                        };
+                        (added, renamed_uses)
+                    };
+                    let inserted = if insert {
+                        Some(self.insert_global_placeholder(&definition.name)?)
+                    } else {
+                        None
+                    };
+                    Ok((added, inserted, renamed_uses))
+                })();
+
+                if result.is_err() {
+                    if let Some(workspace) = &mut self.workspace {
+                        workspace.restore_working_snapshot(&workspace_snapshot);
+                    }
+                    self.draft = previous_draft;
+                    self.raw_rule = previous_raw;
+                }
+
+                self.status = match result {
+                    Ok((added, inserted, renamed_uses)) => {
+                        let operation = if added { "добавлена" } else { "обновлена" };
+                        let rename_note = if renamed_uses == 0 {
+                            String::new()
+                        } else {
+                            format!(
+                                " Обновлено использований после переименования: {renamed_uses}."
+                            )
+                        };
+                        if let Some(placeholder) = inserted {
+                            format!(
+                                "Глобальная переменная {placeholder} {operation} и вставлена в правило.{rename_note} Сохраните изменения Ctrl+S"
+                            )
+                        } else {
+                            format!(
+                                "Глобальная переменная {} {operation}.{rename_note} Сохраните изменения Ctrl+S",
+                                definition.placeholder()
+                            )
+                        }
+                    }
+                    Err(error) => format!(
+                        "Не удалось сохранить глобальную переменную; все изменения операции отменены: {error}"
+                    ),
+                };
+            }
+            GlobalVariableEditorAction::Delete { file, name } => {
+                let result = (|| -> Result<bool, String> {
+                    let workspace = self
+                        .workspace
+                        .as_mut()
+                        .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())?;
+                    let content = workspace
+                        .raw_file(&file)
+                        .map_err(|error| ru_message(&error.to_string()))?
+                        .to_owned();
+                    let (updated, removed) =
+                        global_variables::remove_global_variable(&content, &name)?;
+                    if removed {
+                        workspace
+                            .set_raw_file(&file, updated)
+                            .map_err(|error| ru_message(&error.to_string()))?;
+                    }
+                    Ok(removed)
+                })();
+                self.status = match result {
+                    Ok(true) => format!(
+                        "Глобальная переменная {{{{{name}}}}} удалена. Использования в правилах оставлены для ручной проверки"
+                    ),
+                    Ok(false) => format!("Глобальная переменная {{{{{name}}}}} уже отсутствует"),
+                    Err(error) => format!("Не удалось удалить глобальную переменную: {error}"),
+                };
+            }
+            GlobalVariableEditorAction::Insert { name } => {
+                self.status = match self.global_variable_records().and_then(|records| {
+                    if records.iter().any(|record| record.definition.name == name) {
+                        self.insert_global_placeholder(&name)
+                    } else {
+                        Err(format!(
+                            "Глобальная переменная {{{{{name}}}}} ещё не сохранена"
+                        ))
+                    }
+                }) {
+                    Ok(placeholder) => format!(
+                        "{placeholder} добавлена в текст правила. Сохраните изменения Ctrl+S"
+                    ),
+                    Err(error) => format!("Не удалось вставить переменную: {error}"),
+                };
+            }
+        }
     }
 
     fn create_rule(&mut self) {
@@ -756,27 +1282,47 @@ impl MatchStudioApp {
         }
     }
 
-    fn apply_current(&mut self) {
-        match self.mode {
-            EditorMode::Structured => self.apply_structured(),
-            EditorMode::Raw => self.apply_raw(),
-        }
-    }
-
-    fn apply_structured(&mut self) {
+    fn apply_structured(
+        &mut self,
+        builtin_definitions: Vec<dynamic_variables::VariableDefinition>,
+    ) {
         let Some(id) = self.selected.clone() else {
             return;
         };
-        let Some(workspace) = &mut self.workspace else {
-            return;
-        };
-        match workspace.update_rule(&id, &self.draft) {
-            Ok(()) => {
-                "Изменения применены к рабочей копии. Для записи нажмите Ctrl+S"
-                    .clone_into(&mut self.status);
-                self.refresh_selected();
+        let result = self
+            .workspace
+            .as_mut()
+            .ok_or_else(|| "Рабочая область YAML не загружена".to_owned())
+            .and_then(|workspace| {
+                workspace
+                    .update_rule(&id, &self.draft)
+                    .map_err(|error| ru_message(&error.to_string()))?;
+                workspace
+                    .rule(&id)
+                    .map(|rule| rule.raw)
+                    .map_err(|error| ru_message(&error.to_string()))
+            });
+
+        match result {
+            Ok(raw) => {
+                self.raw_rule = raw;
+                match self.sync_builtin_variables(builtin_definitions) {
+                    Ok(0) => {
+                        "Изменения ожидают сохранения (Ctrl+S)".clone_into(&mut self.status);
+                    }
+                    Ok(count) => {
+                        self.status = format!(
+                            "Изменения ожидают сохранения. Автоматически объявлено общих переменных: {count}"
+                        );
+                    }
+                    Err(error) => {
+                        self.status = format!(
+                            "Правило изменено, но общую переменную объявить не удалось: {error}"
+                        );
+                    }
+                }
             }
-            Err(error) => self.status = ru_message(&error.to_string()),
+            Err(error) => self.status = error,
         }
     }
 
@@ -930,8 +1476,8 @@ impl MatchStudioApp {
             return;
         }
 
-        let (save, new_rule, duplicate, delete, reload, search, apply, diagnostics, help) = context
-            .input(|input| {
+        let (save, new_rule, duplicate, delete, reload, search, apply_raw, diagnostics, help) =
+            context.input(|input| {
                 let primary = input.modifiers.ctrl || input.modifiers.command;
                 (
                     primary && input.key_pressed(egui::Key::S),
@@ -964,8 +1510,8 @@ impl MatchStudioApp {
         if search {
             self.focus_filter = true;
         }
-        if apply && self.selected.is_some() {
-            self.apply_current();
+        if apply_raw && self.selected.is_some() && self.mode == EditorMode::Raw {
+            self.apply_raw();
         }
         if diagnostics {
             self.show_diagnostics = !self.show_diagnostics;
@@ -1033,6 +1579,13 @@ impl MatchStudioApp {
                             .clicked()
                         {
                             self.create_rule();
+                        }
+                        if ui
+                            .button("Переменные")
+                            .on_hover_text("Просмотр, создание и изменение общих переменных")
+                            .clicked()
+                        {
+                            self.show_global_variables = true;
                         }
                         if ui
                             .button("Сохранить всё")
@@ -1162,22 +1715,14 @@ impl MatchStudioApp {
         let rules = workspace.rules();
         let config_root = workspace.config_root().to_path_buf();
         let match_root = workspace.match_root().to_path_buf();
-        let files_count = files.len();
+        let yaml_entries = yaml_files::entries(&files, &match_root);
+        let files_count = yaml_entries.len();
+        let disabled_count = yaml_entries.iter().filter(|entry| !entry.enabled).count();
         let rules_count = rules.len();
         let base_file = yaml_imports::find_base_file(&files, &match_root);
-        let (import_entries, import_error) = match base_file.as_ref() {
-            Some(base_file) => match workspace.raw_file(base_file) {
-                Ok(base_content) => {
-                    match yaml_imports::import_entries(&files, base_file, base_content) {
-                        Ok(entries) => (entries, None),
-                        Err(error) => (Vec::new(), Some(error)),
-                    }
-                }
-                Err(error) => (Vec::new(), Some(ru_message(&error.to_string()))),
-            },
-            None => (Vec::new(), None),
-        };
-        let mut pending_import_toggle = None;
+        let mut pending_yaml_toggle = None;
+        let mut request_create_yaml_file = false;
+        let mut request_delete_yaml_file = None;
 
         egui::Panel::left("rules")
             .resizable(true)
@@ -1185,10 +1730,14 @@ impl MatchStudioApp {
             .show(root, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("Правила");
-                    ui.label(
-                        egui::RichText::new(format!("{rules_count} правил · {files_count} файлов"))
-                            .weak(),
-                    );
+                    let files_summary = if disabled_count == 0 {
+                        format!("{rules_count} правил · {files_count} файлов")
+                    } else {
+                        format!(
+                            "{rules_count} правил · {files_count} файлов · выключено {disabled_count}"
+                        )
+                    };
+                    ui.label(egui::RichText::new(files_summary).weak());
                 });
                 let search = ui.add(
                     egui::TextEdit::singleline(&mut self.filter)
@@ -1207,19 +1756,41 @@ impl MatchStudioApp {
                     .show(ui, |ui| {
                         ui.label(
                             egui::RichText::new(
-                                "Флажок подключает файл через imports в base.yml; название фильтрует правила",
+                                "Флажок реально включает файл. Выключенный файл получает расширение .disabled, поэтому rEspanso больше не загружает его правила.",
                             )
                             .weak(),
                         );
-                        if base_file.is_none() {
-                            ui.colored_label(
-                                ui.visuals().error_fg_color,
-                                "Не найден base.yml или base.yaml — подключение файлов недоступно",
-                            );
-                        }
-                        if let Some(error) = &import_error {
-                            ui.colored_label(ui.visuals().error_fg_color, error);
-                        }
+                        ui.label(
+                            egui::RichText::new(
+                                "После переключения перезагрузите конфигурацию или перезапустите rEspanso.",
+                            )
+                            .weak(),
+                        );
+                        ui.horizontal(|ui| {
+                            if ui
+                                .button("Создать файл")
+                                .on_hover_text("Создать новый YAML-файл в папке match")
+                                .clicked()
+                            {
+                                request_create_yaml_file = true;
+                            }
+                            let selected_file = self.file_filter.clone();
+                            let can_delete = selected_file.as_ref().is_some_and(|file| {
+                                let logical = if yaml_files::is_disabled(file) {
+                                    yaml_files::enabled_path(file).unwrap_or_else(|| file.clone())
+                                } else {
+                                    file.clone()
+                                };
+                                base_file.as_ref() != Some(&logical)
+                            });
+                            if ui
+                                .add_enabled(can_delete, egui::Button::new("Удалить файл"))
+                                .on_hover_text("Удалить выбранный YAML-файл; base.yml удалить нельзя")
+                                .clicked()
+                            {
+                                request_delete_yaml_file = selected_file;
+                            }
+                        });
                         ui.add(
                             egui::TextEdit::singleline(&mut self.yaml_file_filter)
                                 .desired_width(f32::INFINITY)
@@ -1229,12 +1800,15 @@ impl MatchStudioApp {
                         let yaml_filter = self.yaml_file_filter.to_lowercase();
                         egui::ScrollArea::vertical()
                             .id_salt("yaml_file_list")
-                            .max_height(220.0)
+                            .max_height(240.0)
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
                                     ui.add_space(24.0);
                                     if ui
-                                        .selectable_label(self.file_filter.is_none(), "Все YAML-файлы")
+                                        .selectable_label(
+                                            self.file_filter.is_none(),
+                                            "Все включённые YAML-файлы",
+                                        )
                                         .clicked()
                                     {
                                         self.file_filter = None;
@@ -1242,52 +1816,64 @@ impl MatchStudioApp {
                                 });
 
                                 let mut visible_files = 0_usize;
-                                for file in &files {
-                                    let display_name = relative_display(&config_root, file);
+                                for entry in &yaml_entries {
+                                    let display_name = yaml_files::display_name(
+                                        &config_root,
+                                        &entry.path,
+                                        entry.enabled,
+                                    );
                                     if !yaml_filter.is_empty()
                                         && !display_name.to_lowercase().contains(&yaml_filter)
                                     {
                                         continue;
                                     }
                                     visible_files += 1;
-                                    let is_base = base_file.as_ref() == Some(file);
-                                    let mut enabled = if is_base {
-                                        true
+                                    let logical_path = if entry.enabled {
+                                        entry.path.clone()
                                     } else {
-                                        import_entries.iter().any(|entry| {
-                                            entry.path.as_path() == file.as_path() && entry.enabled
-                                        })
+                                        yaml_files::enabled_path(&entry.path)
+                                            .unwrap_or_else(|| entry.path.clone())
                                     };
-                                    let can_toggle = !is_base
-                                        && base_file.is_some()
-                                        && import_error.is_none();
+                                    let is_base = base_file.as_ref() == Some(&logical_path);
+                                    let mut enabled = entry.enabled;
 
                                     ui.horizontal(|ui| {
                                         let checkbox = ui.add_enabled(
-                                            can_toggle,
+                                            !is_base,
                                             egui::Checkbox::new(&mut enabled, ""),
                                         );
                                         let changed = checkbox.changed();
                                         if is_base {
                                             checkbox.on_hover_text(
-                                                "Основной файл: он всегда загружается напрямую",
+                                                "Основной файл: он всегда включён",
                                             );
-                                        } else if can_toggle {
+                                        } else if entry.enabled {
                                             checkbox.on_hover_text(
-                                                "Добавить или удалить файл из imports в base.yml",
+                                                "Выключить: переименовать файл в .yml.disabled/.yaml.disabled",
                                             );
                                         } else {
                                             checkbox.on_hover_text(
-                                                "Сначала исправьте base.yml или создайте основной файл",
+                                                "Включить: вернуть расширение .yml/.yaml",
                                             );
                                         }
                                         if changed {
-                                            pending_import_toggle = Some((file.clone(), enabled));
+                                            pending_yaml_toggle =
+                                                Some((entry.path.clone(), enabled));
                                         }
 
-                                        let selected = self.file_filter.as_ref() == Some(file);
-                                        if ui.selectable_label(selected, display_name).clicked() {
-                                            self.file_filter = Some(file.clone());
+                                        let selected =
+                                            self.file_filter.as_ref() == Some(&entry.path);
+                                        let label = if entry.enabled {
+                                            display_name
+                                        } else {
+                                            format!("{display_name}  ·  выключен")
+                                        };
+                                        if ui.selectable_label(selected, label).clicked() {
+                                            self.file_filter = Some(entry.path.clone());
+                                            if !entry.enabled {
+                                                self.selected = None;
+                                                self.raw_rule.clear();
+                                            }
                                         }
                                         if is_base {
                                             ui.label(egui::RichText::new("основной").weak());
@@ -1346,14 +1932,29 @@ impl MatchStudioApp {
                     if visible == 0 {
                         ui.vertical_centered(|ui| {
                             ui.add_space(20.0);
-                            ui.label("По заданному фильтру ничего не найдено");
+                            if self
+                                .file_filter
+                                .as_ref()
+                                .is_some_and(|file| yaml_files::is_disabled(file))
+                            {
+                                ui.label("Файл выключен: его правила не загружаются");
+                            } else {
+                                ui.label("По заданному фильтру ничего не найдено");
+                            }
                         });
                     }
                 });
             });
 
-        if let Some((file, enabled)) = pending_import_toggle {
-            self.set_file_import_enabled(file, enabled);
+        if let Some((file, enabled)) = pending_yaml_toggle {
+            self.set_yaml_file_enabled(file, enabled);
+        }
+        if request_create_yaml_file {
+            self.show_create_yaml_file = true;
+        }
+        if let Some(file) = request_delete_yaml_file {
+            self.pending_delete_yaml_file = Some(file);
+            self.confirm_delete_yaml_file = true;
         }
     }
 
@@ -1371,13 +1972,25 @@ impl MatchStudioApp {
                 return;
             }
             if self.selected.is_none() {
+                let disabled_file_selected = self
+                    .file_filter
+                    .as_ref()
+                    .is_some_and(|file| yaml_files::is_disabled(file));
                 ui.vertical_centered(|ui| {
                     ui.add_space(35.0);
-                    ui.heading("Выберите правило слева или создайте новое");
-                    ui.label(
-                        "Редактор объединяет правила из всех .yml и .yaml файлов папки match.",
-                    );
-                    ui.label("Ctrl+N — новое правило, Ctrl+F — поиск, F1 — справка.");
+                    if disabled_file_selected {
+                        ui.heading("YAML-файл выключен");
+                        ui.label(
+                            "Его расширение оканчивается на .disabled, поэтому rEspanso не загружает правила из этого файла.",
+                        );
+                        ui.label("Поставьте флажок слева, чтобы снова включить файл.");
+                    } else {
+                        ui.heading("Выберите правило слева или создайте новое");
+                        ui.label(
+                            "Редактор объединяет правила из всех включённых .yml и .yaml файлов папки match.",
+                        );
+                        ui.label("Ctrl+N — новое правило, Ctrl+F — поиск, F1 — справка.");
+                    }
                 });
                 ui.add_space(20.0);
                 self.playground_ui(ui);
@@ -1385,7 +1998,7 @@ impl MatchStudioApp {
             }
 
             ui.horizontal_wrapped(|ui| {
-                ui.selectable_value(&mut self.mode, EditorMode::Structured, "Удобный редактор");
+                ui.selectable_value(&mut self.mode, EditorMode::Structured, "Редактор");
                 ui.selectable_value(&mut self.mode, EditorMode::Raw, "Исходный YAML");
                 ui.separator();
                 if let Some(id) = &self.selected {
@@ -1409,21 +2022,19 @@ impl MatchStudioApp {
     }
 
     fn structured_editor(&mut self, ui: &mut egui::Ui) {
-        let disabled_changed = ui
-            .horizontal_wrapped(|ui| {
-                ui.label("Условие срабатывания:");
-                ui.selectable_value(&mut self.draft.kind, MatchKind::Trigger, "Обычный триггер");
-                ui.selectable_value(&mut self.draft.kind, MatchKind::Regex, "Гибкий RegExp");
-                ui.separator();
-                ui.checkbox(&mut self.draft.disabled, "Выключить триггер / правило")
-                    .on_hover_text(
-                        "Сразу применяет disabled: true к рабочей копии. Для записи на диск нажмите Ctrl+S",
-                    )
-                    .changed()
-            })
-            .inner;
-        if disabled_changed {
-            self.apply_structured();
+        let previous_draft = self.draft.clone();
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Условие срабатывания:");
+            ui.selectable_value(&mut self.draft.kind, MatchKind::Trigger, "Обычный триггер");
+            ui.selectable_value(&mut self.draft.kind, MatchKind::Regex, "Гибкий RegExp");
+        });
+        if previous_draft.kind == MatchKind::Trigger && self.draft.kind == MatchKind::Regex {
+            let conversion = trigger_conversion::from_triggers(&previous_draft.triggers);
+            self.draft.regex = conversion.pattern;
+            if !conversion.examples.is_empty() {
+                self.regex_examples_text = conversion.examples;
+            }
+            self.refresh_regex_examples();
         }
         ui.horizontal(|ui| {
             ui.label("Название правила");
@@ -1464,50 +2075,64 @@ impl MatchStudioApp {
         }
 
         ui.add_space(8.0);
-        ui.label("Текст подстановки");
+        ui.horizontal(|ui| {
+            ui.label("Текст подстановки");
+            if ui
+                .small_button("?")
+                .on_hover_text(
+                    "Открыть общие переменные: date, time, string, clipboard, echo, choice, form, random, rhai, script, shell",
+                )
+                .clicked()
+            {
+                self.show_global_variables = true;
+            }
+        });
         ui.add(
             egui::TextEdit::multiline(&mut self.draft.replace)
                 .desired_rows(10)
                 .desired_width(f32::INFINITY)
                 .hint_text("Текст, который rEspanso вставит вместо триггера"),
         );
-        ui.horizontal(|ui| {
-            if ui
-                .add_sized(
-                    [230.0, 34.0],
-                    egui::Button::new(egui::RichText::new("Применить изменения").strong()),
-                )
-                .on_hover_text("Ctrl+Enter. После применения нажмите Ctrl+S для записи на диск")
-                .clicked()
-            {
-                self.apply_structured();
-            }
-            ui.label(
-                egui::RichText::new("Применение изменяет рабочую копию; Ctrl+S записывает YAML")
-                    .weak(),
+        if self.draft != previous_draft {
+            let new_builtins = dynamic_variables::newly_completed_builtin_definitions(
+                &previous_draft.replace,
+                &self.draft.replace,
             );
-        });
+            self.apply_structured(new_builtins);
+        }
     }
-
     fn regex_editor(&mut self, ui: &mut egui::Ui) {
         ui.group(|ui| {
-            ui.heading("Понятный конструктор RegExp");
+            ui.horizontal(|ui| {
+                ui.heading("Понятный конструктор RegExp");
+                ui.hyperlink_to(egui::RichText::new("?").strong(), ESPANSO_REGEXP_DOCS_URL)
+                    .on_hover_text("Открыть официальную справку Espanso по RegExp-триггерам");
+            });
             ui.label(
-                "Соберите правило из обычного текста и одной изменяемой части. Знание синтаксиса RegExp не требуется.",
+                "Соберите выражение из обычного текста и одной изменяемой части. Конструктор сам экранирует постоянный текст.",
             );
-            ui.add_space(4.0);
-            ui.label("1. Что находится до изменяемой части");
+            ui.label(
+                egui::RichText::new(
+                    "RegExp используйте только для изменяемых триггеров. Одинаковые обычные триггеры допустимы: rEspanso покажет окно выбора.",
+                )
+                .weak(),
+            );
+            ui.add_space(6.0);
+
+            ui.strong("1. Постоянный текст до переменной");
             ui.add(
                 egui::TextEdit::singleline(&mut self.builder.prefix)
                     .desired_width(f32::INFINITY)
                     .hint_text("Например: :пациент_"),
             );
 
-            ui.label("2. Что должна содержать изменяемая часть");
+            ui.add_space(4.0);
+            ui.strong("2. Изменяемая часть");
+            ui.label(egui::RichText::new("Выберите готовый тип или задайте свой шаблон").weak());
             ui.horizontal_wrapped(|ui| {
                 if ui
                     .button("Число")
-                    .on_hover_text("Одна или несколько цифр: 0–9")
+                    .on_hover_text(r"Одна или несколько цифр: \d+")
                     .clicked()
                 {
                     self.use_regex_preset("number", r"\d+");
@@ -1519,12 +2144,16 @@ impl MatchStudioApp {
                 {
                     self.use_regex_preset("word", r"[A-Za-zА-Яа-яЁё]+");
                 }
-                if ui.button("Дата ДД.ММ.ГГГГ").clicked() {
+                if ui
+                    .button("Дата ДД.ММ.ГГГГ")
+                    .on_hover_text(r"Например 29.07.2026")
+                    .clicked()
+                {
                     self.use_regex_preset("date", r"\d{2}\.\d{2}\.\d{4}");
                 }
                 if ui
                     .button("Без пробелов")
-                    .on_hover_text("Любой непробельный фрагмент")
+                    .on_hover_text(r"Любой непробельный фрагмент: \S+")
                     .clicked()
                 {
                     self.use_regex_preset("value", r"\S+");
@@ -1537,21 +2166,34 @@ impl MatchStudioApp {
                     self.use_regex_preset("text", r".+?");
                 }
             });
-            ui.horizontal(|ui| {
-                ui.label("Имя переменной");
-                ui.add(
+            ui.columns(2, |columns| {
+                columns[0].label("Имя переменной");
+                columns[0].add(
                     egui::TextEdit::singleline(&mut self.builder.capture_name)
-                        .hint_text("Латиницей, например value"),
+                        .desired_width(f32::INFINITY)
+                        .hint_text("Например: patient_id"),
                 );
-                ui.label("Свой шаблон");
-                ui.add(
+                columns[0].label(
+                    egui::RichText::new(
+                        "Значение станет доступно в подстановке как {{patient_id}}",
+                    )
+                    .weak(),
+                );
+
+                columns[1].label("Шаблон переменной");
+                columns[1].add(
                     egui::TextEdit::singleline(&mut self.builder.capture_pattern)
                         .desired_width(f32::INFINITY)
                         .hint_text(r"Например: \d+"),
                 );
+                columns[1].label(
+                    egui::RichText::new(r"Частые варианты: \d+ — цифры, \S+ — без пробелов, .+? — любой текст")
+                        .weak(),
+                );
             });
 
-            ui.label("3. Что находится после изменяемой части");
+            ui.add_space(4.0);
+            ui.strong("3. Постоянный текст после переменной");
             ui.add(
                 egui::TextEdit::singleline(&mut self.builder.suffix)
                     .desired_width(f32::INFINITY)
@@ -1560,26 +2202,29 @@ impl MatchStudioApp {
             ui.horizontal_wrapped(|ui| {
                 ui.checkbox(
                     &mut self.builder.anchor_start,
-                    "Совпадение должно начинаться строго здесь",
+                    "Начинать совпадение строго с этого места (^)",
                 );
                 ui.checkbox(
                     &mut self.builder.anchor_end,
-                    "После шаблона не должно быть других символов",
+                    "Завершать совпадение здесь ($)",
                 );
             });
 
             match MatchWorkspace::build_regex(&self.builder) {
                 Ok(preview) => {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label("Получится:");
-                        ui.monospace(preview);
-                    });
+                    ui.add_space(4.0);
+                    ui.label("Предварительный результат");
+                    ui.monospace(preview);
                 }
                 Err(error) => {
                     ui.colored_label(ui.visuals().error_fg_color, ru_message(&error));
                 }
             }
-            if ui.button("Собрать и использовать выражение").clicked() {
+            if ui
+                .button("Собрать и использовать выражение")
+                .on_hover_text("Записать результат конструктора в RegExp выбранного правила")
+                .clicked()
+            {
                 self.apply_regex_builder();
             }
             if let Some(error) = &self.builder_error {
@@ -1588,25 +2233,37 @@ impl MatchStudioApp {
         });
 
         ui.add_space(8.0);
-        egui::CollapsingHeader::new("Расширенный режим RegExp")
-            .default_open(false)
+        egui::CollapsingHeader::new("Готовое выражение и ручная правка")
+            .default_open(true)
             .show(ui, |ui| {
-                ui.label("Готовое регулярное выражение");
+                ui.horizontal(|ui| {
+                    ui.label("RegExp-триггер");
+                    ui.hyperlink_to("?", ESPANSO_REGEXP_DOCS_URL)
+                        .on_hover_text("Синтаксис RegExp-триггеров Espanso и именованных групп");
+                });
                 if ui
                     .add(
-                        egui::TextEdit::singleline(&mut self.draft.regex)
+                        egui::TextEdit::multiline(&mut self.draft.regex)
+                            .code_editor()
+                            .desired_rows(2)
                             .desired_width(f32::INFINITY)
-                            .hint_text(r":id_(?P<id>\d+)"),
+                            .hint_text(r":id_(?P<id>\d+)$"),
                     )
                     .changed()
                 {
                     self.refresh_regex_examples();
                 }
+                ui.label(
+                    egui::RichText::new(
+                        r"Подсказка: (?P<name>...) создаёт переменную {{name}}. Espanso использует синтаксис Rust Regex.",
+                    )
+                    .weak(),
+                );
                 match MatchWorkspace::validate_regex(&self.draft.regex) {
                     Ok(()) => {
                         ui.colored_label(
                             egui::Color32::from_rgb(40, 150, 90),
-                            "Выражение корректно",
+                            "✓ Выражение корректно",
                         );
                     }
                     Err(error) => {
@@ -1621,29 +2278,34 @@ impl MatchStudioApp {
         egui::CollapsingHeader::new("Проверка на примерах")
             .default_open(true)
             .show(ui, |ui| {
+                ui.label(
+                    egui::RichText::new(
+                        "Введите реальные варианты триггера. Проверка не запускает подстановки, команды или скрипты.",
+                    )
+                    .weak(),
+                );
                 ui.columns(2, |columns| {
                     columns[0].label("По одному примеру в строке");
                     if columns[0]
                         .add(
                             egui::TextEdit::multiline(&mut self.regex_examples_text)
-                                .desired_rows(6)
+                                .desired_rows(7)
                                 .desired_width(f32::INFINITY),
                         )
                         .changed()
                     {
                         self.refresh_regex_examples();
                     }
-                    columns[1].label("Результат");
+                    columns[1].label("Что найдёт RegExp");
                     egui::ScrollArea::vertical()
-                        .max_height(175.0)
+                        .max_height(205.0)
                         .show(&mut columns[1], |ui| {
                             for result in &self.regex_results {
-                                let status = if result.matched {
-                                    "совпало"
+                                if result.matched {
+                                    ui.strong(format!("✓ {} — совпало", result.input));
                                 } else {
-                                    "не совпало"
-                                };
-                                ui.monospace(format!("{} — {status}", result.input));
+                                    ui.label(format!("— {} — не совпало", result.input));
+                                }
                                 if !result.matched_text.is_empty() {
                                     ui.label(
                                         egui::RichText::new(format!(
@@ -1654,7 +2316,7 @@ impl MatchStudioApp {
                                     );
                                 }
                                 for (name, value) in &result.captures {
-                                    ui.small(format!("Переменная {name}: {value}"));
+                                    ui.small(format!("{{{{{name}}}}} = {value}"));
                                 }
                                 if let Some(error) = &result.error {
                                     ui.colored_label(ui.visuals().error_fg_color, error.as_str());
@@ -1749,18 +2411,21 @@ impl MatchStudioApp {
             return;
         }
         let diagnostics = self.diagnostics.instances();
-        let generation = self.diagnostics.generation();
-        let active_count = self.diagnostics.active_count();
+        let active_count = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.state != DiagnosticState::PendingResolved)
+            .count();
 
         egui::Panel::right("diagnostics")
             .resizable(true)
             .default_size(360.0)
             .show(root, |ui| {
                 ui.heading("Диагностика проекта");
+                ui.label(egui::RichText::new(format!("Активных проблем: {active_count}")).weak());
                 ui.label(
-                    egui::RichText::new(format!(
-                        "Снимок #{generation} · активных проблем: {active_count}"
-                    ))
+                    egui::RichText::new(
+                        "Повторы обычных сокращений не считаются ошибкой и открывают окно выбора. Повторы регулярных выражений и имён общих переменных отображаются как проблемы.",
+                    )
                     .weak(),
                 );
                 if active_count == 0 {
@@ -1799,10 +2464,8 @@ impl MatchStudioApp {
                             }
                             ui.small(
                                 egui::RichText::new(format!(
-                                    "Наблюдений: {} · впервые: #{} · последнее: #{}",
-                                    diagnostic.occurrence_count,
-                                    diagnostic.first_seen_generation,
-                                    diagnostic.last_seen_generation
+                                    "Наблюдений: {}",
+                                    diagnostic.occurrence_count
                                 ))
                                 .weak(),
                             );
@@ -1822,6 +2485,97 @@ impl MatchStudioApp {
         self.config_transfer_dialog(context);
         self.config_import_confirmation(context);
 
+        if self.show_create_yaml_file {
+            let mut open = self.show_create_yaml_file;
+            let mut create = false;
+            let mut cancel = false;
+            egui::Window::new("Создание YAML-файла")
+                .open(&mut open)
+                .resizable(false)
+                .collapsible(false)
+                .show(context, |ui| {
+                    ui.label("Имя нового файла в папке match");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.new_yaml_file_name)
+                            .desired_width(360.0)
+                            .hint_text("Например: терапия.yml"),
+                    );
+                    ui.label(egui::RichText::new("Расширение .yml добавится автоматически").weak());
+                    ui.horizontal(|ui| {
+                        if ui.button("Создать").clicked() {
+                            create = true;
+                        }
+                        if ui.button("Отмена").clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+            if (create && self.create_yaml_file()) || cancel {
+                open = false;
+            }
+            self.show_create_yaml_file = open;
+        }
+
+        if self.confirm_delete_yaml_file {
+            let mut open = self.confirm_delete_yaml_file;
+            let mut delete = false;
+            let mut cancel = false;
+            let path = self.pending_delete_yaml_file.clone();
+            egui::Window::new("Удаление YAML-файла")
+                .open(&mut open)
+                .resizable(false)
+                .collapsible(false)
+                .show(context, |ui| {
+                    if let Some(path) = &path {
+                        ui.label(format!(
+                            "Удалить {} и все правила внутри?",
+                            relative_display(&self.config_root, path)
+                        ));
+                    }
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        "Файл будет удалён сразу. Сначала сохраните нужные изменения.",
+                    );
+                    ui.horizontal(|ui| {
+                        if ui.button("Удалить файл").clicked() {
+                            delete = true;
+                        }
+                        if ui.button("Отмена").clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+            if delete {
+                if let Some(path) = path {
+                    if self.delete_yaml_file(path) {
+                        self.pending_delete_yaml_file = None;
+                        open = false;
+                    }
+                }
+            } else if cancel {
+                self.pending_delete_yaml_file = None;
+                open = false;
+            }
+            self.confirm_delete_yaml_file = open;
+        }
+        if self.show_global_variables {
+            let records = match self.global_variable_records() {
+                Ok(records) => records,
+                Err(error) => {
+                    self.status = format!("Не удалось прочитать общие переменные: {error}");
+                    Vec::new()
+                }
+            };
+            let mut open = self.show_global_variables;
+            let action =
+                self.global_variables
+                    .show(context, &mut open, &records, self.selected.is_some());
+            self.show_global_variables = open;
+            if let Some(action) = action {
+                self.apply_global_variable_action(action);
+            }
+        }
+
         if self.show_shortcuts {
             let mut open = self.show_shortcuts;
             egui::Window::new("Горячие клавиши")
@@ -1838,8 +2592,9 @@ impl MatchStudioApp {
                             shortcut_row(
                                 ui,
                                 "Ctrl+Enter",
-                                "Применить правило или запустить Rhai-скрипт",
+                                "Проверить исходный YAML или запустить Rhai-скрипт",
                             );
+                            shortcut_row(ui, "Ctrl+Alt+M", "Найти триггер по выделенному тексту");
                             shortcut_row(ui, "Ctrl+F", "Перейти к поиску правил");
                             shortcut_row(ui, "Ctrl+D", "Дублировать правило");
                             shortcut_row(ui, "Ctrl+Shift+D", "Удалить правило");
@@ -1931,7 +2686,7 @@ impl eframe::App for MatchStudioApp {
         self.top_bar(ui);
 
         egui::Panel::bottom("status").show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
+            ui.horizontal(|ui| {
                 ui.label(self.status.as_str());
                 ui.separator();
                 ui.label(
@@ -1944,6 +2699,13 @@ impl eframe::App for MatchStudioApp {
                         self.request_external_reload();
                     }
                 }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.hyperlink_to(
+                        "imaganate.dark@gmail.com",
+                        "mailto:imaganate.dark@gmail.com",
+                    )
+                    .on_hover_text("Автор форка: Куцин Иван Юрьевич");
+                });
             });
         });
 
@@ -2000,6 +2762,9 @@ fn ru_message(message: &str) -> String {
         ("Empty trigger", "пустой триггер"),
         ("Empty regexp", "пустое регулярное выражение"),
         ("Invalid regexp", "ошибка регулярного выражения"),
+        ("Invalid rule block", "некорректный блок правила"),
+        ("Duplicate global variable", "повторяющееся имя глобальной переменной"),
+        ("Global variable parse error", "ошибка разбора глобальной переменной"),
         (
             "Duplicate match cause",
             "повторяющееся условие срабатывания",

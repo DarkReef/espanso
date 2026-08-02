@@ -1,4 +1,4 @@
-/*
+﻿/*
  * This file is part of modulo.
  *
  * Copyright (C) 2020-2021 Federico Terzi
@@ -19,10 +19,19 @@
 
 #define _UNICODE
 
+#ifdef _MSC_VER
+#pragma execution_character_set("utf-8")
+#endif
+
 #include "../common/common.h"
 #include "../interop/interop.h"
 #include "./wizard_gui.h"
 
+namespace {
+wxString ui_text(const char *text) { return wxString::FromUTF8(text); }
+} // namespace
+
+#include <algorithm>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -116,14 +125,39 @@ DerivedFrame::DerivedFrame(wxWindow *parent) : WizardFrame(parent) {
     // Welcome images
 
     if (wizard_metadata->welcome_image_path) {
-        wxBitmap welcomeBitmap =
-            wxBitmap(wxString::FromUTF8(wizard_metadata->welcome_image_path),
-                     wxBITMAP_TYPE_PNG);
-        this->welcome_image->SetBitmap(welcomeBitmap);
+        wxImage welcomeImage(
+            wxString::FromUTF8(wizard_metadata->welcome_image_path),
+            wxBITMAP_TYPE_PNG);
+        if (welcomeImage.IsOk()) {
+            constexpr int kWelcomeImageMaxWidth = 160;
+            constexpr int kWelcomeImageMaxHeight = 160;
+            const int sourceWidth = welcomeImage.GetWidth();
+            const int sourceHeight = welcomeImage.GetHeight();
+
+            if (sourceWidth > kWelcomeImageMaxWidth ||
+                sourceHeight > kWelcomeImageMaxHeight) {
+                const double widthScale =
+                    static_cast<double>(kWelcomeImageMaxWidth) / sourceWidth;
+                const double heightScale =
+                    static_cast<double>(kWelcomeImageMaxHeight) / sourceHeight;
+                const double scale = std::min(widthScale, heightScale);
+                welcomeImage.Rescale(
+                    std::max(1, static_cast<int>(sourceWidth * scale)),
+                    std::max(1, static_cast<int>(sourceHeight * scale)),
+                    wxIMAGE_QUALITY_HIGH);
+            }
+
+            this->welcome_image->SetBitmap(wxBitmap(welcomeImage));
+        } else {
+            this->welcome_image->Hide();
+        }
+    } else {
+        this->welcome_image->Hide();
     }
 
     this->welcome_version_text->SetLabel(
-        wxString::Format("( version %s )", wizard_metadata->version));
+        ui_text("Версия ") + wxString::FromUTF8(wizard_metadata->version));
+    this->welcome_panel->Layout();
 
     // Accessiblity images
 
@@ -190,23 +224,16 @@ void DerivedFrame::migrate_button_clicked(wxCommandEvent &event) {
             this->navigate_to_next_page_or_close();
         } else if (result == MIGRATE_RESULT_CLEAN_FAILURE) {
             wxMessageBox(
-                wxT("An error occurred during the migration, but your old "
-                    "files were not modified.\n\nPlease run 'espanso log' in a "
-                    "terminal for more information."),
-                wxT("Migration error"), wxICON_ERROR);
+                ui_text("Не удалось перенести конфигурацию, но исходные файлы не изменены.\n\nПодробности доступны в журнале: espanso log."),
+                ui_text("Ошибка переноса конфигурации"), wxICON_ERROR);
         } else if (result == MIGRATE_RESULT_DIRTY_FAILURE) {
             wxMessageBox(
-                wxT("An error occurred during the migration and espanso "
-                    "couldn't complete the process. Some configuration files "
-                    "might be missing, but you'll find the backup in the "
-                    "Documents folder.\n\nPlease run 'espanso log' in a "
-                    "terminal for more information."),
-                wxT("Migration error"), wxICON_ERROR);
+                ui_text("Не удалось завершить перенос конфигурации. Некоторые файлы могли быть изменены или отсутствовать. Резервная копия сохранена в папке «Документы».\n\nПодробности доступны в журнале: espanso log."),
+                ui_text("Ошибка переноса конфигурации"), wxICON_ERROR);
         } else if (result == MIGRATE_RESULT_UNKNOWN_FAILURE) {
             wxMessageBox(
-                wxT("An error occurred during the migration.\n\nPlease run "
-                    "'espanso log' in a terminal for more information."),
-                wxT("Migration error"), wxICON_ERROR);
+                ui_text("Во время переноса конфигурации произошла ошибка.\n\nПодробности доступны в журнале: espanso log."),
+                ui_text("Ошибка переноса конфигурации"), wxICON_ERROR);
         }
     }
 }
@@ -226,23 +253,19 @@ void DerivedFrame::auto_start_continue_clicked(wxCommandEvent &event) {
             if (result == 1) {
                 this->navigate_to_next_page_or_close();
                 return;
-            } else {
-                wxMessageDialog *dialog = new wxMessageDialog(
-                    this,
-                    "An error occurred while registering Espanso as a service, "
-                    "please check the logs for more information.\nDo you want "
-                    "to retry? You can always configure this option later",
-                    "Operation failed",
-                    wxCENTER | wxOK_DEFAULT | wxOK | wxCANCEL |
-                        wxICON_EXCLAMATION);
+            }
 
-                dialog->SetOKLabel("Retry");
+            wxMessageDialog dialog(
+                this,
+                ui_text("Не удалось включить автозапуск rEspanso.\n\nПроверьте журнал приложения. Повторить попытку? Этот параметр можно настроить позже."),
+                ui_text("Ошибка автозапуска"),
+                wxCENTER | wxOK_DEFAULT | wxOK | wxCANCEL |
+                    wxICON_EXCLAMATION);
+            dialog.SetOKLabel(ui_text("Повторить"));
 
-                int prompt_result = dialog->ShowModal();
-                if (prompt_result == wxID_CANCEL) {
-                    this->navigate_to_next_page_or_close();
-                    break;
-                }
+            if (dialog.ShowModal() == wxID_CANCEL) {
+                this->navigate_to_next_page_or_close();
+                break;
             }
         }
     }
@@ -260,24 +283,19 @@ void DerivedFrame::add_path_continue_clicked(wxCommandEvent &event) {
             if (result == 1) {
                 this->navigate_to_next_page_or_close();
                 return;
-            } else {
-                wxMessageDialog *dialog = new wxMessageDialog(
-                    this,
-                    "An error occurred while registering the 'espanso' command "
-                    "to the PATH, please check the logs for more "
-                    "information.\nDo you want to retry? You can always add "
-                    "espanso to the PATH later",
-                    "Operation failed",
-                    wxCENTER | wxOK_DEFAULT | wxOK | wxCANCEL |
-                        wxICON_EXCLAMATION);
+            }
 
-                dialog->SetOKLabel("Retry");
+            wxMessageDialog dialog(
+                this,
+                ui_text("Не удалось добавить команду espanso в PATH.\n\nПроверьте журнал приложения. Повторить попытку? PATH можно настроить позже."),
+                ui_text("Ошибка настройки PATH"),
+                wxCENTER | wxOK_DEFAULT | wxOK | wxCANCEL |
+                    wxICON_EXCLAMATION);
+            dialog.SetOKLabel(ui_text("Повторить"));
 
-                int prompt_result = dialog->ShowModal();
-                if (prompt_result == wxID_CANCEL) {
-                    this->navigate_to_next_page_or_close();
-                    break;
-                }
+            if (dialog.ShowModal() == wxID_CANCEL) {
+                this->navigate_to_next_page_or_close();
+                break;
             }
         }
     }

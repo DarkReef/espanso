@@ -84,6 +84,10 @@
         "form_fields": {
           "$ref": "#/definitions/form_field_definition"
         },
+        "preview": {
+          "description": "Show a live preview of the text produced by the form layout",
+          "type": "boolean"
+        },
         "html": {
           "type": "string"
         },

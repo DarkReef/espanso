@@ -41,6 +41,7 @@ pub trait FormUI {
         &self,
         layout: &str,
         fields: &HashMap<String, FormField>,
+        preview: bool,
     ) -> Result<Option<HashMap<String, String>>>;
 }
 

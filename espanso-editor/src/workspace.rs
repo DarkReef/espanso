@@ -86,10 +86,7 @@ pub struct RuleRecord {
 
 impl RuleRecord {
     pub fn display_name(&self) -> String {
-        if !self.draft.label.trim().is_empty() {
-            return self.draft.label.trim().to_owned();
-        }
-        match self.draft.kind {
+        let cause = match self.draft.kind {
             MatchKind::Trigger => self
                 .draft
                 .triggers
@@ -103,6 +100,12 @@ impl RuleRecord {
                     self.draft.regex.clone()
                 }
             }
+        };
+        let label = self.draft.label.trim();
+        if label.is_empty() {
+            cause
+        } else {
+            format!("{label} · {cause}")
         }
     }
 }
@@ -316,7 +319,9 @@ impl MatchWorkspace {
                     .get(span.start..span.end)
                     .unwrap_or_default()
                     .to_owned();
-                let draft = parse_rule_draft(&raw).unwrap_or_default();
+                let Some(draft) = parse_rule_draft(&raw) else {
+                    continue;
+                };
                 records.push(RuleRecord {
                     id: RuleId {
                         file: document.path.clone(),
@@ -337,7 +342,7 @@ impl MatchWorkspace {
             .rule_raw(id.ordinal)
             .ok_or_else(|| WorkspaceError::UnknownRule(id.clone()))?
             .to_owned();
-        let draft = parse_rule_draft(&raw).unwrap_or_default();
+        let draft = parse_rule_draft(&raw).ok_or(WorkspaceError::InvalidRawRule)?;
         Ok(RuleRecord {
             id: id.clone(),
             replacement_preview: preview(&draft.replace, 90),
@@ -527,13 +532,117 @@ impl MatchWorkspace {
             }
         }
 
+        let originals = dirty
+            .iter()
+            .map(|index| {
+                let document = &self.documents[*index];
+                (*index, document.original.clone(), document.original_hash)
+            })
+            .collect::<Vec<_>>();
+        let mut attempted = Vec::new();
         let mut saved = Vec::new();
+
         for index in dirty {
-            let document = &mut self.documents[index];
-            save_document(document)?;
-            saved.push(document.path.clone());
+            attempted.push(index);
+            let save_result = {
+                let document = &mut self.documents[index];
+                save_document(document)
+            };
+            if let Err(error) = save_result {
+                let mut rollback_errors = Vec::new();
+                for rollback_index in attempted.iter().copied().rev() {
+                    let document = &mut self.documents[rollback_index];
+                    let file_name = document
+                        .path
+                        .file_name()
+                        .and_then(OsStr::to_str)
+                        .unwrap_or("matches.yml");
+                    let backup = document
+                        .path
+                        .with_file_name(format!("{file_name}.respanso.bak"));
+                    let temporary = document
+                        .path
+                        .parent()
+                        .unwrap_or_else(|| Path::new("."))
+                        .join(format!(".{file_name}.respanso.tmp"));
+                    if backup.is_file() {
+                        if let Err(restore_error) = fs::copy(&backup, &document.path) {
+                            rollback_errors
+                                .push(format!("{}: {restore_error}", document.path.display()));
+                        }
+                    }
+                    let _ = fs::remove_file(temporary);
+                    if let Some((_, original, original_hash)) = originals
+                        .iter()
+                        .find(|(item, _, _)| *item == rollback_index)
+                    {
+                        document.original.clone_from(original);
+                        document.original_hash = *original_hash;
+                    }
+                }
+                if rollback_errors.is_empty() {
+                    return Err(error);
+                }
+                return Err(WorkspaceError::SaveFailed {
+                    path: self.documents[index].path.clone(),
+                    message: format!(
+                        "{error}; rollback also failed for {}",
+                        rollback_errors.join(", ")
+                    ),
+                });
+            }
+            saved.push(self.documents[index].path.clone());
         }
         Ok(saved)
+    }
+
+    pub fn working_snapshot(&self) -> Vec<(PathBuf, String)> {
+        self.documents
+            .iter()
+            .map(|document| (document.path.clone(), document.working.clone()))
+            .collect()
+    }
+
+    pub fn restore_working_snapshot(&mut self, snapshot: &[(PathBuf, String)]) {
+        for (path, content) in snapshot {
+            if let Some(document) = self
+                .documents
+                .iter_mut()
+                .find(|document| document.path == *path)
+            {
+                document.working.clone_from(content);
+                document.refresh();
+            }
+        }
+    }
+
+    pub fn rename_placeholder_in_replacements(
+        &mut self,
+        old_name: &str,
+        new_name: &str,
+    ) -> Result<usize> {
+        if old_name == new_name {
+            return Ok(0);
+        }
+        let old_placeholder = format!("{{{{{old_name}}}}}");
+        let new_placeholder = format!("{{{{{new_name}}}}}");
+        let ids = self
+            .rules()
+            .into_iter()
+            .filter(|rule| rule.draft.replace.contains(&old_placeholder))
+            .map(|rule| rule.id)
+            .collect::<Vec<_>>();
+        let mut changed = 0;
+        for id in ids {
+            let mut rule = self.rule(&id)?;
+            rule.draft.replace = rule
+                .draft
+                .replace
+                .replace(&old_placeholder, &new_placeholder);
+            self.update_rule(&id, &rule.draft)?;
+            changed += 1;
+        }
+        Ok(changed)
     }
 
     pub fn diagnostics(&self) -> Vec<Diagnostic> {
@@ -549,8 +658,27 @@ impl MatchWorkspace {
             }
         }
 
+        for document in &self.documents {
+            for (ordinal, span) in document.parsed.spans.iter().enumerate() {
+                let raw = document
+                    .working
+                    .get(span.start..span.end)
+                    .unwrap_or_default();
+                if parse_rule_draft(raw).is_none() {
+                    diagnostics.push(Diagnostic {
+                        level: DiagnosticLevel::Error,
+                        message: "Invalid rule block".to_owned(),
+                        file: Some(document.path.clone()),
+                        rule: Some(RuleId {
+                            file: document.path.clone(),
+                            ordinal,
+                        }),
+                    });
+                }
+            }
+        }
+
         let rules = self.rules();
-        let mut causes: HashMap<String, Vec<RuleId>> = HashMap::new();
         for rule in &rules {
             match rule.draft.kind {
                 MatchKind::Trigger => {
@@ -564,12 +692,7 @@ impl MatchWorkspace {
                             rule: Some(rule.id.clone()),
                         });
                     }
-                    for trigger in &rule.draft.triggers {
-                        causes
-                            .entry(format!("trigger:{trigger}"))
-                            .or_default()
-                            .push(rule.id.clone());
-                    }
+                    // Identical triggers intentionally open the selection window.
                 }
                 MatchKind::Regex => {
                     if rule.draft.regex.is_empty() {
@@ -587,23 +710,7 @@ impl MatchWorkspace {
                             rule: Some(rule.id.clone()),
                         });
                     }
-                    causes
-                        .entry(format!("regex:{}", rule.draft.regex))
-                        .or_default()
-                        .push(rule.id.clone());
-                }
-            }
-        }
-
-        for (cause, ids) in causes {
-            if ids.len() > 1 {
-                for id in ids {
-                    diagnostics.push(Diagnostic {
-                        level: DiagnosticLevel::Warning,
-                        message: format!("Duplicate match cause: {}", cause.replace(':', ": ")),
-                        file: Some(id.file.clone()),
-                        rule: Some(id),
-                    });
+                    // Identical RegExp causes are also valid selection alternatives.
                 }
             }
         }
@@ -1487,22 +1594,62 @@ matches:
     }
 
     #[test]
-    fn duplicate_causes_are_reported() {
+    fn trigger_and_regexp_duplicates_are_valid_selection_alternatives() {
         let (_temp, mut workspace, _base, extra) = fixture();
         workspace
             .create_rule(
                 &extra,
                 &RuleDraft {
                     triggers: vec![":hello".to_owned()],
-                    replace: "Duplicate".to_owned(),
+                    replace: "Selection option".to_owned(),
                     ..RuleDraft::default()
                 },
             )
-            .expect("create duplicate");
-        assert!(workspace
+            .expect("create simple duplicate");
+        workspace
+            .create_rule(
+                &extra,
+                &RuleDraft {
+                    kind: MatchKind::Regex,
+                    regex: r":id_(?P<id>\d+)".to_owned(),
+                    replace: "Duplicate regexp".to_owned(),
+                    ..RuleDraft::default()
+                },
+            )
+            .expect("create regexp duplicate");
+
+        assert!(!workspace
             .diagnostics()
             .iter()
             .any(|diagnostic| diagnostic.message.contains("Duplicate match cause")));
+    }
+
+    #[test]
+    fn renames_placeholders_in_all_rule_replacements() {
+        let (_temp, mut workspace, base, _extra) = fixture();
+        let changed = workspace
+            .rename_placeholder_in_replacements("id", "patient_id")
+            .expect("rename placeholders");
+        assert_eq!(changed, 1);
+        assert!(workspace
+            .raw_file(&base)
+            .expect("raw")
+            .contains("{{patient_id}}"));
+    }
+
+    #[test]
+    fn invalid_rule_block_is_diagnostic_and_not_returned_as_default_rule() {
+        let temp = TempDir::new("respanso-invalid-rule").expect("temp dir");
+        let match_dir = temp.path().join("match");
+        fs::create_dir_all(&match_dir).expect("match dir");
+        let base = match_dir.join("base.yml");
+        fs::write(&base, "matches:\n  - just-a-scalar\n").expect("write invalid rule");
+        let workspace = MatchWorkspace::load(temp.path()).expect("workspace");
+        assert!(workspace.rules().is_empty());
+        assert!(workspace
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.message == "Invalid rule block"));
     }
 
     #[test]

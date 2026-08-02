@@ -32,6 +32,10 @@ fn default_fields() -> HashMap<String, FieldConfig> {
     HashMap::new()
 }
 
+fn default_preview() -> bool {
+    false
+}
+
 fn default_max_form_width() -> i32 {
     700
 }
@@ -52,6 +56,9 @@ pub struct FormConfig {
 
     #[serde(default = "default_fields")]
     pub fields: HashMap<String, FieldConfig>,
+
+    #[serde(default = "default_preview")]
+    pub preview: bool,
 
     #[serde(default = "default_max_form_width")]
     pub max_form_width: i32,

@@ -23,6 +23,7 @@
 #include "../interop/interop.h"
 
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -32,6 +33,8 @@ const long DEFAULT_STYLE = wxSTAY_ON_TOP | wxCLOSE_BOX | wxCAPTION;
 const int PADDING = 5;
 const int MULTILINE_MIN_HEIGHT = 100;
 const int MULTILINE_MIN_WIDTH = 100;
+const int PREVIEW_MIN_HEIGHT = 120;
+const char *PREVIEW_SENTINEL_ID = "__respanso_preview__";
 
 FormMetadata *formMetadata = nullptr;
 std::vector<ValuePair> values;
@@ -40,28 +43,29 @@ std::vector<ValuePair> values;
 
 class FieldWrapper {
   public:
+    virtual ~FieldWrapper() = default;
     virtual wxString getValue() = 0;
 };
 
-class TextFieldWrapper {
+class TextFieldWrapper : public FieldWrapper {
     wxTextCtrl *control;
 
   public:
     explicit TextFieldWrapper(wxTextCtrl *control) : control(control) {}
 
-    virtual wxString getValue() { return control->GetValue(); }
+    wxString getValue() override { return control->GetValue(); }
 };
 
-class ChoiceFieldWrapper {
+class ChoiceFieldWrapper : public FieldWrapper {
     wxChoice *control;
 
   public:
     explicit ChoiceFieldWrapper(wxChoice *control) : control(control) {}
 
-    virtual wxString getValue() { return control->GetStringSelection(); }
+    wxString getValue() override { return control->GetStringSelection(); }
 };
 
-class ListFieldWrapper {
+class ListFieldWrapper : public FieldWrapper {
     wxListBox *control;
     wxString separator;
 
@@ -69,7 +73,7 @@ class ListFieldWrapper {
     explicit ListFieldWrapper(wxListBox *control, wxString separator)
         : control(control), separator(separator) {}
 
-    virtual wxString getValue() {
+    wxString getValue() override {
       wxArrayInt selections;
       control->GetSelections(selections);
 
@@ -95,10 +99,13 @@ class FormFrame : public wxFrame {
 
     wxPanel *panel;
     std::vector<void *> fields;
-    std::unordered_map<const char *, std::unique_ptr<FieldWrapper>> idMap;
+    std::unordered_map<std::string, std::unique_ptr<FieldWrapper>> idMap;
     wxButton *submit;
     wxStaticText *helpText;
+    wxStaticText *previewLabel;
+    wxTextCtrl *previewControl;
     bool hasFocusedMultilineControl;
+    bool previewEnabled;
 
   private:
     void AddComponent(wxPanel *parent, wxBoxSizer *sizer, FieldMetadata meta);
@@ -106,7 +113,11 @@ class FormFrame : public wxFrame {
     void OnSubmitBtn(wxCommandEvent &event);
     void OnCharHook(wxKeyEvent &event);
     void OnListBoxEvent(wxCommandEvent &event);
+    void OnFieldChanged(wxCommandEvent &event);
     void UpdateHelpText();
+    void UpdatePreview();
+    wxString RenderPreview();
+    wxString RenderField(FieldMetadata meta);
     void HandleNormalFocus(wxFocusEvent &event);
     void HandleMultilineFocus(wxFocusEvent &event);
 };
@@ -130,6 +141,9 @@ FormFrame::FormFrame(const wxString &title, const wxPoint &pos,
                      const wxSize &size)
     : wxFrame(NULL, wxID_ANY, title, pos, size, DEFAULT_STYLE) {
     hasFocusedMultilineControl = false;
+    previewEnabled = false;
+    previewLabel = nullptr;
+    previewControl = nullptr;
 
     panel = new wxPanel(this, wxID_ANY);
     wxBoxSizer *vbox = new wxBoxSizer(wxVERTICAL);
@@ -137,7 +151,27 @@ FormFrame::FormFrame(const wxString &title, const wxPoint &pos,
 
     for (int field = 0; field < formMetadata->fieldSize; field++) {
         FieldMetadata meta = formMetadata->fields[field];
+        if (meta.id != nullptr && strcmp(meta.id, PREVIEW_SENTINEL_ID) == 0) {
+            previewEnabled = true;
+            continue;
+        }
         AddComponent(panel, vbox, meta);
+    }
+
+    if (previewEnabled) {
+        previewLabel = new wxStaticText(panel, wxID_ANY, "Preview");
+        wxFont previewFont = previewLabel->GetFont();
+        previewFont.SetWeight(wxFONTWEIGHT_BOLD);
+        previewLabel->SetFont(previewFont);
+        vbox->Add(previewLabel, 0, wxLEFT | wxRIGHT | wxTOP, PADDING);
+
+        previewControl = new wxTextCtrl(
+            panel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
+            wxTE_MULTILINE | wxTE_READONLY);
+        previewControl->SetMinSize(
+            wxSize(MULTILINE_MIN_WIDTH, PREVIEW_MIN_HEIGHT));
+        vbox->Add(previewControl, 1, wxEXPAND | wxALL, PADDING);
+        UpdatePreview();
     }
 
     submit = new wxButton(panel, ID_Submit, "Submit");
@@ -198,10 +232,12 @@ void FormFrame::AddComponent(wxPanel *parent, wxBoxSizer *sizer,
                               this, wxID_ANY);
         }
 
-        // Create the field wrapper
+        textControl->Bind(wxEVT_TEXT, &FormFrame::OnFieldChanged, this,
+                          wxID_ANY);
+
         std::unique_ptr<FieldWrapper> field(
-            (FieldWrapper *)new TextFieldWrapper(textControl));
-        idMap[meta.id] = std::move(field);
+            new TextFieldWrapper(textControl));
+        idMap[std::string(meta.id)] = std::move(field);
         control = textControl;
         fields.push_back(textControl);
         break;
@@ -233,11 +269,13 @@ void FormFrame::AddComponent(wxPanel *parent, wxBoxSizer *sizer,
             ((wxChoice *)choice)
                 ->Bind(wxEVT_SET_FOCUS, &FormFrame::HandleNormalFocus, this,
                        wxID_ANY);
+            ((wxChoice *)choice)
+                ->Bind(wxEVT_CHOICE, &FormFrame::OnFieldChanged, this,
+                       wxID_ANY);
 
-            // Create the field wrapper
             std::unique_ptr<FieldWrapper> field(
-                (FieldWrapper *)new ChoiceFieldWrapper((wxChoice *)choice));
-            idMap[meta.id] = std::move(field);
+                new ChoiceFieldWrapper((wxChoice *)choice));
+            idMap[std::string(meta.id)] = std::move(field);
         } else {
             choice = (void *)new wxListBox(parent, wxID_ANY, wxDefaultPosition,
                                            wxDefaultSize, choices,
@@ -250,6 +288,9 @@ void FormFrame::AddComponent(wxPanel *parent, wxBoxSizer *sizer,
             ((wxListBox *)choice)
                 ->Bind(wxEVT_SET_FOCUS, &FormFrame::HandleNormalFocus, this,
                        wxID_ANY);
+            ((wxListBox *)choice)
+                ->Bind(wxEVT_LISTBOX, &FormFrame::OnFieldChanged, this,
+                       wxID_ANY);
             // ListBoxes prevent the global CHAR_HOOK handler from handling the
             // Return key correctly, so we need to handle the double click event
             // too (which is triggered when the enter key is pressed). See:
@@ -258,11 +299,9 @@ void FormFrame::AddComponent(wxPanel *parent, wxBoxSizer *sizer,
                 ->Bind(wxEVT_LISTBOX_DCLICK, &FormFrame::OnListBoxEvent, this,
                        wxID_ANY);
 
-            // Create the field wrapper
             std::unique_ptr<FieldWrapper> field(
-                (FieldWrapper *)new ListFieldWrapper((wxListBox *)choice,
-                                                     separator));
-            idMap[meta.id] = std::move(field);
+                new ListFieldWrapper((wxListBox *)choice, separator));
+            idMap[std::string(meta.id)] = std::move(field);
         }
 
         control = choice;
@@ -296,12 +335,64 @@ void FormFrame::AddComponent(wxPanel *parent, wxBoxSizer *sizer,
     }
 }
 
+wxString FormFrame::RenderField(FieldMetadata meta) {
+    switch (meta.fieldType) {
+    case FieldType::LABEL: {
+        const LabelMetadata *labelMeta =
+            static_cast<const LabelMetadata *>(meta.specific);
+        return wxString::FromUTF8(labelMeta->text);
+    }
+    case FieldType::TEXT:
+    case FieldType::CHOICE: {
+        if (meta.id == nullptr) return "";
+        auto field = idMap.find(std::string(meta.id));
+        if (field == idMap.end()) return "";
+        return field->second->getValue();
+    }
+    case FieldType::ROW: {
+        const RowMetadata *rowMeta =
+            static_cast<const RowMetadata *>(meta.specific);
+        wxString row;
+        for (int field = 0; field < rowMeta->fieldSize; field++) {
+            row.Append(RenderField(rowMeta->fields[field]));
+        }
+        return row;
+    }
+    default:
+        return "";
+    }
+}
+
+wxString FormFrame::RenderPreview() {
+    wxString preview;
+    bool firstRow = true;
+
+    for (int field = 0; field < formMetadata->fieldSize; field++) {
+        FieldMetadata meta = formMetadata->fields[field];
+        if (meta.id != nullptr && strcmp(meta.id, PREVIEW_SENTINEL_ID) == 0) {
+            continue;
+        }
+
+        if (!firstRow) preview.Append("\n");
+        preview.Append(RenderField(meta));
+        firstRow = false;
+    }
+
+    return preview;
+}
+
+void FormFrame::UpdatePreview() {
+    if (!previewEnabled || previewControl == nullptr) return;
+    previewControl->ChangeValue(RenderPreview());
+    previewControl->SetInsertionPoint(0);
+}
+
 void FormFrame::Submit() {
     for (auto &field : idMap) {
-        FieldWrapper *fieldWrapper = (FieldWrapper *)field.second.get();
+        FieldWrapper *fieldWrapper = field.second.get();
         wxString value{fieldWrapper->getValue()};
         wxCharBuffer buffer{value.ToUTF8()};
-        char *id = strdup(field.first);
+        char *id = strdup(field.first.c_str());
         char *c_value = strdup(buffer.data());
         ValuePair valuePair = {
             id,
@@ -336,6 +427,11 @@ void FormFrame::UpdateHelpText() {
 
 void FormFrame::OnSubmitBtn(wxCommandEvent &event) { Submit(); }
 
+void FormFrame::OnFieldChanged(wxCommandEvent &event) {
+    UpdatePreview();
+    event.Skip();
+}
+
 void FormFrame::OnCharHook(wxKeyEvent &event) {
     if (event.GetKeyCode() == WXK_ESCAPE) {
         Close(true);
@@ -362,6 +458,7 @@ extern "C" void interop_show_form(FormMetadata *_metadata,
 #endif
 
     formMetadata = _metadata;
+    values.clear();
 
     wxApp::SetInstance(new FormApp());
     int argc = 0;
@@ -374,4 +471,5 @@ extern "C" void interop_show_form(FormMetadata *_metadata,
         free((void *)pair.id);
         free((void *)pair.value);
     }
+    values.clear();
 }
