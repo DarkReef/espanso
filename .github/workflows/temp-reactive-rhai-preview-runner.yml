@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 120
     env:
       CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
       RUST_BACKTRACE: 1
 
     steps:
@@ -102,8 +103,16 @@ jobs:
       - name: Restore Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: windows-x64-portable
+          shared-key: windows-x64-reactive-rhai-preview-v2
           cache-on-failure: true
+
+      - name: Rebuild bundled bzip2 native library
+        shell: pwsh
+        run: |
+          cargo clean -p bzip2-sys
+          if ($LASTEXITCODE -ne 0) {
+            throw "failed to clean stale bzip2-sys artifacts"
+          }
 
       - name: Format generated sources
         run: cargo fmt --all
