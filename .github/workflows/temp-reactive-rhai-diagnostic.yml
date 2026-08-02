@@ -6,6 +6,10 @@ on:
       - feature/reactive-rhai-preview
     paths:
       - .github/workflows/temp-reactive-rhai-diagnostic.yml
+  pull_request:
+    branches:
+      - feature/manual-build-dynamic-vars
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
