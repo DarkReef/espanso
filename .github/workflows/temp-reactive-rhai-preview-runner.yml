@@ -1,0 +1,187 @@
+name: Reactive Rhai preview validation
+
+on:
+  push:
+    branches:
+      - feature/reactive-rhai-preview
+    paths:
+      - .github/workflows/temp-reactive-rhai-preview-runner.yml
+  pull_request:
+    branches:
+      - feature/manual-build-dynamic-vars
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reactive-rhai-preview-runner-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-package:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/reactive-rhai-preview
+          fetch-depth: 0
+
+      - name: Extract and apply implementation patch
+        shell: pwsh
+        run: |
+          @'
+          import base64
+          import gzip
+          import pathlib
+          import re
+
+          workflow = pathlib.Path('.github/workflows/temp-reactive-rhai-preview.yml').read_text(encoding='utf-8')
+          match = re.search(r"@'\n(?P<data>[A-Za-z0-9+/=]+)\n'@ \| Set-Content -Path reactive_patch\.b64", workflow)
+          if not match:
+              raise SystemExit('encoded reactive preview patch was not found')
+          pathlib.Path('reactive_patch.py').write_bytes(gzip.decompress(base64.b64decode(match.group('data'))))
+          '@ | Set-Content -Path extract_patch.py -Encoding utf8
+          python extract_patch.py
+          python reactive_patch.py
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-portable
+          cache-on-failure: true
+
+      - name: Format and validate source
+        shell: pwsh
+        run: |
+          cargo fmt --all
+          if ($LASTEXITCODE -ne 0) { throw 'cargo fmt failed' }
+          cargo fmt --all -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'format check failed' }
+          cargo test --locked -p espanso-modulo --lib
+          if ($LASTEXITCODE -ne 0) { throw 'espanso-modulo tests failed' }
+          cargo test --locked -p espanso-render --lib
+          if ($LASTEXITCODE -ne 0) { throw 'espanso-render tests failed' }
+          cargo test --locked -p espanso reactive_preview
+          if ($LASTEXITCODE -ne 0) { throw 'reactive Rhai preview tests failed' }
+          cargo check --locked -p espanso --all-targets
+          if ($LASTEXITCODE -ne 0) { throw 'espanso integration check failed' }
+          cargo test --locked -p espanso-editor --lib
+          if ($LASTEXITCODE -ne 0) { throw 'Match Studio tests failed' }
+          cargo clippy --locked -p espanso-modulo -p espanso-render -p espanso --all-targets -- --deny warnings
+          if ($LASTEXITCODE -ne 0) { throw 'Clippy failed' }
+
+      - name: Build rEspanso core and launcher
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force 'target/build-logs' | Out-Null
+          $log = 'target/build-logs/reactive-rhai-core-build.jsonl'
+          $previousColor = $env:CARGO_TERM_COLOR
+          $env:CARGO_TERM_COLOR = 'never'
+          try {
+            & cargo build --locked --release -p espanso --bin espanso --bin respanso-portable --message-format=json-diagnostic-rendered-ansi *>&1 | Tee-Object -FilePath $log
+            $exitCode = $LASTEXITCODE
+            $messages = @(Get-Content -Path $log)
+            if ($exitCode -ne 0) { throw "Core build failed with exit code $exitCode" }
+            function Get-CargoExecutable([string]$binary) {
+              $paths = foreach ($line in $messages) {
+                try { $message = $line | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+                if ($message.reason -eq 'compiler-artifact' -and $message.target.name -eq $binary -and -not [string]::IsNullOrWhiteSpace([string]$message.executable)) { [string]$message.executable }
+              }
+              $path = @($paths) | Select-Object -Last 1
+              if ([string]::IsNullOrWhiteSpace([string]$path) -or -not (Test-Path $path -PathType Leaf)) { throw "Missing executable $binary" }
+              return (Resolve-Path $path).Path
+            }
+            "EXEC_PATH=$(Get-CargoExecutable 'espanso')" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+            "LAUNCHER_PATH=$(Get-CargoExecutable 'respanso-portable')" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          } finally {
+            $env:CARGO_TERM_COLOR = $previousColor
+          }
+
+      - name: Build Match Studio
+        shell: pwsh
+        run: |
+          $log = 'target/build-logs/reactive-rhai-studio-build.jsonl'
+          $previousColor = $env:CARGO_TERM_COLOR
+          $env:CARGO_TERM_COLOR = 'never'
+          try {
+            & cargo build --locked --release -p espanso-editor --bin espanso-editor --message-format=json-diagnostic-rendered-ansi *>&1 | Tee-Object -FilePath $log
+            if ($LASTEXITCODE -ne 0) { throw 'Studio build failed' }
+            $messages = @(Get-Content -Path $log)
+            $paths = foreach ($line in $messages) {
+              try { $message = $line | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+              if ($message.reason -eq 'compiler-artifact' -and $message.target.name -eq 'espanso-editor' -and -not [string]::IsNullOrWhiteSpace([string]$message.executable)) { [string]$message.executable }
+            }
+            $editorPath = @($paths) | Select-Object -Last 1
+            if ([string]::IsNullOrWhiteSpace([string]$editorPath) -or -not (Test-Path $editorPath -PathType Leaf)) { throw 'Missing Match Studio executable' }
+            "EDITOR_PATH=$((Resolve-Path $editorPath).Path)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          } finally {
+            $env:CARGO_TERM_COLOR = $previousColor
+          }
+
+      - name: Assemble and verify portable archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force 'target/package-logs' | Out-Null
+          & './scripts/build_windows_native_portable_with_studio.ps1' *>&1 | Tee-Object -FilePath 'target/package-logs/reactive-rhai-package.log'
+          $archive = 'target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip'
+          if (-not (Test-Path $archive -PathType Leaf)) { throw 'Portable archive was not created' }
+          $entries = tar -tf $archive
+          if ($LASTEXITCODE -ne 0) { throw 'Portable archive could not be listed' }
+          foreach ($file in @('rEspanso.exe', 'rEspanso-core.exe', 'rEspanso Match Studio.exe')) {
+            if (-not ($entries -match [regex]::Escape($file))) { throw "Archive is missing $file" }
+          }
+          if ($entries -match '\.(bat|cmd)$') { throw 'Archive contains BAT/CMD launchers' }
+          Get-FileHash $archive -Algorithm SHA256 | Format-List | Out-File 'target/windows/reactive-rhai-preview.sha256.txt'
+
+      - name: Commit verified implementation
+        shell: pwsh
+        run: |
+          Remove-Item reactive_patch.py, extract_patch.py -ErrorAction SilentlyContinue
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add espanso-modulo/src/form/config.rs espanso-modulo/src/form/generator.rs espanso-modulo/src/form/mod.rs espanso-modulo/src/sys/form/mod.rs espanso-modulo/src/sys/form/form.cpp espanso-modulo/src/sys/interop/interop.h espanso-modulo/src/sys/interop/mod.rs espanso-render/src/extension/form.rs espanso/src/gui/mod.rs espanso/src/gui/modulo/form.rs espanso/src/cli/worker/engine/process/middleware/render/extension/form.rs espanso/src/cli/modulo/mod.rs espanso/src/cli/modulo/form.rs espanso/src/cli/modulo/reactive_preview.rs docs/respanso/REACTIVE_RHAI_PREVIEW.ru.md docs/respanso/FORM_PREVIEW.ru.md examples/medical-calculators/medical-calculators.yml
+          git diff --cached --check
+          git commit -m 'feat(forms): add reactive Rhai computed previews'
+          git push origin HEAD:feature/reactive-rhai-preview
+
+      - name: Upload portable archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-reactive-rhai-preview
+          path: |
+            target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+            target/windows/reactive-rhai-preview.sha256.txt
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reactive-rhai-preview-failure
+          path: |
+            target/build-logs/
+            target/package-logs/
+            reactive_patch.py
+          if-no-files-found: warn
+          retention-days: 3
