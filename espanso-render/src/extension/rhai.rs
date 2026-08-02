@@ -22,7 +22,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rhai::{Dynamic, Engine, Map, Scope as RhaiScope};
+use rhai::{Dynamic, Engine, Map, Scope as RhaiScope, FLOAT};
 use thiserror::Error;
 
 use crate::{Extension, ExtensionOutput, ExtensionResult, Params, Scope, Value};
@@ -147,6 +147,11 @@ fn create_restricted_engine() -> Engine {
         .set_max_array_size(MAX_ARRAY_SIZE)
         .set_max_map_size(MAX_MAP_SIZE);
 
+    // Rhai's reduced numeric package does not consistently expose floating-point
+    // rounding across all feature combinations used by rEspanso. Register it explicitly
+    // so calculator scripts can safely use both round(value) and value.round().
+    engine.register_fn("round", |value: FLOAT| value.round());
+
     // Dynamic evaluation and module loading are unnecessary for calculator modules and
     // make scripts harder to audit. The standard Rhai engine exposes no filesystem,
     // network or process APIs unless the host explicitly registers them.
@@ -242,6 +247,16 @@ mod tests {
         ]
         .into_iter()
         .collect()
+    }
+
+    #[test]
+    fn restricted_engine_supports_float_rounding() {
+        let engine = create_restricted_engine();
+        let result = engine
+            .eval::<FLOAT>("18.6.round()")
+            .expect("floating-point round should be available");
+
+        assert_eq!(result, 19.0);
     }
 
     #[test]
