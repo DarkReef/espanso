@@ -68,6 +68,14 @@ pub fn resolve_evaluation_order<'a>(
     Ok(ordered_variables)
 }
 
+fn variable_param_dependencies(variable: &Variable) -> HashSet<&str> {
+    if variable.var_type == "form" {
+        super::util::get_form_params_variable_names(&variable.params)
+    } else {
+        super::util::get_params_variable_names(&variable.params)
+    }
+}
+
 fn generate_nodes<'a>(
     body: &'a str,
     local_vars: &'a [&'a Variable],
@@ -77,7 +85,7 @@ fn generate_nodes<'a>(
     for (index, var) in local_vars.iter().enumerate() {
         let mut dependencies = HashSet::new();
         if var.inject_vars {
-            dependencies.extend(super::util::get_params_variable_names(&var.params));
+            dependencies.extend(variable_param_dependencies(var));
         }
         dependencies.extend(var.depends_on.iter().map(String::as_str));
 
@@ -128,7 +136,7 @@ fn create_node_from_var(var: &'_ Variable) -> Node<'_> {
         let mut vars = HashSet::new();
 
         if var.inject_vars {
-            vars.extend(super::util::get_params_variable_names(&var.params));
+            vars.extend(variable_param_dependencies(var));
         }
 
         vars.extend(var.depends_on.iter().map(String::as_str));
@@ -200,4 +208,34 @@ fn resolve_dependencies<'a>(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Params, Value, Variable};
+
+    #[test]
+    fn reactive_form_placeholders_are_not_outer_dependencies() {
+        let mut params = Params::new();
+        params.insert(
+            "preview_layout".to_owned(),
+            Value::String("{{score.text}}".to_owned()),
+        );
+        params.insert("computed".to_owned(), Value::Object(HashMap::new()));
+
+        let form = Variable {
+            name: "clinical_form".to_owned(),
+            var_type: "form".to_owned(),
+            inject_vars: true,
+            params,
+            depends_on: Vec::new(),
+        };
+
+        let local_vars = [&form];
+        let order = resolve_evaluation_order("{{clinical_form.score}}", &local_vars, &[])
+            .expect("reactive placeholders must not be resolved by the outer renderer");
+
+        assert_eq!(order, vec![&form]);
+    }
 }

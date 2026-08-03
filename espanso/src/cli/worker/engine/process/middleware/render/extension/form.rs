@@ -21,11 +21,11 @@ use std::collections::HashMap;
 
 use espanso_render::{
     extension::form::{FormProvider, FormProviderResult},
-    Params, Value,
+    Number, Params, Value,
 };
 use log::error;
 
-use crate::gui::{FormField, FormUI};
+use crate::gui::{FormField, FormOptions, FormUI};
 
 pub struct FormProviderAdapter<'a> {
     form_ui: &'a dyn FormUI,
@@ -46,11 +46,64 @@ impl FormProvider for FormProviderAdapter<'_> {
             .copied()
             .unwrap_or(false);
 
-        match self.form_ui.show(layout, &fields, preview) {
+        let form_options = FormOptions {
+            preview,
+            preview_layout: options
+                .get("preview_layout")
+                .and_then(Value::as_string)
+                .cloned(),
+            preview_mode: options
+                .get("preview_mode")
+                .and_then(Value::as_string)
+                .cloned()
+                .unwrap_or_else(|| "live".to_owned()),
+            preview_debounce_ms: options
+                .get("preview_debounce_ms")
+                .and_then(value_as_usize)
+                .unwrap_or(350),
+            computed: options
+                .get("computed")
+                .map(render_value_to_json)
+                .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new())),
+        };
+
+        match self
+            .form_ui
+            .show_with_options(layout, &fields, &form_options)
+        {
             Ok(Some(results)) => FormProviderResult::Success(results),
             Ok(None) => FormProviderResult::Aborted,
             Err(err) => FormProviderResult::Error(err),
         }
+    }
+}
+
+fn value_as_usize(value: &Value) -> Option<usize> {
+    match value {
+        Value::Number(Number::Integer(value)) => usize::try_from(*value).ok(),
+        Value::Number(Number::Float(value)) if *value >= 0.0 => Some(*value as usize),
+        _ => None,
+    }
+}
+
+fn render_value_to_json(value: &Value) -> serde_json::Value {
+    match value {
+        Value::Null => serde_json::Value::Null,
+        Value::Bool(value) => serde_json::Value::Bool(*value),
+        Value::Number(Number::Integer(value)) => (*value).into(),
+        Value::Number(Number::Float(value)) => serde_json::Number::from_f64(*value)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
+        Value::String(value) => serde_json::Value::String(value.clone()),
+        Value::Array(values) => {
+            serde_json::Value::Array(values.iter().map(render_value_to_json).collect())
+        }
+        Value::Object(values) => serde_json::Value::Object(
+            values
+                .iter()
+                .map(|(name, value)| (name.clone(), render_value_to_json(value)))
+                .collect(),
+        ),
     }
 }
 

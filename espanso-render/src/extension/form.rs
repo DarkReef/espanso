@@ -67,8 +67,16 @@ impl Extension for FormExtension<'_> {
         };
 
         let mut options = Params::new();
-        if let Some(Value::Bool(preview)) = params.get("preview") {
-            options.insert("preview".to_owned(), Value::Bool(*preview));
+        for key in [
+            "preview",
+            "preview_layout",
+            "preview_mode",
+            "preview_debounce_ms",
+            "computed",
+        ] {
+            if let Some(value) = params.get(key) {
+                options.insert(key.to_owned(), value.clone());
+            }
         }
 
         let options = if options.is_empty() {

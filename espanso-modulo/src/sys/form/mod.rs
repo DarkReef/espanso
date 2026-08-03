@@ -24,6 +24,15 @@ use std::os::raw::c_int;
 // Form schema
 
 pub mod types {
+    #[repr(i32)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub enum PreviewMode {
+        Layout = 0,
+        Live = 1,
+        Manual = 2,
+        Submit = 3,
+    }
+
     #[derive(Debug)]
     pub struct Form {
         pub title: String,
@@ -31,6 +40,9 @@ pub mod types {
         pub fields: Vec<Field>,
         pub max_form_width: i32,
         pub max_form_height: i32,
+        pub computed_preview: bool,
+        pub preview_mode: PreviewMode,
+        pub preview_debounce_ms: i32,
     }
 
     #[derive(Debug)]
@@ -154,6 +166,9 @@ mod interop {
                 fieldSize: fields.len() as c_int,
                 maxWindowWidth: max_form_width,
                 maxWindowHeight: max_form_height,
+                computedPreviewEnabled: i32::from(form.computed_preview),
+                previewMode: form.preview_mode as c_int,
+                previewDebounceMs: form.preview_debounce_ms,
             });
 
             Self {
@@ -368,38 +383,152 @@ mod interop {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum PreviewRequest {
+    Live,
+    Manual,
+    Submit,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ComputedPreviewResult {
+    pub text: String,
+    pub values: HashMap<String, String>,
+}
+
+pub trait FormPreviewEvaluator {
+    fn evaluate(
+        &mut self,
+        values: &HashMap<String, String>,
+        request: PreviewRequest,
+    ) -> Result<ComputedPreviewResult, String>;
+}
+
+struct PreviewCallbackState<'a> {
+    evaluator: &'a mut dyn FormPreviewEvaluator,
+    last_text: std::ffi::CString,
+    last_success: Option<ComputedPreviewResult>,
+}
+
+extern "C" fn result_callback(
+    values: *const super::interop::ValuePair,
+    size: c_int,
+    map: *mut std::ffi::c_void,
+) {
+    let values: &[super::interop::ValuePair] =
+        unsafe { std::slice::from_raw_parts(values, size as usize) };
+    let map = map as *mut HashMap<String, String>;
+    let map = unsafe { &mut (*map) };
+    for pair in values {
+        unsafe {
+            let id = CStr::from_ptr(pair.id);
+            let value = CStr::from_ptr(pair.value);
+            map.insert(
+                id.to_string_lossy().to_string(),
+                value.to_string_lossy().to_string(),
+            );
+        }
+    }
+}
+
+extern "C" fn preview_callback(
+    values: *const super::interop::ValuePair,
+    size: c_int,
+    request: c_int,
+    status: *mut c_int,
+    data: *mut std::ffi::c_void,
+) -> *const std::os::raw::c_char {
+    let state = unsafe { &mut *(data as *mut PreviewCallbackState<'_>) };
+    let raw_values: &[super::interop::ValuePair] =
+        unsafe { std::slice::from_raw_parts(values, size as usize) };
+    let mut value_map = HashMap::new();
+    for pair in raw_values {
+        unsafe {
+            value_map.insert(
+                CStr::from_ptr(pair.id).to_string_lossy().to_string(),
+                CStr::from_ptr(pair.value).to_string_lossy().to_string(),
+            );
+        }
+    }
+
+    let request = match request {
+        2 => PreviewRequest::Manual,
+        3 => PreviewRequest::Submit,
+        _ => PreviewRequest::Live,
+    };
+
+    let (code, text) = match state.evaluator.evaluate(&value_map, request) {
+        Ok(result) => {
+            let text = result.text.clone();
+            state.last_success = Some(result);
+            (0, text)
+        }
+        Err(error) => {
+            state.last_success = None;
+            (2, format!("Не удалось рассчитать предпросмотр: {error}"))
+        }
+    };
+
+    if !status.is_null() {
+        unsafe { *status = code };
+    }
+    state.last_text = std::ffi::CString::new(text.replace('\0', " "))
+        .unwrap_or_else(|_| std::ffi::CString::new("Ошибка предпросмотра").unwrap());
+    state.last_text.as_ptr()
+}
+
 pub fn show(form: types::Form) -> HashMap<String, String> {
-    use super::interop::{interop_show_form, FormMetadata, Interoperable, ValuePair};
+    show_internal(form, None)
+}
+
+pub fn show_with_preview(
+    form: types::Form,
+    evaluator: &mut dyn FormPreviewEvaluator,
+) -> HashMap<String, String> {
+    show_internal(form, Some(evaluator))
+}
+
+fn show_internal(
+    form: types::Form,
+    evaluator: Option<&mut dyn FormPreviewEvaluator>,
+) -> HashMap<String, String> {
+    use super::interop::{interop_show_form, FormMetadata, Interoperable};
     use std::os::raw::c_void;
 
     let owned_form: interop::OwnedForm = form.into();
     let metadata: *const FormMetadata = owned_form.as_ptr() as *const FormMetadata;
-
     let mut value_map: HashMap<String, String> = HashMap::new();
 
-    extern "C" fn callback(values: *const ValuePair, size: c_int, map: *mut c_void) {
-        let values: &[ValuePair] = unsafe { std::slice::from_raw_parts(values, size as usize) };
-        let map = map as *mut HashMap<String, String>;
-        let map = unsafe { &mut (*map) };
-        for pair in values {
-            unsafe {
-                let id = CStr::from_ptr(pair.id);
-                let value = CStr::from_ptr(pair.value);
-
-                let id = id.to_string_lossy().to_string();
-                let value = value.to_string_lossy().to_string();
-                map.insert(id, value);
+    if let Some(evaluator) = evaluator {
+        let mut state = PreviewCallbackState {
+            evaluator,
+            last_text: std::ffi::CString::new("").unwrap(),
+            last_success: None,
+        };
+        unsafe {
+            interop_show_form(
+                metadata,
+                result_callback,
+                std::ptr::from_mut::<HashMap<String, String>>(&mut value_map) as *mut c_void,
+                Some(preview_callback),
+                std::ptr::from_mut::<PreviewCallbackState<'_>>(&mut state) as *mut c_void,
+            );
+        }
+        if !value_map.is_empty() {
+            if let Some(result) = state.last_success.take() {
+                value_map.extend(result.values);
             }
         }
-    }
-
-    unsafe {
-        // TODO: Nested rows should fail, add check
-        interop_show_form(
-            metadata,
-            callback,
-            std::ptr::from_mut::<HashMap<String, String>>(&mut value_map) as *mut c_void,
-        );
+    } else {
+        unsafe {
+            interop_show_form(
+                metadata,
+                result_callback,
+                std::ptr::from_mut::<HashMap<String, String>>(&mut value_map) as *mut c_void,
+                None,
+                std::ptr::null_mut(),
+            );
+        }
     }
 
     value_map
