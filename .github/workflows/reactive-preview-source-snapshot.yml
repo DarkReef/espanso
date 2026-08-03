@@ -73,10 +73,15 @@ jobs:
             espanso-modulo/src/sys/form/mod.rs
             espanso-modulo/src/sys/form/form.cpp
             espanso-modulo/src/sys/interop/interop.h
-            espanso/src/cli/modulo/reactive_preview.rs
+            espanso-modulo/src/sys/interop/mod.rs
+            espanso/src/cli/modulo/mod.rs
             espanso/src/cli/modulo/form.rs
+            espanso/src/cli/modulo/reactive_preview.rs
+            espanso/src/cli/worker/engine/process/middleware/render/extension/form.rs
+            espanso/src/gui/mod.rs
             espanso/src/gui/modulo/form.rs
             docs/respanso/REACTIVE_RHAI_PREVIEW.ru.md
+            docs/respanso/FORM_PREVIEW.ru.md
             examples/medical-calculators/medical-calculators.yml
           if-no-files-found: error
           retention-days: 7
