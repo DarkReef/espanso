@@ -119,6 +119,19 @@ pub fn inject_variables_into_params(params: &Params, scope: &Scope) -> Result<Pa
     Ok(params)
 }
 
+/// Inject ordinary variables into form parameters while preserving placeholders
+/// owned by the reactive form engine.
+pub fn inject_form_variables_into_params(params: &Params, scope: &Scope) -> Result<Params> {
+    let mut params = params.clone();
+    for (name, value) in &mut params {
+        if name == "preview_layout" || name == "computed" {
+            continue;
+        }
+        inject_variables_into_value(value, scope)?;
+    }
+    Ok(params)
+}
+
 fn inject_variables_into_value(value: &mut Value, scope: &Scope) -> Result<()> {
     match value {
         Value::String(s_value) => {
@@ -204,5 +217,31 @@ mod tests {
         assert!(
             matches!(result.get("field4").unwrap(), Value::Object(fields) if fields.get("subfield1").unwrap() == &Value::String("also contains one".to_string()))
         );
+    }
+
+    #[test]
+    fn form_injection_preserves_reactive_placeholders_and_utf8() {
+        let mut params = Params::new();
+        params.insert(
+            "title".to_owned(),
+            Value::String("Результат {{external}}".to_owned()),
+        );
+        params.insert(
+            "preview_layout".to_owned(),
+            Value::String("{{score.text}}".to_owned()),
+        );
+        params.insert("computed".to_owned(), Value::Object(HashMap::new()));
+        let mut scope = Scope::new();
+        scope.insert("external", ExtensionOutput::Single("готов".to_owned()));
+        let result = inject_form_variables_into_params(&params, &scope).unwrap();
+        assert_eq!(
+            result.get("title"),
+            Some(&Value::String("Результат готов".to_owned()))
+        );
+        assert_eq!(
+            result.get("preview_layout"),
+            Some(&Value::String("{{score.text}}".to_owned()))
+        );
+        assert_eq!(result.get("computed"), params.get("computed"));
     }
 }

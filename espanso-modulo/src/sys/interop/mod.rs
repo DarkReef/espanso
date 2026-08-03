@@ -79,6 +79,9 @@ pub struct FormMetadata {
     pub fieldSize: ::std::os::raw::c_int,
     pub maxWindowWidth: ::std::os::raw::c_int,
     pub maxWindowHeight: ::std::os::raw::c_int,
+    pub computedPreviewEnabled: ::std::os::raw::c_int,
+    pub previewMode: ::std::os::raw::c_int,
+    pub previewDebounceMs: ::std::os::raw::c_int,
 }
 
 #[repr(C)]
@@ -205,6 +208,16 @@ extern "C" {
         metadata: *const FormMetadata,
         callback: extern "C" fn(values: *const ValuePair, size: c_int, map: *mut c_void),
         map: *mut c_void,
+        preview_callback: Option<
+            extern "C" fn(
+                values: *const ValuePair,
+                size: c_int,
+                request: c_int,
+                status: *mut c_int,
+                data: *mut c_void,
+            ) -> *const c_char,
+        >,
+        preview_data: *mut c_void,
     );
 
     // SEARCH

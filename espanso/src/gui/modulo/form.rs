@@ -22,7 +22,7 @@ use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-use crate::gui::{FormField, FormUI};
+use crate::gui::{FormField, FormOptions, FormUI};
 
 use super::manager::ModuloManager;
 
@@ -56,11 +56,24 @@ impl FormUI for ModuloFormUI<'_> {
         fields: &HashMap<String, FormField>,
         preview: bool,
     ) -> anyhow::Result<Option<HashMap<String, String>>> {
+        self.show_with_options(layout, fields, &FormOptions::preview_only(preview))
+    }
+
+    fn show_with_options(
+        &self,
+        layout: &str,
+        fields: &HashMap<String, FormField>,
+        options: &FormOptions,
+    ) -> anyhow::Result<Option<HashMap<String, String>>> {
         let modulo_form_config = ModuloFormConfig {
-            title: "rrEspanso",
+            title: "rEspanso",
             layout,
             fields: convert_fields_into_object(fields),
-            preview,
+            preview: options.preview,
+            preview_layout: options.preview_layout.as_deref(),
+            preview_mode: &options.preview_mode,
+            preview_debounce_ms: options.preview_debounce_ms,
+            computed: &options.computed,
             max_form_width: self.option_provider.get_max_form_width(),
             max_form_height: self.option_provider.get_max_form_height(),
         };
@@ -98,6 +111,10 @@ struct ModuloFormConfig<'a> {
     layout: &'a str,
     fields: Map<String, Value>,
     preview: bool,
+    preview_layout: Option<&'a str>,
+    preview_mode: &'a str,
+    preview_debounce_ms: usize,
+    computed: &'a serde_json::Value,
     max_form_width: usize,
     max_form_height: usize,
 }

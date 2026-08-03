@@ -20,7 +20,8 @@
 use super::config::{FieldConfig, FieldTypeConfig, FormConfig};
 use super::parser::layout::Token;
 use crate::sys::form::types::{
-    ChoiceMetadata, ChoiceType, Field, FieldType, Form, LabelMetadata, RowMetadata, TextMetadata,
+    ChoiceMetadata, ChoiceType, Field, FieldType, Form, LabelMetadata, PreviewMode, RowMetadata,
+    TextMetadata,
 };
 use std::collections::HashMap;
 
@@ -72,6 +73,17 @@ fn create_field(token: &Token, field_map: &HashMap<String, FieldConfig>) -> Fiel
 }
 
 fn build_form(form: FormConfig, structure: Vec<Vec<Token>>) -> Form {
+    let computed_preview = !form.computed.is_empty();
+    let preview_mode = if computed_preview {
+        match form.preview_mode.trim().to_ascii_lowercase().as_str() {
+            "manual" => PreviewMode::Manual,
+            "submit" => PreviewMode::Submit,
+            _ => PreviewMode::Live,
+        }
+    } else {
+        PreviewMode::Layout
+    };
+    let preview_debounce_ms = form.preview_debounce_ms.clamp(50, 5_000) as i32;
     let field_map = form.fields;
     let mut fields = Vec::new();
 
@@ -112,6 +124,9 @@ fn build_form(form: FormConfig, structure: Vec<Vec<Token>>) -> Form {
         fields,
         max_form_width: form.max_form_width,
         max_form_height: form.max_form_height,
+        computed_preview,
+        preview_mode,
+        preview_debounce_ms,
     }
 }
 
@@ -126,6 +141,10 @@ mod tests {
             layout: "Result: [[value]]".to_owned(),
             fields: HashMap::new(),
             preview,
+            preview_layout: None,
+            preview_mode: "live".to_owned(),
+            preview_debounce_ms: 350,
+            computed: HashMap::new(),
             max_form_width: 700,
             max_form_height: 500,
         }

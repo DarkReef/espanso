@@ -13,6 +13,27 @@ matches:
       - name: score2_inputs
         type: form
         params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 350
+          preview_layout: |
+            {{score2_preview}}
+          computed:
+            score2_preview:
+              type: rhai
+              path: "%CONFIG%/medical-calculators/modules/score2.rhai"
+              function: "calculate"
+              depends_on:
+                - age
+                - sex
+                - region
+                - current_smoker
+                - sbp
+                - total_cholesterol
+                - hdl_cholesterol
+                - established_cvd
+                - diabetes
+                - special_high_risk
           layout: |
             SCORE2: 10-летний риск фатального и нефатального СС-события
 

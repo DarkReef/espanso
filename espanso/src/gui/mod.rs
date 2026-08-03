@@ -36,6 +36,36 @@ pub struct SearchItem {
     pub is_builtin: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct FormOptions {
+    pub preview: bool,
+    pub preview_layout: Option<String>,
+    pub preview_mode: String,
+    pub preview_debounce_ms: usize,
+    pub computed: serde_json::Value,
+}
+
+impl Default for FormOptions {
+    fn default() -> Self {
+        Self {
+            preview: false,
+            preview_layout: None,
+            preview_mode: "live".to_owned(),
+            preview_debounce_ms: 350,
+            computed: serde_json::Value::Object(serde_json::Map::new()),
+        }
+    }
+}
+
+impl FormOptions {
+    pub fn preview_only(preview: bool) -> Self {
+        Self {
+            preview,
+            ..Default::default()
+        }
+    }
+}
+
 pub trait FormUI {
     fn show(
         &self,
@@ -43,6 +73,15 @@ pub trait FormUI {
         fields: &HashMap<String, FormField>,
         preview: bool,
     ) -> Result<Option<HashMap<String, String>>>;
+
+    fn show_with_options(
+        &self,
+        layout: &str,
+        fields: &HashMap<String, FormField>,
+        options: &FormOptions,
+    ) -> Result<Option<HashMap<String, String>>> {
+        self.show(layout, fields, options.preview)
+    }
 }
 
 #[derive(Debug)]

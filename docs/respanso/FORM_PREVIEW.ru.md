@@ -46,3 +46,8 @@
       type: text
       default: "5"
 ```
+
+
+## Rhai-расчёты
+
+Динамические вычисляемые значения и режимы `live`, `manual`, `submit` описаны в `REACTIVE_RHAI_PREVIEW.ru.md`.

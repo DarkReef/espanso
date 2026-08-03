@@ -67,6 +67,9 @@ typedef struct FormMetadata {
     const int fieldSize;
     const int maxWindowWidth;
     const int maxWindowHeight;
+    const int computedPreviewEnabled;
+    const int previewMode;
+    const int previewDebounceMs;
 } FormMetadata;
 
 typedef struct ValuePair {

@@ -36,6 +36,26 @@ fn default_preview() -> bool {
     false
 }
 
+fn default_preview_mode() -> String {
+    "live".to_owned()
+}
+
+fn default_preview_debounce_ms() -> u64 {
+    350
+}
+
+fn default_computed() -> HashMap<String, ComputedConfig> {
+    HashMap::new()
+}
+
+fn default_computed_type() -> String {
+    "rhai".to_owned()
+}
+
+fn default_computed_function() -> String {
+    "calculate".to_owned()
+}
+
 fn default_max_form_width() -> i32 {
     700
 }
@@ -60,11 +80,37 @@ pub struct FormConfig {
     #[serde(default = "default_preview")]
     pub preview: bool,
 
+    #[serde(default)]
+    pub preview_layout: Option<String>,
+
+    #[serde(default = "default_preview_mode")]
+    pub preview_mode: String,
+
+    #[serde(default = "default_preview_debounce_ms")]
+    pub preview_debounce_ms: u64,
+
+    #[serde(default = "default_computed")]
+    pub computed: HashMap<String, ComputedConfig>,
+
     #[serde(default = "default_max_form_width")]
     pub max_form_width: i32,
 
     #[serde(default = "default_max_form_height")]
     pub max_form_height: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ComputedConfig {
+    #[serde(rename = "type", default = "default_computed_type")]
+    pub computed_type: String,
+
+    pub path: String,
+
+    #[serde(default = "default_computed_function")]
+    pub function: String,
+
+    #[serde(default)]
+    pub depends_on: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
