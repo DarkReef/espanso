@@ -1,4 +1,4 @@
-name: Diagnose reactive preview native YAML and UTF-8
+name: Build native reactive preview with clean YAML and UTF-8
 
 on:
   pull_request:
@@ -8,22 +8,22 @@ on:
       - .github/workflows/reactive-preview-native-yaml-utf8.yml
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: reactive-preview-native-yaml-utf8-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  extract-and-test:
+  build-test-commit:
     runs-on: windows-2022
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
-      - name: Checkout source
+      - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
-          ref: feature/reactive-rhai-preview
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - name: Extract generated reactive implementation
@@ -63,35 +63,66 @@ jobs:
           python extract_reactive_patch.py
           python reactive_patch.py
 
-      - name: Apply native YAML renderer fix
+      - name: Apply engine-level YAML and UTF-8 fixes
         shell: pwsh
         run: |
           @'
           from pathlib import Path
 
-          renderer = Path("espanso-render/src/renderer/mod.rs")
-          text = renderer.read_text(encoding="utf-8")
-          old_import = "use self::util::{inject_variables_into_params, render_variables};"
-          new_import = "use self::util::{\n    inject_form_variables_into_params, inject_variables_into_params, render_variables,\n};"
-          if old_import not in text:
-              raise SystemExit("renderer import anchor was not found")
-          text = text.replace(old_import, new_import, 1)
+          def replace_once(path, old, new, label):
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"{label}: expected one anchor, found {text.count(old)}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
 
-          old_call = """            let variable_params = if variable.inject_vars {\n                match inject_variables_into_params(&variable.params, &scope) {"""
-          new_call = """            let variable_params = if variable.inject_vars {\n                let injected_params = if variable.var_type == \"form\" {\n                    inject_form_variables_into_params(&variable.params, &scope)\n                } else {\n                    inject_variables_into_params(&variable.params, &scope)\n                };\n\n                match injected_params {"""
-          if old_call not in text:
-              raise SystemExit("renderer injection anchor was not found")
-          renderer.write_text(text.replace(old_call, new_call, 1), encoding="utf-8", newline="\n")
+          replace_once(
+              "espanso-render/src/renderer/mod.rs",
+              "use self::util::{inject_variables_into_params, render_variables};",
+              "use self::util::{\n    inject_form_variables_into_params, inject_variables_into_params, render_variables,\n};",
+              "renderer import",
+          )
+
+          replace_once(
+              "espanso-render/src/renderer/mod.rs",
+              """                    let variable_params = if variable.inject_vars {\n                        match inject_variables_into_params(&variable.params, &scope) {""",
+              """                    let variable_params = if variable.inject_vars {\n                        let injected_params = if variable.var_type == \"form\" {\n                            inject_form_variables_into_params(&variable.params, &scope)\n                        } else {\n                            inject_variables_into_params(&variable.params, &scope)\n                        };\n\n                        match injected_params {""",
+              "renderer form injection",
+          )
 
           util = Path("espanso-render/src/renderer/util.rs")
           text = util.read_text(encoding="utf-8")
-          anchor = """pub fn inject_variables_into_params(params: &Params, scope: &Scope) -> Result<Params> {\n    let mut params = params.clone();\n\n    for value in &mut params.values_mut() {\n        inject_variables_into_value(value, scope)?;\n    }\n\n    Ok(params)\n}\n"""
-          addition = anchor + """\n/// Inject ordinary renderer variables into form parameters while preserving\n/// placeholders owned by the reactive form engine.\n///\n/// `preview_layout` and `computed` are evaluated only after the form exists and\n/// its controls have values. Resolving them in the outer renderer would make a\n/// clean YAML placeholder such as `{{score}}` fail before the form opens.\npub fn inject_form_variables_into_params(params: &Params, scope: &Scope) -> Result<Params> {\n    let mut params = params.clone();\n\n    for (name, value) in &mut params {\n        if name == \"preview_layout\" || name == \"computed\" {\n            continue;\n        }\n        inject_variables_into_value(value, scope)?;\n    }\n\n    Ok(params)\n}\n"""
-          if anchor not in text:
-              raise SystemExit("renderer util anchor was not found")
-          util.write_text(text.replace(anchor, addition, 1), encoding="utf-8", newline="\n")
-          '@ | Set-Content -Path apply_native_yaml_fix.py -Encoding utf8
-          python apply_native_yaml_fix.py
+          helper_anchor = """pub fn inject_variables_into_params(params: &Params, scope: &Scope) -> Result<Params> {\n    let mut params = params.clone();\n\n    for value in &mut params.values_mut() {\n        inject_variables_into_value(value, scope)?;\n    }\n\n    Ok(params)\n}\n"""
+          helper = helper_anchor + """\n/// Inject ordinary variables into form parameters while preserving placeholders\n/// owned by the reactive form engine.\n///\n/// `preview_layout` and `computed` are evaluated only after the form controls\n/// exist. Resolving them in the outer renderer would make a clean YAML\n/// placeholder such as `{{score.text}}` fail before the form opens.\npub fn inject_form_variables_into_params(params: &Params, scope: &Scope) -> Result<Params> {\n    let mut params = params.clone();\n\n    for (name, value) in &mut params {\n        if name == \"preview_layout\" || name == \"computed\" {\n            continue;\n        }\n        inject_variables_into_value(value, scope)?;\n    }\n\n    Ok(params)\n}\n"""
+          if text.count(helper_anchor) != 1:
+              raise SystemExit("form injection helper anchor was not found exactly once")
+          text = text.replace(helper_anchor, helper, 1)
+
+          test = """\n\n    #[test]\n    fn form_injection_preserves_reactive_placeholders_and_utf8() {\n        let mut params = Params::new();\n        params.insert(\n            \"title\".to_owned(),\n            Value::String(\"Результат {{external}}\".to_owned()),\n        );\n        params.insert(\n            \"preview_layout\".to_owned(),\n            Value::String(\"{{score.text}}\".to_owned()),\n        );\n        params.insert(\n            \"computed\".to_owned(),\n            Value::Object(HashMap::from_iter([(\n                \"score\".to_owned(),\n                Value::Object(HashMap::from_iter([(\n                    \"path\".to_owned(),\n                    Value::String(\"%CONFIG%/scripts/score.rhai\".to_owned()),\n                )])),\n            )])),\n        );\n\n        let mut scope = Scope::new();\n        scope.insert(\"external\", ExtensionOutput::Single(\"готов\".to_owned()));\n\n        let result = inject_form_variables_into_params(&params, &scope).unwrap();\n        assert_eq!(\n            result.get(\"title\"),\n            Some(&Value::String(\"Результат готов\".to_owned()))\n        );\n        assert_eq!(\n            result.get(\"preview_layout\"),\n            Some(&Value::String(\"{{score.text}}\".to_owned()))\n        );\n        assert_eq!(result.get(\"computed\"), params.get(\"computed\"));\n    }\n"""
+          end = text.rfind("\n}")
+          if end < 0:
+              raise SystemExit("renderer util test module closing brace was not found")
+          text = text[:end] + test + text[end:]
+          util.write_text(text, encoding="utf-8", newline="\n")
+
+          replace_once(
+              "espanso-modulo/build.rs",
+              """        .flag(\"/EHsc\")\n        .include(wx_include_dir)""",
+              """        .flag(\"/EHsc\")\n        .flag(\"/utf-8\")\n        .include(wx_include_dir)""",
+              "MSVC UTF-8 compiler flag",
+          )
+
+          # The repository examples and docs must demonstrate normal YAML, never escaped braces.
+          for path in [
+              Path("docs/respanso/REACTIVE_RHAI_PREVIEW.ru.md"),
+              Path("docs/respanso/FORM_PREVIEW.ru.md"),
+              Path("examples/medical-calculators/medical-calculators.yml"),
+          ]:
+              text = path.read_text(encoding="utf-8")
+              text = text.replace(r"\{\{", "{{").replace(r"\}\}", "}}")
+              path.write_text(text, encoding="utf-8", newline="\n")
+          '@ | Set-Content -Path apply_engine_fixes.py -Encoding utf8
+          python apply_engine_fixes.py
 
       - name: Set up MSVC x64
         uses: ilammy/msvc-dev-cmd@v1
@@ -102,28 +133,77 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
-          components: rustfmt
+          components: rustfmt, clippy
 
-      - name: Format and test renderer
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: reactive-preview-native-yaml-utf8
+          cache-on-failure: true
+
+      - name: Format and validate
+        shell: pwsh
         run: |
           cargo fmt --all
+          cargo fmt --all -- --check
           cargo test --locked -p espanso-render --lib
+          cargo test --locked -p espanso-modulo --lib
+          cargo test --locked -p espanso reactive_preview
+          cargo check --locked -p espanso --all-targets
 
-      - name: Upload generated reactive sources
+      - name: Build release binaries
+        shell: pwsh
+        run: |
+          cargo build --locked --release -p espanso --bin espanso --bin respanso-portable
+          cargo build --locked --release -p espanso-editor --bin espanso-editor
+          "EXEC_PATH=$((Resolve-Path 'target/release/espanso.exe').Path)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "LAUNCHER_PATH=$((Resolve-Path 'target/release/respanso-portable.exe').Path)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "EDITOR_PATH=$((Resolve-Path 'target/release/espanso-editor.exe').Path)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Assemble portable package
+        shell: pwsh
+        run: |
+          & "./scripts/build_windows_native_portable_with_studio.ps1"
+          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+          if (-not (Test-Path $archive -PathType Leaf)) {
+            throw "Portable archive was not created"
+          }
+          Get-FileHash $archive -Algorithm SHA256 | Format-List | Out-File "target/windows/reactive-preview-native-yaml-utf8.sha256.txt"
+
+      - name: Commit verified implementation sources
+        shell: pwsh
+        run: |
+          Remove-Item reactive_patch.py, extract_reactive_patch.py, apply_engine_fixes.py -ErrorAction SilentlyContinue
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add espanso-modulo/build.rs espanso-modulo/src/form espanso-modulo/src/sys/form espanso-modulo/src/sys/interop/interop.h espanso-modulo/src/sys/interop/mod.rs espanso-render/src/extension/form.rs espanso-render/src/renderer/mod.rs espanso-render/src/renderer/util.rs espanso/src/cli/modulo espanso/src/cli/worker/engine/process/middleware/render/extension/form.rs espanso/src/gui/mod.rs espanso/src/gui/modulo/form.rs docs/respanso/REACTIVE_RHAI_PREVIEW.ru.md docs/respanso/FORM_PREVIEW.ru.md examples/medical-calculators/medical-calculators.yml
+          git diff --cached --check
+          git commit -m "fix(forms): preserve reactive YAML and compile Windows UI as UTF-8"
+          git push origin HEAD:${{ github.head_ref }}
+
+      - name: Upload verified portable
         uses: actions/upload-artifact@v4
         with:
-          name: reactive-preview-generated-sources
+          name: rEspanso-Windows-x64-reactive-preview-native-yaml-utf8
           path: |
+            target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+            target/windows/reactive-preview-native-yaml-utf8.sha256.txt
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reactive-preview-native-yaml-utf8-failure
+          path: |
+            apply_engine_fixes.py
             espanso-render/src/renderer/mod.rs
             espanso-render/src/renderer/util.rs
-            espanso-render/src/extension/form.rs
-            espanso-modulo/src/form/config.rs
-            espanso-modulo/src/form/generator.rs
+            espanso-modulo/build.rs
             espanso-modulo/src/sys/form/form.cpp
+            espanso-modulo/src/sys/form/mod.rs
             espanso/src/cli/modulo/reactive_preview.rs
-            espanso/src/cli/modulo/form.rs
-            espanso/src/gui/modulo/form.rs
-            docs/respanso/REACTIVE_RHAI_PREVIEW.ru.md
-            examples/medical-calculators/medical-calculators.yml
-          if-no-files-found: error
-          retention-days: 7
+          if-no-files-found: warn
+          retention-days: 5
