@@ -69,7 +69,10 @@ jobs:
             espanso-render/src/extension/form.rs
             espanso-modulo/src/form/config.rs
             espanso-modulo/src/form/generator.rs
+            espanso-modulo/src/form/mod.rs
+            espanso-modulo/src/sys/form/mod.rs
             espanso-modulo/src/sys/form/form.cpp
+            espanso-modulo/src/sys/interop/interop.h
             espanso/src/cli/modulo/reactive_preview.rs
             espanso/src/cli/modulo/form.rs
             espanso/src/gui/modulo/form.rs
