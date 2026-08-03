@@ -232,12 +232,8 @@ mod tests {
             depends_on: Vec::new(),
         };
 
-        let order = resolve_evaluation_order(
-            "{{clinical_form.score}}",
-            &[&form],
-            &[],
-        )
-        .expect("reactive placeholders must not be resolved by the outer renderer");
+        let order = resolve_evaluation_order("{{clinical_form.score}}", &[&form], &[])
+            .expect("reactive placeholders must not be resolved by the outer renderer");
 
         assert_eq!(order, vec![&form]);
     }
