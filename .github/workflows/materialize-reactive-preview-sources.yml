@@ -1,0 +1,133 @@
+name: Materialize reactive preview sources
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+    paths:
+      - .github/workflows/materialize-reactive-preview-sources.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: windows-2022
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Extract reactive implementation
+        shell: pwsh
+        run: |
+          @'
+          import base64
+          import gzip
+          from pathlib import Path
+          import re
+          import subprocess
+
+          source = subprocess.check_output(
+              ["git", "show", "1eca9078c69c3254d8488a16d5737b175ea56b8e:.github/workflows/temp-reactive-rhai-preview.yml"],
+              text=True,
+              encoding="utf-8",
+          )
+          match = re.search(
+              r"@'\n(?P<data>[A-Za-z0-9+/=]+)\n'@ \| Set-Content -Path reactive_patch\.b64",
+              source,
+          )
+          if not match:
+              raise SystemExit("encoded reactive preview patch was not found")
+          patch = gzip.decompress(base64.b64decode(match.group("data"))).decode("utf-8")
+          patch = patch.replace(
+              "updated, count = re.subn(pattern, replacement, text, count=1, flags=flags)",
+              "updated, count = re.subn(pattern, lambda _match: replacement, text, count=1, flags=flags)",
+              1,
+          )
+          Path("reactive_patch.py").write_text(patch, encoding="utf-8", newline="\n")
+          '@ | Set-Content -Path extract_reactive_patch.py -Encoding utf8
+          python extract_reactive_patch.py
+          python reactive_patch.py
+
+      - name: Apply clean YAML and UTF-8 fixes
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              path = Path(path)
+              text = path.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"anchor mismatch in {path}: {text.count(old)}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
+
+          replace_once(
+              "espanso-render/src/renderer/mod.rs",
+              "use self::util::{inject_variables_into_params, render_variables};",
+              "use self::util::{\n    inject_form_variables_into_params, inject_variables_into_params, render_variables,\n};",
+          )
+          replace_once(
+              "espanso-render/src/renderer/mod.rs",
+              """                    let variable_params = if variable.inject_vars {\n                        match inject_variables_into_params(&variable.params, &scope) {""",
+              """                    let variable_params = if variable.inject_vars {\n                        let injected_params = if variable.var_type == \"form\" {\n                            inject_form_variables_into_params(&variable.params, &scope)\n                        } else {\n                            inject_variables_into_params(&variable.params, &scope)\n                        };\n\n                        match injected_params {""",
+          )
+
+          util = Path("espanso-render/src/renderer/util.rs")
+          text = util.read_text(encoding="utf-8")
+          anchor = """pub fn inject_variables_into_params(params: &Params, scope: &Scope) -> Result<Params> {\n    let mut params = params.clone();\n\n    for value in &mut params.values_mut() {\n        inject_variables_into_value(value, scope)?;\n    }\n\n    Ok(params)\n}\n"""
+          helper = anchor + """\n/// Inject ordinary variables into form parameters while preserving placeholders\n/// owned by the reactive form engine.\npub fn inject_form_variables_into_params(params: &Params, scope: &Scope) -> Result<Params> {\n    let mut params = params.clone();\n    for (name, value) in &mut params {\n        if name == \"preview_layout\" || name == \"computed\" {\n            continue;\n        }\n        inject_variables_into_value(value, scope)?;\n    }\n    Ok(params)\n}\n"""
+          if text.count(anchor) != 1:
+              raise SystemExit("form params helper anchor mismatch")
+          text = text.replace(anchor, helper, 1)
+          test = """\n\n    #[test]\n    fn form_injection_preserves_reactive_placeholders_and_utf8() {\n        let mut params = Params::new();\n        params.insert(\"title\".to_owned(), Value::String(\"Результат {{external}}\".to_owned()));\n        params.insert(\"preview_layout\".to_owned(), Value::String(\"{{score.text}}\".to_owned()));\n        params.insert(\"computed\".to_owned(), Value::Object(HashMap::new()));\n        let mut scope = Scope::new();\n        scope.insert(\"external\", ExtensionOutput::Single(\"готов\".to_owned()));\n        let result = inject_form_variables_into_params(&params, &scope).unwrap();\n        assert_eq!(result.get(\"title\"), Some(&Value::String(\"Результат готов\".to_owned())));\n        assert_eq!(result.get(\"preview_layout\"), Some(&Value::String(\"{{score.text}}\".to_owned())));\n        assert_eq!(result.get(\"computed\"), params.get(\"computed\"));\n    }\n"""
+          end = text.rfind("\n}")
+          text = text[:end] + test + text[end:]
+          util.write_text(text, encoding="utf-8", newline="\n")
+
+          replace_once(
+              "espanso-modulo/build.rs",
+              """        .flag(\"/EHsc\")\n        .include(wx_include_dir)""",
+              """        .flag(\"/EHsc\")\n        .flag(\"/utf-8\")\n        .include(wx_include_dir)""",
+          )
+
+          for path in [
+              Path("docs/respanso/REACTIVE_RHAI_PREVIEW.ru.md"),
+              Path("docs/respanso/FORM_PREVIEW.ru.md"),
+              Path("examples/medical-calculators/medical-calculators.yml"),
+          ]:
+              text = path.read_text(encoding="utf-8")
+              path.write_text(
+                  text.replace(r"\{\{", "{{").replace(r"\}\}", "}}"),
+                  encoding="utf-8",
+                  newline="\n",
+              )
+          '@ | Set-Content -Path apply_source_fixes.py -Encoding utf8
+          python apply_source_fixes.py
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Test renderer
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo test --locked -p espanso-render --lib
+
+      - name: Commit materialized sources
+        shell: pwsh
+        run: |
+          Remove-Item reactive_patch.py, extract_reactive_patch.py, apply_source_fixes.py -ErrorAction SilentlyContinue
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add espanso-modulo/build.rs espanso-modulo/src/form espanso-modulo/src/sys/form espanso-modulo/src/sys/interop/interop.h espanso-modulo/src/sys/interop/mod.rs espanso-render/src/extension/form.rs espanso-render/src/renderer/mod.rs espanso-render/src/renderer/util.rs espanso/src/cli/modulo espanso/src/cli/worker/engine/process/middleware/render/extension/form.rs espanso/src/gui/mod.rs espanso/src/gui/modulo/form.rs docs/respanso/REACTIVE_RHAI_PREVIEW.ru.md docs/respanso/FORM_PREVIEW.ru.md examples/medical-calculators/medical-calculators.yml
+          git diff --cached --check
+          git commit -m "fix(forms): materialize reactive preview with clean YAML and UTF-8"
+          git push origin HEAD:${{ github.head_ref }}
