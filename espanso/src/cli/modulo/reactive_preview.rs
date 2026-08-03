@@ -185,13 +185,13 @@ fn resolve_order(
 ) -> Result<Vec<(String, ComputedConfig)>> {
     let mut remaining: Vec<String> = computed.keys().cloned().collect();
     remaining.sort();
-    let mut resolved = Vec::new();
+    let mut resolved: Vec<(String, ComputedConfig)> = Vec::new();
 
     while !remaining.is_empty() {
         let resolved_names: std::collections::HashSet<&str> =
             resolved.iter().map(|(name, _)| name.as_str()).collect();
         let next = remaining.iter().position(|name| {
-            computed[*name].depends_on.iter().all(|dependency| {
+            computed[name].depends_on.iter().all(|dependency| {
                 !computed.contains_key(dependency) || resolved_names.contains(dependency.as_str())
             })
         });
