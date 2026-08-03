@@ -45,6 +45,25 @@ pub fn get_params_variable_names(params: &Params) -> HashSet<&str> {
     names
 }
 
+/// Return dependencies that belong to the outer renderer for a form variable.
+///
+/// `preview_layout` and `computed` are evaluated by the reactive form engine
+/// after controls exist. Their placeholders must not enter the outer dependency
+/// graph, otherwise a clean `{{score.text}}` is treated as a missing Espanso
+/// variable before the form opens.
+pub fn get_form_params_variable_names(params: &Params) -> HashSet<&str> {
+    let mut names = HashSet::new();
+
+    for (name, value) in params {
+        if name == "preview_layout" || name == "computed" {
+            continue;
+        }
+        names.extend(get_value_variable_names_recursively(value));
+    }
+
+    names
+}
+
 fn get_value_variable_names_recursively(value: &Value) -> HashSet<&str> {
     match value {
         Value::String(s_value) => get_body_variable_names(s_value),
@@ -176,6 +195,31 @@ mod tests {
         assert_eq!(
             get_body_variable_names("hello {{world}} name {{greet}}"),
             HashSet::from_iter(vec!["world", "greet"]),
+        );
+    }
+
+    #[test]
+    fn form_dependency_scan_ignores_reactive_placeholders() {
+        let mut params = Params::new();
+        params.insert(
+            "title".to_owned(),
+            Value::String("Результат {{external}}".to_owned()),
+        );
+        params.insert(
+            "preview_layout".to_owned(),
+            Value::String("{{score.text}}".to_owned()),
+        );
+        params.insert(
+            "computed".to_owned(),
+            Value::Object(HashMap::from_iter([(
+                "score".to_owned(),
+                Value::String("{{internal}}".to_owned()),
+            )])),
+        );
+
+        assert_eq!(
+            get_form_params_variable_names(&params),
+            HashSet::from_iter(vec!["external"])
         );
     }
 
