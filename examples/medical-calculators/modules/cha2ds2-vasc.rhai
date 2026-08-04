@@ -1,14 +1,26 @@
 // CHA2DS2-VASc (classic) and CHA2DS2-VA (ESC 2024) for clinical atrial fibrillation.
-// Module version: 1.0.0 (2026-07-26).
+// Module version: 1.1.0 (2026-08-04). Reactive-preview result contract.
 
 fn point(value) {
     if value == "Да" { 1 } else { 0 }
 }
 
+fn fail(message) {
+    #{
+        status: "error",
+        value: "",
+        text: message
+    }
+}
+
 fn calculate(input) {
+    if input.age.trim() == "" {
+        return fail("Укажите возраст пациента.");
+    }
+
     let age = parse_int(input.age);
     if age < 18 || age > 120 {
-        return `CHA₂DS₂-VASc не рассчитан.\n\nПроверьте возраст пациента.`;
+        return fail("CHA₂DS₂-VASc не рассчитан.\n\nПроверьте возраст пациента.");
     }
 
     let heart_failure = point(input.heart_failure);
@@ -41,5 +53,13 @@ fn calculate(input) {
     if sex_points == 1 { components += "Sc — женский пол: 1 только в классическом CHA₂DS₂-VASc;\n"; }
     if components == "" { components = "Балльных факторов не отмечено.\n"; }
 
-    `CHA₂DS₂-VASc: ${score_vasc} из 9\nCHA₂DS₂-VA: ${score_va} из 8\n\n${recommendation}\n\nКомпоненты:\n${components}\nESC 2024 предлагает CHA₂DS₂-VA без полового компонента для поддержки решения об антикоагуляции. Калькулятор предназначен для подтверждённой клинической ФП.\n\nМодуль v1.0.0. Результат поддерживает, но не заменяет клиническое решение.`
+    let text = `CHA₂DS₂-VASc: ${score_vasc} из 9\nCHA₂DS₂-VA: ${score_va} из 8\n\n${recommendation}\n\nКомпоненты:\n${components}\nESC 2024 предлагает CHA₂DS₂-VA без полового компонента для поддержки решения об антикоагуляции. Калькулятор предназначен для подтверждённой клинической ФП.\n\nМодуль v1.1.0. Результат поддерживает, но не заменяет клиническое решение.`;
+
+    #{
+        status: "ok",
+        value: score_va,
+        score_va: score_va,
+        score_vasc: score_vasc,
+        text: text
+    }
 }
