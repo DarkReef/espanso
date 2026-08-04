@@ -53,11 +53,31 @@ fn calculate(input) {
         return fail("Укажите ХС-ЛПВП.");
     }
 
-    let age = parse_int(input.age);
-    let age_value = parse_number(input.age);
-    let sbp = parse_number(input.sbp);
-    let total_cholesterol = parse_number(input.total_cholesterol);
-    let hdl_cholesterol = parse_number(input.hdl_cholesterol);
+    let age = try {
+        parse_int(input.age.trim())
+    } catch {
+        return fail("Возраст должен быть целым числом.");
+    };
+    let age_value = try {
+        parse_number(input.age)
+    } catch {
+        return fail("Возраст должен быть числом.");
+    };
+    let sbp = try {
+        parse_number(input.sbp)
+    } catch {
+        return fail("САД должно быть числом.");
+    };
+    let total_cholesterol = try {
+        parse_number(input.total_cholesterol)
+    } catch {
+        return fail("Общий холестерин должен быть числом.");
+    };
+    let hdl_cholesterol = try {
+        parse_number(input.hdl_cholesterol)
+    } catch {
+        return fail("ХС-ЛПВП должен быть числом.");
+    };
 
     if age < 40 || age > 69 {
         return fail("SCORE2 не рассчитан.\n\nДопустимый возраст: 40–69 лет. Для возраста ≥70 лет используйте SCORE2-OP.");
