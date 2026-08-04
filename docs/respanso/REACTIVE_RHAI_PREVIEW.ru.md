@@ -16,8 +16,23 @@ fn fail(message) {
 }
 
 fn calculate(input) {
-    let weight = parse_float(input.weight);
-    let height_cm = parse_float(input.height);
+    if input.weight.trim() == "" {
+        return fail("Укажите массу тела.");
+    }
+    if input.height.trim() == "" {
+        return fail("Укажите рост.");
+    }
+
+    let weight = try {
+        parse_float(input.weight.trim())
+    } catch {
+        return fail("Масса тела должна быть числом.");
+    };
+    let height_cm = try {
+        parse_float(input.height.trim())
+    } catch {
+        return fail("Рост должен быть числом.");
+    };
 
     if weight <= 0.0 {
         return fail("Укажите массу тела больше 0 кг.");
@@ -104,6 +119,8 @@ fn parse_number(value) {
     parse_float(normalized)
 }
 ```
+
+В пользовательской форме оборачивайте `parse_int` и `parse_float` в `try`/`catch`, чтобы неверный ввод возвращал понятный `status: "error"`, а не обрывал реактивный расчёт.
 
 ## Возвращаемое значение
 
