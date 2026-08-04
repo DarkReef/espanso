@@ -35,10 +35,26 @@ fn calculate(input) {
         return fail("Укажите окружность талии.");
     }
 
-    let age = parse_int(input.age);
-    let weight = parse_number(input.weight);
-    let height_cm = parse_number(input.height);
-    let waist = parse_number(input.waist);
+    let age = try {
+        parse_int(input.age.trim())
+    } catch {
+        return fail("Возраст должен быть целым числом.");
+    };
+    let weight = try {
+        parse_number(input.weight)
+    } catch {
+        return fail("Масса тела должна быть числом.");
+    };
+    let height_cm = try {
+        parse_number(input.height)
+    } catch {
+        return fail("Рост должен быть числом.");
+    };
+    let waist = try {
+        parse_number(input.waist)
+    } catch {
+        return fail("Окружность талии должна быть числом.");
+    };
 
     if age < 18 || age > 120 {
         return fail("FINDRISC не рассчитан.\n\nПроверьте возраст пациента.");
