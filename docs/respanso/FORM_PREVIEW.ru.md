@@ -1,53 +1,65 @@
-# Живой предпросмотр форм rEspanso
+# Предпросмотр форм rEspanso
 
-Формы поддерживают необязательный параметр `preview` со значениями `true` или `false`.
-По умолчанию предпросмотр выключен, поэтому существующие конфигурации продолжают работать без изменений.
+Форма поддерживает необязательный параметр `preview`. По умолчанию он равен `false`, поэтому старые правила продолжают работать без изменений.
+
+## Предпросмотр самого layout
+
+Этот режим не запускает Rhai. rEspanso просто собирает текст из `layout` и текущих значений полей.
 
 ```yaml
-- trigger: ":preview-demo"
-  replace: "{{result}}"
-  vars:
-    - name: result
-      type: form
-      params:
-        preview: true
-        layout: |
-          SCORE: [[score]]
-          Комментарий: [[comment]]
-        fields:
-          score:
-            type: text
-            default: "5"
-          comment:
-            type: text
-            multiline: true
+matches:
+  - trigger: ":preview-demo"
+    replace: |
+      SCORE: {{patient_form.score}}
+      Комментарий: {{patient_form.comment}}
+    vars:
+      - name: patient_form
+        type: form
+        params:
+          preview: true
+          layout: |
+            SCORE: [[score]]
+            Комментарий: [[comment]]
+          fields:
+            score:
+              type: text
+              default: "5"
+            comment:
+              type: text
+              multiline: true
+              default: ""
 ```
 
-При `preview: true` под полями появляется блок **Preview**. Его содержимое обновляется сразу при:
+Важно: `type: form` возвращает набор значений, а не одну строку. Поэтому после формы используются подполя `{{patient_form.score}}` и `{{patient_form.comment}}`. Запись `{{patient_form}}` некорректна.
+
+При `preview: true` блок «Предпросмотр» обновляется при:
 
 - вводе и удалении текста;
 - изменении многострочного поля;
-- выборе значения из выпадающего списка;
-- изменении выбранных элементов списка.
+- выборе значения `choice`;
+- изменении выбранных элементов `list`.
 
-Предпросмотр собирается из того же layout и тех же текущих значений, которые форма вернёт после отправки. Он не выполняет зависимые переменные, расположенные после формы, например отдельный Rhai-расчёт: такие вычисления по-прежнему запускаются после подтверждения формы.
-
+Поддерживаются поля `text`, `choice` и `list`.
 
 ## Короткая запись `form:`
 
-Для формы, заданной непосредственно в правиле, флаг располагается рядом с `form`:
+Для встроенной формы флаг располагается рядом с `form`:
 
 ```yaml
-- trigger: ":score-line"
-  preview: true
-  form: "SCORE: [[score]] %"
-  form_fields:
-    score:
-      type: text
-      default: "5"
+matches:
+  - trigger: ":score-line"
+    preview: true
+    form: "SCORE: [[score]] %"
+    form_fields:
+      score:
+        type: text
+        default: "5"
 ```
 
+В этом варианте итогом правила становится отрендеренный текст `form`. Для вычислений Rhai используйте полную запись через `vars`.
 
-## Rhai-расчёты
+## Что этот режим не делает
 
-Динамические вычисляемые значения и режимы `live`, `manual`, `submit` описаны в `REACTIVE_RHAI_PREVIEW.ru.md`.
+Layout-предпросмотр не выполняет переменные, объявленные после формы. Например, отдельный `type: rhai`, зависящий от формы, будет рассчитан только после закрытия формы.
+
+Для вычисления результата прямо в окне используйте `computed` и реактивный Rhai-предпросмотр: [REACTIVE_RHAI_PREVIEW.ru.md](REACTIVE_RHAI_PREVIEW.ru.md).
