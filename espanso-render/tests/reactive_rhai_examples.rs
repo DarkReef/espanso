@@ -32,12 +32,7 @@ fn calculate(module: &str, fields: &[(&str, &str)]) -> Map {
         .compile_file(path.clone())
         .unwrap_or_else(|error| panic!("unable to compile {}: {error}", path.display()));
     let output = engine
-        .call_fn::<Dynamic>(
-            &mut Scope::new(),
-            &ast,
-            "calculate",
-            (form_input(fields),),
-        )
+        .call_fn::<Dynamic>(&mut Scope::new(), &ast, "calculate", (form_input(fields),))
         .unwrap_or_else(|error| panic!("unable to execute {}: {error}", path.display()));
 
     output
