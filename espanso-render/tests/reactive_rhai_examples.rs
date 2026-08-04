@@ -130,12 +130,11 @@ fn medical_calculators_compile_and_return_reactive_preview_contract() {
 
     for (module, fields) in cases {
         let result = calculate(module, &fields);
-        assert_eq!(text_field(&result, "status"), "ok", "module: {module}");
+        let status = text_field(&result, "status");
+        let text = text_field(&result, "text");
+        assert_eq!(status, "ok", "module: {module}; result: {text}");
         assert!(result.get("value").is_some(), "module: {module}");
-        assert!(
-            !text_field(&result, "text").trim().is_empty(),
-            "module: {module}"
-        );
+        assert!(!text.trim().is_empty(), "module: {module}");
     }
 }
 
