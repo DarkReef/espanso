@@ -8,8 +8,7 @@ fn yes(value) {
 }
 
 fn parse_number(value) {
-    let normalized = value.trim();
-    normalized.replace(",", ".");
+    let normalized = value.trim().replace(",", ".");
     parse_float(normalized)
 }
 
