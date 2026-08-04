@@ -57,15 +57,16 @@ fn calculate(input) {
 
 ```rhai
 fn calculate(input) {
-    let age = try {
-        parse_int(input.age.trim())
+    let age = 0;
+    try {
+        age = parse_int(input.age.trim());
     } catch {
         return #{
             status: "error",
             value: "",
             text: "Возраст должен быть целым числом."
         };
-    };
+    }
 
     #{
         status: "ok",
@@ -91,15 +92,16 @@ Map удобен, когда нужны основной результат и �
 
 ```rhai
 fn calculate(input) {
-    let value = try {
-        parse_int(input.value.trim())
+    let value = 0;
+    try {
+        value = parse_int(input.value.trim());
     } catch {
         return #{
             status: "error",
             value: "",
             text: "Значение должно быть целым числом."
         };
-    };
+    }
 
     #{
         status: "ok",
@@ -129,7 +131,7 @@ fn parse_number(value) {
 }
 ```
 
-До разбора проверяйте обязательные поля, а ошибку преобразования перехватывайте через `try`/`catch`:
+До разбора проверяйте обязательные поля, а ошибку преобразования перехватывайте через statement-форму `try/catch`:
 
 ```rhai
 fn calculate(input) {
@@ -137,19 +139,32 @@ fn calculate(input) {
         return #{ status: "error", value: "", text: "Укажите значение." };
     }
 
-    let value = try {
-        parse_float(input.value.trim())
+    let value = 0.0;
+    try {
+        value = parse_float(input.value.trim());
     } catch {
         return #{
             status: "error",
             value: "",
             text: "Значение должно быть числом."
         };
-    };
+    }
 
     #{ status: "ok", value: value, text: `Значение: ${value}` }
 }
 ```
+
+Текущий встроенный Rhai не поддерживает конструкцию:
+
+```rhai
+let value = try {
+    parse_float(input.value)
+} catch {
+    0.0
+};
+```
+
+Сначала объявляйте переменную, затем присваивайте ей значение внутри отдельного `try`.
 
 ## Реактивный предпросмотр
 
@@ -193,7 +208,7 @@ matches:
 
 - делайте функции детерминированными;
 - проверяйте пустые и граничные значения;
-- перехватывайте ошибки `parse_int`/`parse_float` через `try`/`catch`;
+- перехватывайте ошибки `parse_int`/`parse_float` через отдельный statement-блок `try/catch`;
 - возвращайте `status: "error"` с понятным `text` для ошибок формы;
 - не смешивайте расчёт и внешние побочные эффекты;
 - не помещайте персональные данные в демонстрационные тесты;
