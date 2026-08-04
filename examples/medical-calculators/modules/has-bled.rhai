@@ -1,15 +1,27 @@
 // HAS-BLED score for bleeding-risk factor review in atrial fibrillation.
 // Definitions follow ESC AF guidelines (2010/2020); current-use note follows ESC 2024.
-// Module version: 1.0.0 (2026-07-26).
+// Module version: 1.1.0 (2026-08-04). Reactive-preview result contract.
 
 fn point(value) {
     if value == "Да" { 1 } else { 0 }
 }
 
+fn fail(message) {
+    #{
+        status: "error",
+        value: "",
+        text: message
+    }
+}
+
 fn calculate(input) {
+    if input.age.trim() == "" {
+        return fail("Укажите возраст пациента.");
+    }
+
     let age = parse_int(input.age);
     if age < 18 || age > 120 {
-        return `HAS-BLED не рассчитан.\n\nПроверьте возраст пациента.`;
+        return fail("HAS-BLED не рассчитан.\n\nПроверьте возраст пациента.");
     }
 
     let hypertension = point(input.hypertension);
@@ -23,6 +35,7 @@ fn calculate(input) {
     let alcohol = point(input.alcohol);
 
     let score = hypertension + renal + liver + stroke + bleeding + labile_inr + elderly + drugs + alcohol;
+    let category = if score >= 3 { "Высокий риск" } else { "Порог высокого риска не достигнут" };
     let interpretation = if score >= 3 {
         "Высокий риск по исходному порогу: требуется осторожность, коррекция модифицируемых факторов и регулярный пересмотр"
     } else {
@@ -41,5 +54,12 @@ fn calculate(input) {
     if alcohol == 1 { components += "D — чрезмерное употребление алкоголя;\n"; }
     if components == "" { components = "Активных компонентов не отмечено.\n"; }
 
-    `HAS-BLED: ${score} из 9\n${interpretation}\n\nУчтённые компоненты:\n${components}\nСовременные рекомендации: не использовать балл как самостоятельную причину не назначать или отменять антикоагулянт; исправлять модифицируемые факторы риска кровотечения.\n\nМодуль v1.0.0. Результат поддерживает, но не заменяет клиническое решение.`
+    let text = `HAS-BLED: ${score} из 9\n${interpretation}\n\nУчтённые компоненты:\n${components}\nСовременные рекомендации: не использовать балл как самостоятельную причину не назначать или отменять антикоагулянт; исправлять модифицируемые факторы риска кровотечения.\n\nМодуль v1.1.0. Результат поддерживает, но не заменяет клиническое решение.`;
+
+    #{
+        status: "ok",
+        value: score,
+        category: category,
+        text: text
+    }
 }
