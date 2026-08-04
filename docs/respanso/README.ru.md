@@ -8,8 +8,10 @@ rEspanso — локальный форк Espanso с portable-запуском Wi
 2. [Match Studio](MATCH_STUDIO.ru.md)
 3. [Перенос правил и скриптов](CONFIG_TRANSFER.ru.md)
 4. [Rhai для rEspanso](RHAI_GUIDE.ru.md)
-5. [Промпт для генерации Rhai](RHAI_PROMPT.ru.md)
-6. [Решение проблем](TROUBLESHOOTING.ru.md)
+5. [Предпросмотр обычных форм](FORM_PREVIEW.ru.md)
+6. [Реактивный Rhai-предпросмотр](REACTIVE_RHAI_PREVIEW.ru.md)
+7. [Промпты для генерации и аудита Rhai](RHAI_PROMPT.ru.md)
+8. [Решение проблем](TROUBLESHOOTING.ru.md)
 
 ## Что хранится рядом с portable-приложением
 
