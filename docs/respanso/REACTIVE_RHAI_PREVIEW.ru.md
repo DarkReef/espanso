@@ -23,16 +23,19 @@ fn calculate(input) {
         return fail("Укажите рост.");
     }
 
-    let weight = try {
-        parse_float(input.weight.trim())
+    let weight = 0.0;
+    try {
+        weight = parse_float(input.weight.trim());
     } catch {
         return fail("Масса тела должна быть числом.");
-    };
-    let height_cm = try {
-        parse_float(input.height.trim())
+    }
+
+    let height_cm = 0.0;
+    try {
+        height_cm = parse_float(input.height.trim());
     } catch {
         return fail("Рост должен быть числом.");
-    };
+    }
 
     if weight <= 0.0 {
         return fail("Укажите массу тела больше 0 кг.");
@@ -120,7 +123,20 @@ fn parse_number(value) {
 }
 ```
 
-В пользовательской форме оборачивайте `parse_int` и `parse_float` в `try`/`catch`, чтобы неверный ввод возвращал понятный `status: "error"`, а не обрывал реактивный расчёт.
+В пользовательской форме перехватывайте ошибки `parse_int` и `parse_float`, чтобы неверный ввод возвращал понятный `status: "error"`, а не обрывал реактивный расчёт.
+
+Поддерживаемая форма `try/catch` в текущем встроенном Rhai:
+
+```rhai
+let value = 0.0;
+try {
+    value = parse_float(input.value.trim());
+} catch {
+    return fail("Значение должно быть числом.");
+}
+```
+
+Не используйте `let value = try { ... } catch { ... };`: этот синтаксис не поддерживается текущим runtime rEspanso.
 
 ## Возвращаемое значение
 
