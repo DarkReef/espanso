@@ -7,8 +7,16 @@ fn yes(value) {
     value == "Да"
 }
 
+fn parse_integer(value) {
+    let normalized = value;
+    normalized.trim();
+    parse_int(normalized)
+}
+
 fn parse_number(value) {
-    let normalized = value.trim().replace(",", ".");
+    let normalized = value;
+    normalized.trim();
+    normalized.replace(",", ".");
     parse_float(normalized)
 }
 
@@ -54,7 +62,7 @@ fn calculate(input) {
 
     let age = 0;
     try {
-        age = parse_int(input.age.trim());
+        age = parse_integer(input.age);
     } catch {
         return fail("Возраст должен быть целым числом.");
     }
