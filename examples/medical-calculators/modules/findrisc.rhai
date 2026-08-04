@@ -1,35 +1,56 @@
 // Finnish Diabetes Risk Score (FINDRISC), original 8-item non-laboratory score.
 // Source: Lindstrom J, Tuomilehto J. Diabetes Care. 2003;26:725-731.
 // DOI: 10.2337/diacare.26.3.725.
-// Module version: 1.0.0 (2026-07-26).
+// Module version: 1.1.0 (2026-08-04). Reactive-preview result contract.
 
 fn yes(value) {
     value == "Да"
 }
 
 fn parse_number(value) {
-    let normalized = value;
+    let normalized = value.trim();
     normalized.replace(",", ".");
     parse_float(normalized)
 }
 
+fn fail(message) {
+    #{
+        status: "error",
+        value: "",
+        text: message
+    }
+}
+
 fn calculate(input) {
+    if input.age.trim() == "" {
+        return fail("Укажите возраст пациента.");
+    }
+    if input.weight.trim() == "" {
+        return fail("Укажите массу тела.");
+    }
+    if input.height.trim() == "" {
+        return fail("Укажите рост.");
+    }
+    if input.waist.trim() == "" {
+        return fail("Укажите окружность талии.");
+    }
+
     let age = parse_int(input.age);
     let weight = parse_number(input.weight);
     let height_cm = parse_number(input.height);
     let waist = parse_number(input.waist);
 
     if age < 18 || age > 120 {
-        return `FINDRISC не рассчитан.\n\nПроверьте возраст пациента.`;
+        return fail("FINDRISC не рассчитан.\n\nПроверьте возраст пациента.");
     }
     if weight < 30.0 || weight > 350.0 {
-        return `FINDRISC не рассчитан.\n\nПроверьте массу тела: ожидается значение 30–350 кг.`;
+        return fail("FINDRISC не рассчитан.\n\nПроверьте массу тела: ожидается значение 30–350 кг.");
     }
     if height_cm < 100.0 || height_cm > 230.0 {
-        return `FINDRISC не рассчитан.\n\nПроверьте рост: ожидается значение 100–230 см.`;
+        return fail("FINDRISC не рассчитан.\n\nПроверьте рост: ожидается значение 100–230 см.");
     }
     if waist < 40.0 || waist > 220.0 {
-        return `FINDRISC не рассчитан.\n\nПроверьте окружность талии: ожидается значение 40–220 см.`;
+        return fail("FINDRISC не рассчитан.\n\nПроверьте окружность талии: ожидается значение 40–220 см.");
     }
 
     let height_m = height_cm / 100.0;
@@ -94,6 +115,13 @@ fn calculate(input) {
     } else {
         ""
     };
+    let text = `FINDRISC: ${score} из 26\n${interpretation} риска СД 2 типа в течение 10 лет\n\nИМТ: ${bmi_display} кг/м²; талия: ${waist} см\nВозраст: ${age}; пол: ${input.sex}\nФизическая активность ≥30 мин/день: ${input.physical_activity}\nОвощи/фрукты/ягоды ежедневно: ${input.daily_vegetables}\nАнтигипертензивные препараты: ${input.bp_medication}\nГипергликемия ранее: ${input.high_glucose}\nСемейный анамнез: ${input.family_history}${cohort_note}\n\nМодуль v1.1.0. Скрининговый результат не устанавливает диагноз.`;
 
-    `FINDRISC: ${score} из 26\n${interpretation} риска СД 2 типа в течение 10 лет\n\nИМТ: ${bmi_display} кг/м²; талия: ${waist} см\nВозраст: ${age}; пол: ${input.sex}\nФизическая активность ≥30 мин/день: ${input.physical_activity}\nОвощи/фрукты/ягоды ежедневно: ${input.daily_vegetables}\nАнтигипертензивные препараты: ${input.bp_medication}\nГипергликемия ранее: ${input.high_glucose}\nСемейный анамнез: ${input.family_history}${cohort_note}\n\nМодуль v1.0.0. Скрининговый результат не устанавливает диагноз.`
+    #{
+        status: "ok",
+        value: score,
+        bmi: bmi_display,
+        category: interpretation,
+        text: text
+    }
 }
