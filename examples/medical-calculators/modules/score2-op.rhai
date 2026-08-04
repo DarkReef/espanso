@@ -1,16 +1,24 @@
 // SCORE2-OP continuous equation with sex-specific coefficients and regional recalibration.
 // Source: SCORE2-OP Working Group, Eur Heart J. 2021;42:2455-2467.
 // DOI: 10.1093/eurheartj/ehab312.
-// Module version: 1.0.0 (2026-07-26).
+// Module version: 1.1.0 (2026-08-04). Reactive-preview result contract.
 
 fn yes(value) {
     value == "Да"
 }
 
 fn parse_number(value) {
-    let normalized = value;
+    let normalized = value.trim();
     normalized.replace(",", ".");
     parse_float(normalized)
+}
+
+fn fail(message) {
+    #{
+        status: "error",
+        value: "",
+        text: message
+    }
 }
 
 fn risk_category(risk_percent) {
@@ -24,6 +32,19 @@ fn risk_category(risk_percent) {
 }
 
 fn calculate(input) {
+    if input.age.trim() == "" {
+        return fail("Укажите возраст пациента.");
+    }
+    if input.sbp.trim() == "" {
+        return fail("Укажите систолическое артериальное давление.");
+    }
+    if input.total_cholesterol.trim() == "" {
+        return fail("Укажите общий холестерин.");
+    }
+    if input.hdl_cholesterol.trim() == "" {
+        return fail("Укажите ХС-ЛПВП.");
+    }
+
     let age = parse_int(input.age);
     let age_value = parse_number(input.age);
     let sbp = parse_number(input.sbp);
@@ -31,22 +52,22 @@ fn calculate(input) {
     let hdl_cholesterol = parse_number(input.hdl_cholesterol);
 
     if age < 70 || age > 89 {
-        return `SCORE2-OP не рассчитан.\n\nПоддерживаемый возраст: 70–89 лет. Для возраста 40–69 лет используйте SCORE2.`;
+        return fail("SCORE2-OP не рассчитан.\n\nПоддерживаемый возраст: 70–89 лет. Для возраста 40–69 лет используйте SCORE2.");
     }
     if sbp < 80.0 || sbp > 250.0 {
-        return `SCORE2-OP не рассчитан.\n\nПроверьте САД: ожидается значение 80–250 мм рт. ст.`;
+        return fail("SCORE2-OP не рассчитан.\n\nПроверьте САД: ожидается значение 80–250 мм рт. ст.");
     }
     if total_cholesterol < 1.0 || total_cholesterol > 20.0 {
-        return `SCORE2-OP не рассчитан.\n\nПроверьте общий холестерин: ожидается значение 1–20 ммоль/л.`;
+        return fail("SCORE2-OP не рассчитан.\n\nПроверьте общий холестерин: ожидается значение 1–20 ммоль/л.");
     }
     if hdl_cholesterol < 0.2 || hdl_cholesterol > 5.0 {
-        return `SCORE2-OP не рассчитан.\n\nПроверьте ХС-ЛПВП: ожидается значение 0,2–5 ммоль/л.`;
+        return fail("SCORE2-OP не рассчитан.\n\nПроверьте ХС-ЛПВП: ожидается значение 0,2–5 ммоль/л.");
     }
     if yes(input.established_cvd) {
-        return `SCORE2-OP не применяется при документированном сердечно-сосудистом заболевании.\n\nИспользуйте вторичную профилактику и профильные рекомендации.`;
+        return fail("SCORE2-OP не применяется при документированном сердечно-сосудистом заболевании.\n\nИспользуйте вторичную профилактику и профильные рекомендации.");
     }
     if yes(input.special_high_risk) {
-        return `SCORE2-OP не применяется как основной классификатор при СГХС, умеренной/тяжёлой ХБП или другом заведомо высокорисковом состоянии.`;
+        return fail("SCORE2-OP не применяется как основной классификатор при СГХС, умеренной/тяжёлой ХБП или другом заведомо высокорисковом состоянии.");
     }
 
     let male = input.sex == "Мужчина";
@@ -129,6 +150,12 @@ fn calculate(input) {
     } else {
         ""
     };
+    let text = `SCORE2-OP: ${risk_percent}%\nКатегория: ${category}\nГоризонт: 10 лет, фатальные и нефатальные СС-события\nРегион: ${input.region}\n\nВозраст: ${age} лет; пол: ${input.sex}\nСАД: ${sbp} мм рт. ст.; курение: ${input.current_smoker}; диабет: ${input.diabetes}\nОХС: ${total_cholesterol} ммоль/л; ХС-ЛПВП: ${hdl_cholesterol} ммоль/л${diabetes_note}\n\nМодуль v1.1.0. Результат поддерживает, но не заменяет клиническое решение.`;
 
-    `SCORE2-OP: ${risk_percent}%\nКатегория: ${category}\nГоризонт: 10 лет, фатальные и нефатальные СС-события\nРегион: ${input.region}\n\nВозраст: ${age} лет; пол: ${input.sex}\nСАД: ${sbp} мм рт. ст.; курение: ${input.current_smoker}; диабет: ${input.diabetes}\nОХС: ${total_cholesterol} ммоль/л; ХС-ЛПВП: ${hdl_cholesterol} ммоль/л${diabetes_note}\n\nМодуль v1.0.0. Результат поддерживает, но не заменяет клиническое решение.`
+    #{
+        status: "ok",
+        value: risk_percent,
+        category: category,
+        text: text
+    }
 }
