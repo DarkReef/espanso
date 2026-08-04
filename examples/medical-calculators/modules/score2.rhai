@@ -1,16 +1,24 @@
 // SCORE2 continuous equation with sex-specific coefficients and regional recalibration.
 // Source: SCORE2 Working Group, Eur Heart J. 2021;42:2439-2454.
 // DOI: 10.1093/eurheartj/ehab309; four-decimal parameters: ehab761.
-// Module version: 1.0.0 (2026-07-26).
+// Module version: 1.1.0 (2026-08-04). Reactive-preview result contract.
 
 fn yes(value) {
     value == "Да"
 }
 
 fn parse_number(value) {
-    let normalized = value;
+    let normalized = value.trim();
     normalized.replace(",", ".");
     parse_float(normalized)
+}
+
+fn fail(message) {
+    #{
+        status: "error",
+        value: "",
+        text: message
+    }
 }
 
 fn risk_category(age, risk_percent) {
@@ -32,6 +40,19 @@ fn risk_category(age, risk_percent) {
 }
 
 fn calculate(input) {
+    if input.age.trim() == "" {
+        return fail("Укажите возраст пациента.");
+    }
+    if input.sbp.trim() == "" {
+        return fail("Укажите систолическое артериальное давление.");
+    }
+    if input.total_cholesterol.trim() == "" {
+        return fail("Укажите общий холестерин.");
+    }
+    if input.hdl_cholesterol.trim() == "" {
+        return fail("Укажите ХС-ЛПВП.");
+    }
+
     let age = parse_int(input.age);
     let age_value = parse_number(input.age);
     let sbp = parse_number(input.sbp);
@@ -39,16 +60,16 @@ fn calculate(input) {
     let hdl_cholesterol = parse_number(input.hdl_cholesterol);
 
     if age < 40 || age > 69 {
-        return `SCORE2 не рассчитан.\n\nДопустимый возраст: 40–69 лет. Для возраста ≥70 лет используйте SCORE2-OP.`;
+        return fail("SCORE2 не рассчитан.\n\nДопустимый возраст: 40–69 лет. Для возраста ≥70 лет используйте SCORE2-OP.");
     }
     if sbp < 80.0 || sbp > 250.0 {
-        return `SCORE2 не рассчитан.\n\nПроверьте САД: ожидается значение 80–250 мм рт. ст.`;
+        return fail("SCORE2 не рассчитан.\n\nПроверьте САД: ожидается значение 80–250 мм рт. ст.");
     }
     if total_cholesterol < 1.0 || total_cholesterol > 20.0 {
-        return `SCORE2 не рассчитан.\n\nПроверьте общий холестерин: ожидается значение 1–20 ммоль/л.`;
+        return fail("SCORE2 не рассчитан.\n\nПроверьте общий холестерин: ожидается значение 1–20 ммоль/л.");
     }
     if hdl_cholesterol < 0.2 || hdl_cholesterol > 5.0 {
-        return `SCORE2 не рассчитан.\n\nПроверьте ХС-ЛПВП: ожидается значение 0,2–5 ммоль/л.`;
+        return fail("SCORE2 не рассчитан.\n\nПроверьте ХС-ЛПВП: ожидается значение 0,2–5 ммоль/л.");
     }
 
     let exclusion = "";
@@ -62,7 +83,7 @@ fn calculate(input) {
         exclusion += "• СГХС, умеренная/тяжёлая ХБП или другое заведомо высокорисковое состояние;\n";
     }
     if exclusion != "" {
-        return `SCORE2 не применяется к указанному пациенту.\n\n${exclusion}\nИспользуйте профильную стратификацию риска и клинические рекомендации.`;
+        return fail(`SCORE2 не применяется к указанному пациенту.\n\n${exclusion}\nИспользуйте профильную стратификацию риска и клинические рекомендации.`);
     }
 
     let male = input.sex == "Мужчина";
@@ -136,6 +157,12 @@ fn calculate(input) {
     let calibrated = 1.0 - exp(-exp(recalibrated_log_hazard));
     let risk_percent = round(calibrated * 1000.0) / 10.0;
     let category = risk_category(age, risk_percent);
+    let text = `SCORE2: ${risk_percent}%\nКатегория: ${category}\nГоризонт: 10 лет, фатальные и нефатальные СС-события\nРегион: ${input.region}\n\nВозраст: ${age} лет; пол: ${input.sex}\nСАД: ${sbp} мм рт. ст.; курение: ${input.current_smoker}\nОХС: ${total_cholesterol} ммоль/л; ХС-ЛПВП: ${hdl_cholesterol} ммоль/л\n\nМодуль v1.1.0. Результат поддерживает, но не заменяет клиническое решение.`;
 
-    `SCORE2: ${risk_percent}%\nКатегория: ${category}\nГоризонт: 10 лет, фатальные и нефатальные СС-события\nРегион: ${input.region}\n\nВозраст: ${age} лет; пол: ${input.sex}\nСАД: ${sbp} мм рт. ст.; курение: ${input.current_smoker}\nОХС: ${total_cholesterol} ммоль/л; ХС-ЛПВП: ${hdl_cholesterol} ммоль/л\n\nМодуль v1.0.0. Результат поддерживает, но не заменяет клиническое решение.`
+    #{
+        status: "ok",
+        value: risk_percent,
+        category: category,
+        text: text
+    }
 }
