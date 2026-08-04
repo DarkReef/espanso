@@ -1,39 +1,23 @@
-# rrEspanso clinical calculators.
+# rEspanso clinical calculators with reactive Rhai preview.
 #
-# Each match opens an rEspanso form, passes its string values to an embedded Rhai
-# module and shows the calculated result in an informational dialog. Clinical
-# equations remain editable and auditable outside the rrEspanso core.
+# Copy this file into match/ and the modules directory into
+# %CONFIG%/medical-calculators/modules/. Each rule calculates inside the form,
+# shows the same result in preview, and reuses that successful computed value on submit.
 
 matches:
   - trigger: ":score2"
     replace: |
       @dialog: SCORE2 — сердечно-сосудистый риск
-      {{score2_result}}
+      {{score2_form.result__text}}
     vars:
-      - name: score2_inputs
+      - name: score2_form
         type: form
         params:
           preview: true
           preview_mode: live
           preview_debounce_ms: 350
           preview_layout: |
-            {{score2_preview}}
-          computed:
-            score2_preview:
-              type: rhai
-              path: "%CONFIG%/medical-calculators/modules/score2.rhai"
-              function: "calculate"
-              depends_on:
-                - age
-                - sex
-                - region
-                - current_smoker
-                - sbp
-                - total_cholesterol
-                - hdl_cholesterol
-                - established_cvd
-                - diabetes
-                - special_high_risk
+            {{result.text}}
           layout: |
             SCORE2: 10-летний риск фатального и нефатального СС-события
 
@@ -89,22 +73,26 @@ matches:
               type: choice
               values: ["Нет", "Да"]
               default: "Нет"
-      - name: score2_result
-        type: rhai
-        depends_on: [score2_inputs]
-        params:
-          path: "%CONFIG%/medical-calculators/modules/score2.rhai"
-          function: "calculate"
-          input: "score2_inputs"
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/medical-calculators/modules/score2.rhai"
+              function: calculate
+              depends_on: []
 
   - trigger: ":score2op"
     replace: |
       @dialog: SCORE2-OP — сердечно-сосудистый риск
-      {{score2op_result}}
+      {{score2op_form.result__text}}
     vars:
-      - name: score2op_inputs
+      - name: score2op_form
         type: form
         params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 350
+          preview_layout: |
+            {{result.text}}
           layout: |
             SCORE2-OP: 10-летний риск фатального и нефатального СС-события
 
@@ -160,22 +148,26 @@ matches:
               type: choice
               values: ["Нет", "Да"]
               default: "Нет"
-      - name: score2op_result
-        type: rhai
-        depends_on: [score2op_inputs]
-        params:
-          path: "%CONFIG%/medical-calculators/modules/score2-op.rhai"
-          function: "calculate"
-          input: "score2op_inputs"
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/medical-calculators/modules/score2-op.rhai"
+              function: calculate
+              depends_on: []
 
   - trigger: ":hasbled"
     replace: |
       @dialog: HAS-BLED — факторы риска кровотечения
-      {{hasbled_result}}
+      {{hasbled_form.result__text}}
     vars:
-      - name: hasbled_inputs
+      - name: hasbled_form
         type: form
         params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 250
+          preview_layout: |
+            {{result.text}}
           layout: |
             HAS-BLED
 
@@ -224,22 +216,26 @@ matches:
               type: choice
               values: ["Нет", "Да"]
               default: "Нет"
-      - name: hasbled_result
-        type: rhai
-        depends_on: [hasbled_inputs]
-        params:
-          path: "%CONFIG%/medical-calculators/modules/has-bled.rhai"
-          function: "calculate"
-          input: "hasbled_inputs"
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/medical-calculators/modules/has-bled.rhai"
+              function: calculate
+              depends_on: []
 
   - trigger: ":cha2vasc"
     replace: |
       @dialog: CHA₂DS₂-VASc / CHA₂DS₂-VA
-      {{cha2ds2_result}}
+      {{cha2ds2_form.result__text}}
     vars:
-      - name: cha2ds2_inputs
+      - name: cha2ds2_form
         type: form
         params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 250
+          preview_layout: |
+            {{result.text}}
           layout: |
             Риск тромбоэмболии при подтверждённой клинической ФП
 
@@ -278,22 +274,26 @@ matches:
               type: choice
               values: ["Нет", "Да"]
               default: "Нет"
-      - name: cha2ds2_result
-        type: rhai
-        depends_on: [cha2ds2_inputs]
-        params:
-          path: "%CONFIG%/medical-calculators/modules/cha2ds2-vasc.rhai"
-          function: "calculate"
-          input: "cha2ds2_inputs"
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/medical-calculators/modules/cha2ds2-vasc.rhai"
+              function: calculate
+              depends_on: []
 
   - trigger: ":findrisc"
     replace: |
       @dialog: FINDRISC — риск сахарного диабета 2 типа
-      {{findrisc_result}}
+      {{findrisc_form.result__text}}
     vars:
-      - name: findrisc_inputs
+      - name: findrisc_form
         type: form
         params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 350
+          preview_layout: |
+            {{result.text}}
           layout: |
             FINDRISC: неинвазивная оценка 10-летнего риска СД 2 типа
 
@@ -347,10 +347,9 @@ matches:
                 - "Только родственники 2-й степени"
                 - "Родители, брат/сестра или ребёнок"
               default: "Нет"
-      - name: findrisc_result
-        type: rhai
-        depends_on: [findrisc_inputs]
-        params:
-          path: "%CONFIG%/medical-calculators/modules/findrisc.rhai"
-          function: "calculate"
-          input: "findrisc_inputs"
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/medical-calculators/modules/findrisc.rhai"
+              function: calculate
+              depends_on: []
