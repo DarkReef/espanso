@@ -5,6 +5,12 @@ fn point(value) {
     if value == "Да" { 1 } else { 0 }
 }
 
+fn parse_integer(value) {
+    let normalized = value;
+    normalized.trim();
+    parse_int(normalized)
+}
+
 fn fail(message) {
     #{
         status: "error",
@@ -20,7 +26,7 @@ fn calculate(input) {
 
     let age = 0;
     try {
-        age = parse_int(input.age.trim());
+        age = parse_integer(input.age);
     } catch {
         return fail("Возраст должен быть целым числом.");
     }
