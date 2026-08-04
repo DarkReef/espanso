@@ -19,7 +19,11 @@ fn calculate(input) {
         return fail("Укажите возраст пациента.");
     }
 
-    let age = parse_int(input.age);
+    let age = try {
+        parse_int(input.age.trim())
+    } catch {
+        return fail("Возраст должен быть целым числом.");
+    };
     if age < 18 || age > 120 {
         return fail("HAS-BLED не рассчитан.\n\nПроверьте возраст пациента.");
     }
