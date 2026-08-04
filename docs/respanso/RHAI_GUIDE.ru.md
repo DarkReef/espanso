@@ -44,7 +44,8 @@ fn calculate(input) {
 
 ```rhai
 fn calculate(input) {
-    let value = input.trim();
+    let value = input;
+    value.trim();
     if value == "" {
         "Данные не указаны"
     } else {
@@ -56,10 +57,16 @@ fn calculate(input) {
 Пример с формой:
 
 ```rhai
+fn parse_integer(value) {
+    let normalized = value;
+    normalized.trim();
+    parse_int(normalized)
+}
+
 fn calculate(input) {
     let age = 0;
     try {
-        age = parse_int(input.age.trim());
+        age = parse_integer(input.age);
     } catch {
         return #{
             status: "error",
@@ -84,17 +91,25 @@ fn calculate(input) {
 
 ```rhai
 fn calculate(input) {
-    input.trim().to_upper()
+    let value = input;
+    value.trim();
+    value.to_upper()
 }
 ```
 
 Map удобен, когда нужны основной результат и подробный текст:
 
 ```rhai
+fn parse_integer(value) {
+    let normalized = value;
+    normalized.trim();
+    parse_int(normalized)
+}
+
 fn calculate(input) {
     let value = 0;
     try {
-        value = parse_int(input.value.trim());
+        value = parse_integer(input.value);
     } catch {
         return #{
             status: "error",
@@ -125,11 +140,20 @@ replace: |
 
 ```rhai
 fn parse_number(value) {
-    let normalized = value.trim();
+    let normalized = value;
+    normalized.trim();
     normalized.replace(",", ".");
     parse_float(normalized)
 }
+
+fn parse_integer(value) {
+    let normalized = value;
+    normalized.trim();
+    parse_int(normalized)
+}
 ```
+
+Строковые методы текущего runtime применяйте к локальной копии. Не передавайте результат `trim()` напрямую в `parse_int` или `parse_float`.
 
 До разбора проверяйте обязательные поля, а ошибку преобразования перехватывайте через statement-форму `try/catch`:
 
@@ -141,7 +165,7 @@ fn calculate(input) {
 
     let value = 0.0;
     try {
-        value = parse_float(input.value.trim());
+        value = parse_number(input.value);
     } catch {
         return #{
             status: "error",
@@ -208,7 +232,8 @@ matches:
 
 - делайте функции детерминированными;
 - проверяйте пустые и граничные значения;
-- перехватывайте ошибки `parse_int`/`parse_float` через отдельный statement-блок `try/catch`;
+- нормализуйте строку в локальной переменной перед `parse_int`/`parse_float`;
+- перехватывайте ошибки преобразования через отдельный statement-блок `try/catch`;
 - возвращайте `status: "error"` с понятным `text` для ошибок формы;
 - не смешивайте расчёт и внешние побочные эффекты;
 - не помещайте персональные данные в демонстрационные тесты;
