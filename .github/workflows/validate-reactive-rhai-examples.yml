@@ -1,0 +1,36 @@
+name: Validate reactive Rhai examples
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+    paths:
+      - docs/respanso/**
+      - examples/medical-calculators/**
+      - espanso-render/tests/reactive_rhai_examples.rs
+      - .github/workflows/validate-reactive-rhai-examples.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Compile and execute medical Rhai examples
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout PR source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: reactive-rhai-examples
+
+      - name: Compile and execute examples
+        run: cargo test --locked -p espanso-render --test reactive_rhai_examples
