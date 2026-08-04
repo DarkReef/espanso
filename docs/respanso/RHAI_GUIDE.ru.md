@@ -57,8 +57,21 @@ fn calculate(input) {
 
 ```rhai
 fn calculate(input) {
-    let age = parse_int(input.age);
-    `Через год: ${age + 1}`
+    let age = try {
+        parse_int(input.age.trim())
+    } catch {
+        return #{
+            status: "error",
+            value: "",
+            text: "Возраст должен быть целым числом."
+        };
+    };
+
+    #{
+        status: "ok",
+        value: age + 1,
+        text: `Через год: ${age + 1}`
+    }
 }
 ```
 
@@ -78,7 +91,16 @@ Map удобен, когда нужны основной результат и �
 
 ```rhai
 fn calculate(input) {
-    let value = parse_int(input.value);
+    let value = try {
+        parse_int(input.value.trim())
+    } catch {
+        return #{
+            status: "error",
+            value: "",
+            text: "Значение должно быть целым числом."
+        };
+    };
+
     #{
         status: "ok",
         value: value * 2,
@@ -107,7 +129,7 @@ fn parse_number(value) {
 }
 ```
 
-До разбора проверяйте обязательные поля, если пустая строка допустима в форме:
+До разбора проверяйте обязательные поля, а ошибку преобразования перехватывайте через `try`/`catch`:
 
 ```rhai
 fn calculate(input) {
@@ -115,7 +137,16 @@ fn calculate(input) {
         return #{ status: "error", value: "", text: "Укажите значение." };
     }
 
-    let value = parse_float(input.value);
+    let value = try {
+        parse_float(input.value.trim())
+    } catch {
+        return #{
+            status: "error",
+            value: "",
+            text: "Значение должно быть числом."
+        };
+    };
+
     #{ status: "ok", value: value, text: `Значение: ${value}` }
 }
 ```
@@ -162,6 +193,7 @@ matches:
 
 - делайте функции детерминированными;
 - проверяйте пустые и граничные значения;
+- перехватывайте ошибки `parse_int`/`parse_float` через `try`/`catch`;
 - возвращайте `status: "error"` с понятным `text` для ошибок формы;
 - не смешивайте расчёт и внешние побочные эффекты;
 - не помещайте персональные данные в демонстрационные тесты;
