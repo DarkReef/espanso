@@ -15,6 +15,13 @@ fn fail(message) {
     }
 }
 
+fn parse_number(value) {
+    let normalized = value;
+    normalized.trim();
+    normalized.replace(",", ".");
+    parse_float(normalized)
+}
+
 fn calculate(input) {
     if input.weight.trim() == "" {
         return fail("Укажите массу тела.");
@@ -25,14 +32,14 @@ fn calculate(input) {
 
     let weight = 0.0;
     try {
-        weight = parse_float(input.weight.trim());
+        weight = parse_number(input.weight);
     } catch {
         return fail("Масса тела должна быть числом.");
     }
 
     let height_cm = 0.0;
     try {
-        height_cm = parse_float(input.height.trim());
+        height_cm = parse_number(input.height);
     } catch {
         return fail("Рост должен быть числом.");
     }
@@ -113,24 +120,33 @@ fn calculate(input) {
 
 Параметр `function` позволяет выбрать другое имя функции, но по умолчанию используется `calculate`.
 
-Все значения формы приходят строками. Числа нужно разбирать явно:
+Все значения формы приходят строками. Числа нужно разбирать явно. Для текущего runtime надёжнее копировать строку в локальную переменную, затем применять к ней `trim` и `replace`:
 
 ```rhai
 fn parse_number(value) {
-    let normalized = value.trim();
+    let normalized = value;
+    normalized.trim();
     normalized.replace(",", ".");
     parse_float(normalized)
 }
+
+fn parse_integer(value) {
+    let normalized = value;
+    normalized.trim();
+    parse_int(normalized)
+}
 ```
 
-В пользовательской форме перехватывайте ошибки `parse_int` и `parse_float`, чтобы неверный ввод возвращал понятный `status: "error"`, а не обрывал реактивный расчёт.
+Не передавайте результат `trim()` напрямую в `parse_int`/`parse_float`: в текущей версии Rhai это может дать другой строковый тип и ошибку преобразования.
 
-Поддерживаемая форма `try/catch` в текущем встроенном Rhai:
+В пользовательской форме перехватывайте ошибки преобразования, чтобы неверный ввод возвращал понятный `status: "error"`, а не обрывал реактивный расчёт.
+
+Поддерживаемая форма `try/catch`:
 
 ```rhai
 let value = 0.0;
 try {
-    value = parse_float(input.value.trim());
+    value = parse_number(input.value);
 } catch {
     return fail("Значение должно быть числом.");
 }
