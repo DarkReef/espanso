@@ -23,10 +23,7 @@ use crate::cli::worker::builtin::generate_next_builtin_id;
 
 use super::BuiltInMatch;
 
-// CTRL+ALT+M is commonly reserved by other Windows applications and may cause
-// RegisterHotKey to fail during startup. Keep the built-in action available on
-// a less collision-prone combination instead of emitting an avoidable error.
-pub const DEFAULT_SELECTION_MATCH_SHORTCUT: &str = "CTRL+ALT+SHIFT+M";
+pub const DEFAULT_SELECTION_MATCH_SHORTCUT: &str = "CTRL+ALT+M";
 
 pub fn create_match_execute_selection() -> BuiltInMatch {
     BuiltInMatch {
