@@ -1,4 +1,4 @@
-name: pol_run Astra 1.7 X11 portable v3
+name: pol_run Astra 1.7 X11 full portable
 
 on:
   push:
@@ -6,22 +6,32 @@ on:
     paths:
       - '.github/workflows/pol-run-astra17-v3.yml'
       - 'scripts/build_pol_run_astra17.sh'
+      - 'espanso-editor/**'
+      - 'espanso/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: pol-run-astra17-full
+  cancel-in-progress: true
+
 jobs:
   build:
+    name: Full X11 core + Match Studio
     runs-on: ubuntu-22.04
-    timeout-minutes: 180
+    timeout-minutes: 240
+
     steps:
       - uses: actions/checkout@v4
         with:
           ref: pol_run
           fetch-depth: 1
 
-      - name: Build in Debian 10
+      - name: Build full portable package in Debian 10
         shell: bash
         run: |
           set -euxo pipefail
@@ -31,22 +41,39 @@ jobs:
             debian:buster-slim \
             bash scripts/build_pol_run_astra17.sh
 
-      - name: Verify output
+      - name: Verify full package
         shell: bash
         run: |
           set -euxo pipefail
-          ROOT=target/pol-run-astra/rEspanso-pol_run-Astra17-X11-x86_64
-          cat "$ROOT/glibc-required.txt"
-          cat "$ROOT/packaged-ldd.txt"
-          tar -tzf target/pol-run-astra/rEspanso-pol_run-Astra17-X11-x86_64.tar.gz
+          OUT=target/pol-run-astra-full
+          ROOT="$OUT/rEspanso-pol_run-Astra17-X11-Full-x86_64"
 
-      - name: Upload Astra portable artifact
+          test -x "$ROOT/rEspanso-core"
+          test -x "$ROOT/rEspanso-Match-Studio"
+          test -x "$ROOT/run.sh"
+          test -x "$ROOT/diagnose.sh"
+          test -f "$ROOT/config/default.yml"
+          test -f "$ROOT/match/base.yml"
+          test -f "$OUT/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz"
+
+          echo '=== core GLIBC requirements ==='
+          cat "$ROOT/core-glibc-required.txt"
+          echo '=== studio GLIBC requirements ==='
+          cat "$ROOT/studio-glibc-required.txt"
+          echo '=== core packaged ldd ==='
+          cat "$ROOT/core-packaged-ldd.txt"
+          echo '=== studio packaged ldd ==='
+          cat "$ROOT/studio-packaged-ldd.txt"
+          echo '=== archive ==='
+          tar -tzf "$OUT/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz" | head -n 120
+
+      - name: Upload full Astra portable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rEspanso-pol_run-Astra17-X11-x86_64
+          name: rEspanso-pol_run-Astra17-X11-Full-x86_64
           path: |
-            target/pol-run-astra/rEspanso-pol_run-Astra17-X11-x86_64.tar.gz
-            target/pol-run-astra/rEspanso-pol_run-Astra17-X11-x86_64.sha256
+            target/pol-run-astra-full/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz
+            target/pol-run-astra-full/rEspanso-pol_run-Astra17-X11-Full-x86_64.sha256
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
