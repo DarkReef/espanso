@@ -1,0 +1,52 @@
+name: pol_run Astra 1.7 X11 portable v3
+
+on:
+  push:
+    branches: [pol_run]
+    paths:
+      - '.github/workflows/pol-run-astra17-v3.yml'
+      - 'scripts/build_pol_run_astra17.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: pol_run
+          fetch-depth: 1
+
+      - name: Build in Debian 10
+        shell: bash
+        run: |
+          set -euxo pipefail
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            debian:buster-slim \
+            bash scripts/build_pol_run_astra17.sh
+
+      - name: Verify output
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ROOT=target/pol-run-astra/rEspanso-pol_run-Astra17-X11-x86_64
+          cat "$ROOT/glibc-required.txt"
+          cat "$ROOT/packaged-ldd.txt"
+          tar -tzf target/pol-run-astra/rEspanso-pol_run-Astra17-X11-x86_64.tar.gz
+
+      - name: Upload Astra portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-pol_run-Astra17-X11-x86_64
+          path: |
+            target/pol-run-astra/rEspanso-pol_run-Astra17-X11-x86_64.tar.gz
+            target/pol-run-astra/rEspanso-pol_run-Astra17-X11-x86_64.sha256
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
