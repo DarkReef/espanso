@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/pol-run-astra17-v3.yml'
       - 'scripts/build_pol_run_astra17.sh'
+      - 'scripts/pol_run_tray.cpp'
       - 'espanso-editor/**'
       - 'espanso/**'
       - 'espanso-detect/**'
@@ -22,7 +23,7 @@ concurrency:
 
 jobs:
   build:
-    name: Full X11 core + Match Studio
+    name: Full X11 core + Match Studio + KDE tray
     runs-on: ubuntu-22.04
     timeout-minutes: 240
 
@@ -51,7 +52,9 @@ jobs:
 
           test -x "$ROOT/rEspanso-core"
           test -x "$ROOT/rEspanso-Match-Studio"
+          test -x "$ROOT/rEspanso-Tray"
           test -x "$ROOT/run.sh"
+          test -x "$ROOT/start-tray.sh"
           test -x "$ROOT/diagnose.sh"
           test -f "$ROOT/config/default.yml"
           test -f "$ROOT/match/base.yml"
@@ -61,12 +64,16 @@ jobs:
           cat "$ROOT/core-glibc-required.txt"
           echo '=== studio GLIBC requirements ==='
           cat "$ROOT/studio-glibc-required.txt"
+          echo '=== tray GLIBC requirements ==='
+          cat "$ROOT/tray-glibc-required.txt"
           echo '=== core packaged ldd ==='
           cat "$ROOT/core-packaged-ldd.txt"
           echo '=== studio packaged ldd ==='
           cat "$ROOT/studio-packaged-ldd.txt"
+          echo '=== tray packaged ldd ==='
+          cat "$ROOT/tray-packaged-ldd.txt"
           echo '=== archive ==='
-          tar -tzf "$OUT/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz" | head -n 120
+          tar -tzf "$OUT/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz" | head -n 160
 
       - name: Upload full Astra portable artifact
         uses: actions/upload-artifact@v4
