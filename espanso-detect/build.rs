@@ -50,6 +50,9 @@ fn cc_config() {
         println!("cargo:rustc-link-lib=static=espansodetect");
         println!("cargo:rustc-link-lib=dylib=X11");
         println!("cargo:rustc-link-lib=dylib=Xtst");
+        // pol_run Astra fallback: receive global raw keyboard events through
+        // XInput2 when the hardened X server disables the RECORD extension.
+        println!("cargo:rustc-link-lib=dylib=Xi");
     }
 
     cc::Build::new()
