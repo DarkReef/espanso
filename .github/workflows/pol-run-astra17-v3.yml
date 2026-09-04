@@ -8,6 +8,7 @@ on:
       - 'scripts/build_pol_run_astra17.sh'
       - 'espanso-editor/**'
       - 'espanso/**'
+      - 'espanso-detect/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
   workflow_dispatch:
