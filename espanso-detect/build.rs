@@ -36,23 +36,26 @@ fn cc_config() {
 #[cfg(target_os = "linux")]
 fn cc_config() {
     println!("cargo:rerun-if-changed=src/x11/native.cpp");
+    println!("cargo:rerun-if-changed=src/x11/native_astra.cpp");
     println!("cargo:rerun-if-changed=src/x11/native.h");
     println!("cargo:rerun-if-changed=src/evdev/native.cpp");
     println!("cargo:rerun-if-changed=src/evdev/native.h");
 
     if cfg!(not(feature = "wayland")) {
+        // pol_run is the portable Astra Linux 1.7 / KDE / X11 branch.
+        // Astra can disable the legacy X11 RECORD extension, therefore this
+        // build deliberately uses the XInput2 raw-event detector instead of
+        // the upstream RECORD-based implementation.
         cc::Build::new()
             .cpp(true)
             .include("src/x11")
-            .file("src/x11/native.cpp")
+            .file("src/x11/native_astra.cpp")
             .compile("espansodetect");
 
         println!("cargo:rustc-link-lib=static=espansodetect");
         println!("cargo:rustc-link-lib=dylib=X11");
-        println!("cargo:rustc-link-lib=dylib=Xtst");
-        // pol_run Astra fallback: receive global raw keyboard events through
-        // XInput2 when the hardened X server disables the RECORD extension.
         println!("cargo:rustc-link-lib=dylib=Xi");
+        println!("cargo:rustc-link-lib=dylib=Xtst");
     }
 
     cc::Build::new()
