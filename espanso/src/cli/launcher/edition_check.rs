@@ -38,22 +38,17 @@ pub fn is_wrong_edition() -> (bool, DetectedOS) {
 }
 
 fn get_session_type() -> Option<String> {
-    let output = std::process::Command::new("sh")
-        .arg("-c")
-        .arg("loginctl show-session $(loginctl | grep $(whoami) | awk '{print $1}') -p Type")
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
+    if let Ok(session) = std::env::var("XDG_SESSION_TYPE") {
+        if session == "x11" || session == "wayland" {
+            return Some(session);
+        }
     }
-
-    let raw_session_type = String::from_utf8_lossy(&output.stdout);
-    let raw_session_type = raw_session_type.trim();
-    if !raw_session_type.contains("Type=") {
-        return None;
+    // Do not block portable startup on logind (often absent in Fly sessions).
+    if std::env::var_os("WAYLAND_DISPLAY").is_some_and(|value| !value.is_empty()) {
+        return Some("wayland".to_string());
     }
-
-    let session_type: Option<&str> = raw_session_type.split('=').next_back();
-    session_type.map(String::from)
+    if std::env::var_os("DISPLAY").is_some_and(|value| !value.is_empty()) {
+        return Some("x11".to_string());
+    }
+    None
 }

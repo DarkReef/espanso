@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 static FILE *g_native_log = nullptr;
+static XErrorHandler previous_runtime_error_handler = nullptr;
 
 static void write_native_log(const char *line) {
     if (!line) {
@@ -54,9 +55,9 @@ static int respanso_x11_error_handler(Display *display, XErrorEvent *error) {
              error ? error->serial : 0UL);
     write_native_log(line);
 
-    // X protocol errors such as BadAccess from XGrabKey are non-fatal for
-    // rEspanso. Returning lets Xlib continue while preserving diagnostics.
-    return 0;
+    // Expected grab conflicts are handled by the request-specific trap.
+    // Preserve the original handler for unrelated protocol errors.
+    return previous_runtime_error_handler ? previous_runtime_error_handler(display, error) : 0;
 }
 
 static int respanso_x11_io_error_handler(Display *display) {
@@ -91,7 +92,7 @@ extern "C" int32_t detect_prepare_x11_runtime(const char *log_path) {
     // This MUST be the first Xlib call made by the worker process.
     const int thread_support = XInitThreads();
 
-    XSetErrorHandler(&respanso_x11_error_handler);
+    previous_runtime_error_handler = XSetErrorHandler(&respanso_x11_error_handler);
     XSetIOErrorHandler(&respanso_x11_io_error_handler);
 
     char line[512] = {0};

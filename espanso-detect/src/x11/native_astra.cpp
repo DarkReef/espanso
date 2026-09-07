@@ -10,12 +10,13 @@
 #include "native.h"
 
 #include <locale.h>
+#include <errno.h>
+#include <mutex>
+#include <vector>
 #include <memory>
 #include <stdio.h>
 #include <string.h>
-#include <sys/select.h>
-#include <unistd.h>
-#include <vector>
+#include <poll.h>
 
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
@@ -34,44 +35,25 @@ typedef struct {
     EventCallback event_callback;
 } DetectContext;
 
-// XGrabKey reports ownership conflicts asynchronously. Without an explicit
-// error trap, BadAccess can reach whichever process-wide Xlib handler GTK/KDE
-// installed and terminate the worker with exit code 1. Keep the trap scoped to
-// the synchronous registration round-trip and restore the previous handler.
-static thread_local int hotkey_grab_error_code = Success;
-static thread_local unsigned int hotkey_grab_key_code = 0;
-static thread_local unsigned int hotkey_grab_modifiers = 0;
-static XErrorHandler previous_hotkey_error_handler = nullptr;
+// Xlib's handler is process-wide. Intercept only the exact expected grab
+// failure on this thread/connection; preserve GTK's handler for other errors.
+struct GrabErrorTrap {
+    Display *display;
+    unsigned long serial;
+    bool denied;
+};
+static thread_local GrabErrorTrap *active_grab_trap = nullptr;
+static XErrorHandler previous_error_handler = nullptr;
+static std::once_flag error_handler_once;
 
-static int hotkey_grab_error_handler(Display *display, XErrorEvent *error) {
-    if (error && error->request_code == X_GrabKey) {
-        hotkey_grab_error_code = error->error_code;
-
-        char error_text[256] = {0};
-        if (display) {
-            XGetErrorText(display, error->error_code, error_text,
-                          sizeof(error_text));
-        }
-
-        char line[768] = {0};
-        snprintf(line, sizeof(line),
-                 "[rESP-HOTKEY-GRAB] pid=%ld keycode=%u modifiers=0x%x "
-                 "error=%u(%s) request=%u minor=%u\n",
-                 static_cast<long>(getpid()), hotkey_grab_key_code,
-                 hotkey_grab_modifiers,
-                 static_cast<unsigned int>(error->error_code),
-                 error_text[0] ? error_text : "unknown",
-                 static_cast<unsigned int>(error->request_code),
-                 static_cast<unsigned int>(error->minor_code));
-        detect_write_x11_log(line);
+static int hotkey_error_handler(Display *display, XErrorEvent *error) {
+    if (active_grab_trap && active_grab_trap->display == display &&
+        active_grab_trap->serial == error->serial &&
+        error->request_code == X_GrabKey && error->error_code == BadAccess) {
+        active_grab_trap->denied = true;
         return 0;
     }
-
-    if (previous_hotkey_error_handler) {
-        return previous_hotkey_error_handler(display, error);
-    }
-
-    return 0;
+    return previous_error_handler ? previous_error_handler(display, error) : 0;
 }
 
 static void emit_input_event(DetectContext *context, int event_type,
@@ -276,52 +258,48 @@ HotKeyResult detect_register_hotkey(void *_context, HotKeyRequest request,
 
     result.state = target_modifiers;
     result.key_code = key_code;
-    result.success = 1;
+    std::call_once(error_handler_once, [] {
+        previous_error_handler = XSetErrorHandler(hotkey_error_handler);
+    });
+    // Drain earlier requests before identifying each grab by its serial.
+    XSync(context->display, False);
+    std::vector<unsigned int> grabbed;
+    bool denied = false;
 
     Window root = DefaultRootWindow(context->display);
-    std::vector<uint32_t> grabbed_modifiers;
-
-    // Drain previous requests first, then make every grab synchronous so a
-    // BadAccess conflict is attributed to this registration rather than a
-    // later clipboard/injector Xlib call.
-    XSync(context->display, False);
-    previous_hotkey_error_handler = XSetErrorHandler(&hotkey_grab_error_handler);
-
     for (uint32_t state = 0; state < 256; state++) {
         if ((state == 0 || (state & ~valid_modifiers) != 0) &&
             (state & valid_modifiers) == 0) {
             const uint32_t final_modifiers = state | target_modifiers;
-
-            hotkey_grab_error_code = Success;
-            hotkey_grab_key_code = key_code;
-            hotkey_grab_modifiers = final_modifiers;
-
+            GrabErrorTrap trap = {context->display,
+                                  NextRequest(context->display), false};
+            active_grab_trap = &trap;
             XGrabKey(context->display, key_code, final_modifiers, root, False,
                      GrabModeAsync, GrabModeAsync);
             XSync(context->display, False);
-
-            if (hotkey_grab_error_code != Success) {
-                result.success = 0;
+            active_grab_trap = nullptr;
+            if (trap.denied) {
+                denied = true;
                 break;
             }
-
-            grabbed_modifiers.push_back(final_modifiers);
+            grabbed.push_back(final_modifiers);
         }
     }
-
-    if (result.success == 0) {
-        // Do not leave a partially registered hotkey behind if one of the
-        // NumLock/CapsLock variants is already owned by KDE or another app.
-        for (uint32_t modifiers : grabbed_modifiers) {
+    if (denied) {
+        // A partially registered shortcut would behave differently with Caps /
+        // Num Lock. Release only grabs made by this registration attempt.
+        for (unsigned int modifiers : grabbed) {
             XUngrabKey(context->display, key_code, modifiers, root);
         }
-        XSync(context->display, False);
+        char line[256];
+        snprintf(line, sizeof(line), "rEspanso: hotkey keycode=%u modifiers=0x%x unavailable "
+                 "(XGrabKey BadAccess); shortcut disabled, input continues\n",
+                 key_code, target_modifiers);
+        detect_write_x11_log(line);
+    } else {
+        result.success = 1;
     }
-
-    XSetErrorHandler(previous_hotkey_error_handler);
-    previous_hotkey_error_handler = nullptr;
-    hotkey_grab_key_code = 0;
-    hotkey_grab_modifiers = 0;
+    XSync(context->display, False);
 
     return result;
 }
@@ -397,12 +375,13 @@ int32_t detect_eventloop(void *_context, EventCallback callback) {
             process_event(context, &event);
         }
 
-        fd_set fds;
-        FD_ZERO(&fds);
-        FD_SET(fd, &fds);
-        timeval timeout = {2, 0};
-        const int result = select(fd + 1, &fds, NULL, NULL, &timeout);
+        pollfd descriptor = {fd, POLLIN, 0};
+        const int result = poll(&descriptor, 1, 2000);
+        if (result > 0 && (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL))) {
+            return -2;
+        }
         if (result < 0) {
+            if (errno == EINTR) continue;
             return -2;
         }
     }
