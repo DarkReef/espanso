@@ -20,3 +20,20 @@ if [[ "$result" != 124 ]]; then
 fi
 grep -q 'binded to IPC unix socket' "$TEST_ROOT/worker.log"
 echo 'Astra worker: X11 startup with long Unicode runtime path PASS'
+
+# Exercise the portable launcher and daemon stop, using the same long path.
+# The launcher recognizes this marker and skips its first-run desktop wizard.
+touch "$CONFIG/rEspanso-Match-Studio"
+core_args=(--config_dir "$CONFIG" --package_dir "$CONFIG/packages" --runtime_dir "$CONFIG/runtime")
+"$CORE" "${core_args[@]}" service start --unmanaged || {
+  cat "$CONFIG/runtime/startup.log" "$CONFIG/runtime/espanso.log"
+  exit 1
+}
+sleep 1
+"$CORE" "${core_args[@]}" service status
+"$CORE" "${core_args[@]}" service stop
+if "$CORE" "${core_args[@]}" service status; then
+  echo 'Worker remained running after service stop' >&2
+  exit 1
+fi
+echo 'Astra service: portable start, status and stop with long runtime path PASS'

@@ -36,7 +36,8 @@ exactly one hotkey event, continued raw keyboard events, and preservation of the
 previous handler for unrelated errors.
 
 `scripts/test_astra_worker.sh` starts the complete core under Xvfb with a long
-Unicode runtime path and requires it to remain alive for ten seconds. The Rust
+Unicode runtime path and requires it to remain alive for ten seconds, then checks
+portable service start/status/stop against that path. The Rust
 IPC regression separately tests an actual connection over a long Unicode path.
 The Debian 10 portable build runs these gates plus the workspace tests.
 

@@ -53,7 +53,7 @@ cargo build --locked --release \
   --no-default-features \
   --features modulo,vendored-tls
 
-timeout 30s xvfb-run -a bash scripts/test_astra_worker.sh target/release/espanso
+timeout 60s xvfb-run -a bash scripts/test_astra_worker.sh target/release/espanso
 
 cargo test --locked --workspace --no-default-features \
   --features espanso/modulo,espanso/vendored-tls
