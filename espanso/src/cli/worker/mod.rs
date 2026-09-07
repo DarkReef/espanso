@@ -65,6 +65,25 @@ fn worker_main(args: CliModuleArgs) -> i32 {
     let paths = args.paths.expect("missing paths in worker main");
     let cli_args = args.cli_args.expect("missing cli_args in worker main");
 
+    // XInitThreads has to be the first Xlib call in this process. Do this
+    // before tray, detector, injector and clipboard initialization and keep a
+    // native log that survives fatal Xlib I/O termination.
+    #[cfg(all(target_os = "linux", not(feature = "wayland")))]
+    {
+        let native_log_path = paths.runtime.join("x11-native.log");
+        if espanso_detect::prepare_x11_runtime(&native_log_path) {
+            info!(
+                "[rESP-X11] XInitThreads enabled; native diagnostics: {}",
+                native_log_path.display()
+            );
+        } else {
+            error!(
+                "[rESP-X11] XInitThreads FAILED; continuing with diagnostics at {}",
+                native_log_path.display()
+            );
+        }
+    }
+
     // When restarted, the daemon passes the reason why the worker was restarted (config_change, etc)
     let start_reason = cli_args.value_of("start-reason").map(String::from);
     debug!("starting with start-reason = {start_reason:?}");
