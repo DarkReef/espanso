@@ -14,6 +14,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/select.h>
+#include <unistd.h>
+#include <vector>
 
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
@@ -22,12 +24,54 @@
 #include <X11/keysym.h>
 #include <X11/keysymdef.h>
 
+extern "C" void detect_write_x11_log(const char *line);
+
 typedef struct {
     Display *display;
     int xi_opcode;
     void *rust_instance;
     EventCallback event_callback;
 } DetectContext;
+
+// XGrabKey reports ownership conflicts asynchronously. Without an explicit
+// error trap, BadAccess can reach whichever process-wide Xlib handler GTK/KDE
+// installed and terminate the worker with exit code 1. Keep the trap scoped to
+// the synchronous registration round-trip and restore the previous handler.
+static thread_local int hotkey_grab_error_code = Success;
+static thread_local unsigned int hotkey_grab_key_code = 0;
+static thread_local unsigned int hotkey_grab_modifiers = 0;
+static XErrorHandler previous_hotkey_error_handler = nullptr;
+
+static int hotkey_grab_error_handler(Display *display, XErrorEvent *error) {
+    if (error && error->request_code == X_GrabKey) {
+        hotkey_grab_error_code = error->error_code;
+
+        char error_text[256] = {0};
+        if (display) {
+            XGetErrorText(display, error->error_code, error_text,
+                          sizeof(error_text));
+        }
+
+        char line[768] = {0};
+        snprintf(line, sizeof(line),
+                 "[rESP-HOTKEY-GRAB] pid=%ld keycode=%u modifiers=0x%x "
+                 "error=%u(%s) request=%u minor=%u\n",
+                 static_cast<long>(getpid()), hotkey_grab_key_code,
+                 hotkey_grab_modifiers,
+                 static_cast<unsigned int>(error->error_code),
+                 error_text[0] ? error_text : "unknown",
+                 static_cast<unsigned int>(error->request_code),
+                 static_cast<unsigned int>(error->minor_code));
+        detect_write_x11_log(line);
+        return 0;
+    }
+
+    if (previous_hotkey_error_handler) {
+        return previous_hotkey_error_handler(display, error);
+    }
+
+    return 0;
+}
 
 static void emit_input_event(DetectContext *context, int event_type,
                              int key_code, unsigned int state) {
@@ -234,15 +278,49 @@ HotKeyResult detect_register_hotkey(void *_context, HotKeyRequest request,
     result.success = 1;
 
     Window root = DefaultRootWindow(context->display);
+    std::vector<uint32_t> grabbed_modifiers;
+
+    // Drain previous requests first, then make every grab synchronous so a
+    // BadAccess conflict is attributed to this registration rather than a
+    // later clipboard/injector Xlib call.
+    XSync(context->display, False);
+    previous_hotkey_error_handler = XSetErrorHandler(&hotkey_grab_error_handler);
+
     for (uint32_t state = 0; state < 256; state++) {
         if ((state == 0 || (state & ~valid_modifiers) != 0) &&
             (state & valid_modifiers) == 0) {
             const uint32_t final_modifiers = state | target_modifiers;
+
+            hotkey_grab_error_code = Success;
+            hotkey_grab_key_code = key_code;
+            hotkey_grab_modifiers = final_modifiers;
+
             XGrabKey(context->display, key_code, final_modifiers, root, False,
                      GrabModeAsync, GrabModeAsync);
+            XSync(context->display, False);
+
+            if (hotkey_grab_error_code != Success) {
+                result.success = 0;
+                break;
+            }
+
+            grabbed_modifiers.push_back(final_modifiers);
         }
     }
-    XFlush(context->display);
+
+    if (result.success == 0) {
+        // Do not leave a partially registered hotkey behind if one of the
+        // NumLock/CapsLock variants is already owned by KDE or another app.
+        for (uint32_t modifiers : grabbed_modifiers) {
+            XUngrabKey(context->display, key_code, modifiers, root);
+        }
+        XSync(context->display, False);
+    }
+
+    XSetErrorHandler(previous_hotkey_error_handler);
+    previous_hotkey_error_handler = nullptr;
+    hotkey_grab_key_code = 0;
+    hotkey_grab_modifiers = 0;
 
     return result;
 }
