@@ -7,6 +7,7 @@ description = "Russian source-aware multi-YAML rule editor for rEspanso portable
 edition = "2021"
 
 [dependencies]
+espanso-ai = { path = "../espanso-ai" }
 dirs.workspace = true
 eframe = { version = "0.35.0", default-features = false, features = ["default_fonts", "glow", "x11"] }
 regex.workspace = true

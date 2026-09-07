@@ -126,6 +126,10 @@ impl<'a> DefaultProcessor<'a> {
                 Box::new(DelayForModifierReleaseMiddleware::new(
                     modifier_status_provider,
                 )),
+                Box::new(super::middleware::ai_rewrite::AiRewriteMiddleware::new(
+                    selected_text_provider,
+                    config_path_provider,
+                )),
                 Box::new(SelectionMatchMiddleware::new(
                     selected_text_provider,
                     selection_match_resolver,

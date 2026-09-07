@@ -34,3 +34,14 @@ pub fn create_match_execute_selection() -> BuiltInMatch {
         action: |_| EventType::SelectionMatchRequested,
     }
 }
+
+/// The AI window reviews the outgoing text before any network request.
+pub fn create_match_ai_rewrite() -> BuiltInMatch {
+    BuiltInMatch {
+        id: generate_next_builtin_id(),
+        label: "ИИ: переформулировать выделенный текст",
+        triggers: Vec::new(),
+        hotkey: Some("ALT+L".to_owned()),
+        action: |_| EventType::AiRewriteRequested,
+    }
+}

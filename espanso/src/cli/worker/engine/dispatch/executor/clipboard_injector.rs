@@ -211,22 +211,38 @@ impl SelectedTextProvider for ClipboardInjectorAdapter<'_> {
         let options = self.get_operation_options();
         let previous_text = self.clipboard.get_text(&options);
         let previous_sequence = clipboard_sequence_number();
-
-        if let Err(error) = self.send_copy_combination() {
-            error!("unable to copy selected text: {error}");
+        // X11 has no Windows clipboard sequence counter. Clear the text first so
+        // copying the SAME selection again is distinguishable from a failed copy.
+        #[cfg(not(target_os = "windows"))]
+        if self.clipboard.set_text("", &options).is_err() {
             return None;
         }
 
-        let selected_text =
-            self.wait_for_selected_text(previous_text.as_deref(), previous_sequence, &options);
+        if let Err(error) = self.send_copy_combination() {
+            error!("unable to copy selected text: {error}");
+            let _ = self
+                .clipboard
+                .set_text(previous_text.as_deref().unwrap_or(""), &options);
+            return None;
+        }
+
+        let baseline = if cfg!(target_os = "windows") {
+            previous_text.as_deref()
+        } else {
+            Some("")
+        };
+        let selected_text = self.wait_for_selected_text(baseline, previous_sequence, &options);
 
         if !params.restore_clipboard {
             return selected_text;
         }
 
-        if let Some(previous_text) = previous_text {
+        {
             std::thread::sleep(SELECTION_RESTORE_DELAY);
-            if let Err(error) = self.clipboard.set_text(&previous_text, &options) {
+            if let Err(error) = self
+                .clipboard
+                .set_text(previous_text.as_deref().unwrap_or(""), &options)
+            {
                 error!("unable to restore clipboard after reading selection: {error}");
             }
         }

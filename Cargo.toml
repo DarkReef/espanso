@@ -2,6 +2,7 @@
 resolver = "2"
 
 members = [
+  "espanso-ai",
   "espanso",
   "espanso-editor",
   "espanso-detect",

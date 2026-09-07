@@ -7,18 +7,22 @@ on:
       - '.github/workflows/pol-run-astra17-v3.yml'
       - 'scripts/build_pol_run_astra17.sh'
       - 'scripts/pol_run_tray.cpp'
+      - 'espanso-ai/**'
+      - 'espanso-engine/**'
       - 'espanso-editor/**'
       - 'espanso/**'
       - 'espanso-detect/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
+  pull_request:
+    branches: [pol_run]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pol-run-astra17-full
+  group: pol-run-astra17-full-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -30,7 +34,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: pol_run
           fetch-depth: 1
 
       - name: Build full portable package in Debian 10
@@ -53,6 +56,8 @@ jobs:
           test -x "$ROOT/rEspanso-core"
           test -x "$ROOT/rEspanso-Match-Studio"
           test -x "$ROOT/rEspanso-Tray"
+          test -x "$ROOT/bin/xdotool"
+          test -x "$ROOT/mcp.sh"
           test -x "$ROOT/run.sh"
           test -x "$ROOT/start-tray.sh"
           test -x "$ROOT/diagnose.sh"

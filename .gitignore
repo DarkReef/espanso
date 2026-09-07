@@ -67,3 +67,7 @@ tarpaulin-report.html
 
 # direnv
 .direnv/
+
+# Local AI credentials and preferences must never enter commits.
+.ai-*.key
+ai.json

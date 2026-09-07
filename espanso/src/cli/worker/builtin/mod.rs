@@ -62,6 +62,7 @@ pub fn get_builtin_matches(config: &dyn Config) -> Vec<BuiltInMatch> {
         process::create_match_exit(),
         process::create_match_restart(),
         selection::create_match_execute_selection(),
+        selection::create_match_ai_rewrite(),
     ];
 
     if config.search_trigger().is_some() || config.search_shortcut().is_some() {

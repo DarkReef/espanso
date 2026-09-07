@@ -8,6 +8,16 @@ use std::{
 };
 
 fn main() {
+    // Headless MCP must bypass GUI initialization, startup logs and the Studio lock.
+    if std::env::args().any(|arg| arg == "--mcp") {
+        let root = normalize_config_root(parse_config_root().unwrap_or_else(default_config_root));
+        if espanso_ai::mcp::serve(&root, std::io::stdin().lock(), std::io::stdout().lock()).is_err()
+        {
+            eprintln!("MCP transport closed with an error");
+            std::process::exit(1);
+        }
+        return;
+    }
     install_panic_hook();
 
     if let Err(error) = launch() {
@@ -19,6 +29,21 @@ fn main() {
 }
 
 fn launch() -> Result<(), String> {
+    if std::env::args().any(|arg| arg == "--ai-selection") {
+        let root = normalize_config_root(parse_config_root().unwrap_or_else(default_config_root));
+        let mut selected = String::new();
+        std::io::stdin()
+            .take(24_001)
+            .read_to_string(&mut selected)
+            .map_err(|_| "Ошибка чтения выделения")?;
+        espanso_ai::validate_text(&selected)?;
+        let args: Vec<String> = std::env::args().collect();
+        let target = args
+            .windows(2)
+            .find(|pair| pair[0] == "--ai-target-window")
+            .and_then(|pair| pair[1].parse::<u64>().ok());
+        return espanso_editor::ai::run(root, selected, target).map_err(|e| e.to_string());
+    }
     let Some(_instance_guard) = acquire_instance_lock()? else {
         return Ok(());
     };
@@ -109,7 +134,7 @@ fn lock_owner_is_running(lock_path: &Path) -> bool {
         .process(sysinfo::Pid::from_u32(pid))
         .is_some_and(|process| {
             let name = process.name().to_ascii_lowercase();
-            name.contains("respanso") && name.contains("studio")
+            (name.contains("respanso") && name.contains("studio")) || name == "espanso-editor"
         })
 }
 

@@ -101,7 +101,7 @@ fn launch_match_studio(config_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn studio_candidates(root: &Path) -> Vec<PathBuf> {
+pub(super) fn studio_candidates(root: &Path) -> Vec<PathBuf> {
     studio_binary_names()
         .iter()
         .map(|name| root.join(name))

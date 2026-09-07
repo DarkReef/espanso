@@ -32,7 +32,8 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   libxkbcommon-dev \
   libxrandr-dev \
   libxtst-dev \
-  pkg-config
+  pkg-config \
+  xdotool
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
   | sh -s -- -y --profile minimal --default-toolchain stable
@@ -43,16 +44,17 @@ echo "Build host: $(ldd --version | head -n1)"
 rustc --version
 cargo --version
 
-# The pol_run branch intentionally uses the X11/OpenGL (glow) renderer for
-# Match Studio. Cargo.lock from the upstream unstable branch was generated for
-# the WGPU build, therefore this branch allows Cargo to extend the lockfile in
-# the ephemeral CI workspace with the glow-only optional dependencies.
-cargo build --release \
+# The lockfile includes the X11/OpenGL (glow) Studio dependency graph.
+# Keep validation and the portable binaries on the same resolved versions.
+cargo build --locked --release \
   -p espanso --bin espanso \
   --no-default-features \
   --features modulo,vendored-tls
 
-cargo build --release \
+cargo test --locked --workspace --no-default-features \
+  --features espanso/modulo,espanso/vendored-tls
+
+cargo build --locked --release \
   -p espanso-editor --bin espanso-editor
 
 CORE="target/release/espanso"
@@ -73,6 +75,7 @@ g++ -O2 -pipe -std=c++11 scripts/pol_run_tray.cpp \
 rm -rf "$OUT"
 mkdir -p \
   "$ROOT/lib" \
+  "$ROOT/bin" \
   "$ROOT/config" \
   "$ROOT/match" \
   "$ROOT/packages" \
@@ -83,6 +86,8 @@ mkdir -p \
 cp "$CORE" "$ROOT/rEspanso-core"
 cp "$STUDIO" "$ROOT/rEspanso-Match-Studio"
 cp "$TRAY" "$ROOT/rEspanso-Tray"
+cp /usr/bin/xdotool "$ROOT/bin/xdotool"
+cp -L /usr/lib/x86_64-linux-gnu/libxdo.so.3 "$ROOT/lib/libxdo.so.3"
 cp espanso/src/res/config/default.yml "$ROOT/config/default.yml"
 cp espanso/src/res/config/base.yml "$ROOT/match/base.yml"
 cp LICENSE "$ROOT/LICENSE.txt"
@@ -122,6 +127,7 @@ PIDFILE="$ROOT/runtime/tray.pid"
 LOGFILE="$ROOT/runtime/tray.log"
 
 export LD_LIBRARY_PATH="$ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PATH="$ROOT/bin:$PATH"
 mkdir -p "$ROOT/runtime"
 
 if [[ -s "$PIDFILE" ]]; then
@@ -154,6 +160,7 @@ CORE="$ROOT/rEspanso-core"
 STUDIO="$ROOT/rEspanso-Match-Studio"
 
 export LD_LIBRARY_PATH="$ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PATH="$ROOT/bin:$PATH"
 export ESPANSO_CONFIG_DIR="$ROOT"
 export ESPANSO_PACKAGE_DIR="$ROOT/packages"
 export ESPANSO_RUNTIME_DIR="$ROOT/runtime"
@@ -188,6 +195,7 @@ cat >"$ROOT/studio.sh" <<'STUDIO_RUN'
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LD_LIBRARY_PATH="$ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PATH="$ROOT/bin:$PATH"
 exec "$ROOT/rEspanso-Match-Studio" --config-dir "$ROOT"
 STUDIO_RUN
 
@@ -196,6 +204,7 @@ cat >"$ROOT/start-engine.sh" <<'ENGINE'
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LD_LIBRARY_PATH="$ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PATH="$ROOT/bin:$PATH"
 
 "$ROOT/rEspanso-core" \
   --config_dir "$ROOT" \
@@ -212,6 +221,7 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PIDFILE="$ROOT/runtime/tray.pid"
 export LD_LIBRARY_PATH="$ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PATH="$ROOT/bin:$PATH"
 
 "$ROOT/rEspanso-core" \
   --config_dir "$ROOT" \
@@ -233,6 +243,7 @@ cat >"$ROOT/diagnose.sh" <<'DIAG'
 set +e
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LD_LIBRARY_PATH="$ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PATH="$ROOT/bin:$PATH"
 
 echo '===== rEspanso pol_run Astra diagnostics ====='
 echo
@@ -290,6 +301,15 @@ echo '--- portable engine status ---'
   service status || true
 DIAG
 
+cat >"$ROOT/mcp.sh" <<'MCP_RUN'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export LD_LIBRARY_PATH="$ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$ROOT/rEspanso-Match-Studio" --mcp --config-dir "$ROOT"
+MCP_RUN
+chmod +x "$ROOT/mcp.sh" "$ROOT/bin/xdotool"
+
 cat >"$ROOT/README-FIRST.txt" <<'README'
 rEspanso pol_run — full portable build for Astra Linux 1.7 / KDE / X11 / x86_64
 
@@ -342,7 +362,7 @@ chmod +x \
   "$ROOT/diagnose.sh"
 
 # Record and enforce the maximum glibc symbol version required by all binaries.
-for pair in "core:$CORE" "studio:$STUDIO" "tray:$TRAY"; do
+for pair in "core:$CORE" "studio:$STUDIO" "tray:$TRAY" "xdotool:$ROOT/bin/xdotool"; do
   label="${pair%%:*}"
   binary="${pair#*:}"
   objdump -T "$binary" 2>/dev/null \
@@ -360,11 +380,13 @@ done
 LD_LIBRARY_PATH="$ROOT/lib" ldd "$ROOT/rEspanso-core" >"$ROOT/core-packaged-ldd.txt"
 LD_LIBRARY_PATH="$ROOT/lib" ldd "$ROOT/rEspanso-Match-Studio" >"$ROOT/studio-packaged-ldd.txt"
 LD_LIBRARY_PATH="$ROOT/lib" ldd "$ROOT/rEspanso-Tray" >"$ROOT/tray-packaged-ldd.txt"
+LD_LIBRARY_PATH="$ROOT/lib" ldd "$ROOT/bin/xdotool" >"$ROOT/xdotool-packaged-ldd.txt"
 
 for packaged_ldd in \
   "$ROOT/core-packaged-ldd.txt" \
   "$ROOT/studio-packaged-ldd.txt" \
-  "$ROOT/tray-packaged-ldd.txt"; do
+  "$ROOT/tray-packaged-ldd.txt" \
+  "$ROOT/xdotool-packaged-ldd.txt"; do
   if grep -q 'not found' "$packaged_ldd"; then
     cat "$packaged_ldd"
     echo "ERROR: package has unresolved libraries: $packaged_ldd"
@@ -374,6 +396,8 @@ done
 
 # Smoke tests that do not require an X server.
 LD_LIBRARY_PATH="$ROOT/lib" "$ROOT/rEspanso-core" --version
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"ping"}' \
+  | "$ROOT/mcp.sh" | grep -q '"result":{}'
 
 tar -C "$OUT" -czf "$OUT/$PACKAGE.tar.gz" "$PACKAGE"
 sha256sum "$OUT/$PACKAGE.tar.gz" >"$OUT/$PACKAGE.sha256"

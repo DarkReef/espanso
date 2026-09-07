@@ -42,3 +42,5 @@ pub mod selection_match;
 pub mod stats;
 pub mod suppress;
 pub mod undo;
+
+pub mod ai_rewrite;

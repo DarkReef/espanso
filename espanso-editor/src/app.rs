@@ -35,7 +35,7 @@ pub fn run(config_root: PathBuf) -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_title(APP_TITLE)
             .with_inner_size([1500.0, 900.0])
-            .with_min_inner_size([1050.0, 680.0]),
+            .with_min_inner_size([800.0, 560.0]),
         ..Default::default()
     };
     eframe::run_native(
@@ -47,6 +47,7 @@ pub fn run(config_root: PathBuf) -> eframe::Result {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MainTab {
+    Ai,
     Rules,
     Settings,
     Rhai,
@@ -65,6 +66,7 @@ pub struct MatchStudioApp {
     active_tab: MainTab,
     runtime: RuntimeMonitor,
     settings: SettingsEditor,
+    ai: crate::ai::AiPanel,
     rhai_lab: RhaiLab,
     filter: String,
     focus_filter: bool,
@@ -112,6 +114,7 @@ impl MatchStudioApp {
             Ok(workspace) => (Some(workspace), None),
             Err(error) => (None, Some(ru_message(&error.to_string()))),
         };
+        let ai = crate::ai::AiPanel::new(config_root.clone(), String::new(), None);
         let settings = SettingsEditor::load(&config_root);
         let rhai_lab = RhaiLab::new(&config_root);
         let now = Instant::now();
@@ -130,6 +133,7 @@ impl MatchStudioApp {
             active_tab: MainTab::Rules,
             runtime: RuntimeMonitor::new(),
             settings,
+            ai,
             rhai_lab,
             filter: String::new(),
             focus_filter: false,
@@ -196,6 +200,7 @@ impl MatchStudioApp {
             .as_ref()
             .is_some_and(|workspace| !workspace.dirty_files().is_empty())
             || self.settings.dirty()
+            || self.ai.dirty()
     }
 
     fn reload_all_from_disk(&mut self) {
@@ -1420,6 +1425,9 @@ impl MatchStudioApp {
     }
 
     fn handle_shortcuts(&mut self, context: &egui::Context) {
+        if self.active_tab == MainTab::Ai {
+            return;
+        }
         if self.active_tab == MainTab::Rhai {
             let (run, compile, save, reload, new_script, help) = context.input(|input| {
                 let primary = input.modifiers.ctrl || input.modifiers.command;
@@ -1552,7 +1560,7 @@ impl MatchStudioApp {
             });
 
             ui.separator();
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.selectable_value(&mut self.active_tab, MainTab::Rules, "Правила");
                 ui.selectable_value(
                     &mut self.active_tab,
@@ -1560,6 +1568,7 @@ impl MatchStudioApp {
                     "Настройки rEspanso",
                 );
                 ui.selectable_value(&mut self.active_tab, MainTab::Rhai, "Rhai");
+                ui.selectable_value(&mut self.active_tab, MainTab::Ai, "ИИ / MCP");
                 ui.separator();
                 if ui
                     .button("Импорт / экспорт")
@@ -1572,6 +1581,7 @@ impl MatchStudioApp {
                 ui.separator();
 
                 match self.active_tab {
+                    MainTab::Ai => {},
                     MainTab::Rules => {
                         if ui
                             .button("Новое правило")
@@ -1686,20 +1696,11 @@ impl MatchStudioApp {
                     }
                 }
 
-                let right_width = ui.available_width();
-                let restart_message = ui
-                    .allocate_ui_with_layout(
-                        egui::vec2(right_width, 30.0),
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            let restart_message = self.runtime.restart_button(ui);
-                            if ui.button("Горячие клавиши").on_hover_text("F1").clicked() {
-                                self.show_shortcuts = true;
-                            }
-                            restart_message
-                        },
-                    )
-                    .inner;
+                ui.separator();
+                let restart_message = self.runtime.restart_button(ui);
+                if ui.button("Горячие клавиши").on_hover_text("F1").clicked() {
+                    self.show_shortcuts = true;
+                }
                 if let Some(message) = restart_message {
                     self.status = message;
                 }
@@ -2710,6 +2711,7 @@ impl eframe::App for MatchStudioApp {
         });
 
         match self.active_tab {
+            MainTab::Ai => self.ai.ui(ui),
             MainTab::Rules => {
                 self.rules_panel(ui);
                 self.diagnostics_panel(ui);

@@ -68,6 +68,7 @@ pub enum EventType {
     MatchSelected(internal::MatchSelectedEvent),
     CauseCompensatedMatch(internal::CauseCompensatedMatchEvent),
     SelectionMatchRequested,
+    AiRewriteRequested,
 
     RenderingRequested(internal::RenderingRequestedEvent),
     ImageRequested(internal::ImageRequestedEvent),
