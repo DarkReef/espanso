@@ -38,6 +38,24 @@ pub mod evdev;
 #[cfg(target_os = "macos")]
 pub mod mac;
 
+#[cfg(all(target_os = "linux", not(feature = "wayland")))]
+extern "C" {
+    fn detect_prepare_x11_runtime(log_path: *const std::os::raw::c_char) -> i32;
+}
+
+/// Prepare Xlib for multi-threaded use and install native X11/XIO diagnostics.
+///
+/// This must be called before any other Xlib entry point in the process.
+#[cfg(all(target_os = "linux", not(feature = "wayland")))]
+pub fn prepare_x11_runtime(log_path: &std::path::Path) -> bool {
+    let path = log_path.to_string_lossy();
+    let Ok(path) = std::ffi::CString::new(path.as_bytes()) else {
+        return false;
+    };
+
+    unsafe { detect_prepare_x11_runtime(path.as_ptr()) != 0 }
+}
+
 pub type SourceCallback = Box<dyn Fn(event::InputEvent)>;
 
 pub trait Source {
