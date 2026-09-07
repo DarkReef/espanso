@@ -79,6 +79,20 @@ static CLI_HANDLERS: LazyLock<Vec<CliModule>> = LazyLock::new(|| {
 });
 
 fn main() {
+    // The UI, detector and injector use Xlib from different threads. This must
+    // precede every other Xlib call, including GTK initialization.
+    #[cfg(all(target_os = "linux", not(feature = "wayland")))]
+    unsafe {
+        #[link(name = "X11")]
+        extern "C" {
+            fn XInitThreads() -> std::os::raw::c_int;
+        }
+        if XInitThreads() == 0 {
+            eprintln!("rEspanso: unable to initialize Xlib thread support");
+            std::process::exit(1);
+        }
+    }
+
     match util::attach_console() {
         Ok(()) => info!("Console attached"),
         Err(e) => warn!("Could not attach console! {e}"),

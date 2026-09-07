@@ -50,6 +50,10 @@ pub fn create_worker_ipc_server(runtime_dir: &Path) -> Result<impl IPCServer<IPC
     create_ipc_server(runtime_dir, "workerv2")
 }
 
+pub fn create_ipc_client_to_daemon(runtime_dir: &Path) -> Result<impl IPCClient<IPCEvent>> {
+    create_ipc_client(runtime_dir, "daemonv2")
+}
+
 pub fn create_ipc_client_to_worker(runtime_dir: &Path) -> Result<impl IPCClient<IPCEvent>> {
     create_ipc_client(runtime_dir, "workerv2")
 }

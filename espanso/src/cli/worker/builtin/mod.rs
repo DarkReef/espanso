@@ -62,9 +62,7 @@ pub fn get_builtin_matches(config: &dyn Config) -> Vec<BuiltInMatch> {
         process::create_match_exit(),
         process::create_match_restart(),
         selection::create_match_execute_selection(),
-        // ALT+L AI rewrite is temporarily disabled on pol_run while the
-        // Astra X11 worker stability path is being validated. The AI code is
-        // intentionally kept in-tree so the hotkey can be restored later.
+        selection::create_match_ai_rewrite(),
     ];
 
     if config.search_trigger().is_some() || config.search_shortcut().is_some() {

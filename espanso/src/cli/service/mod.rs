@@ -120,7 +120,7 @@ fn start_main(paths: &Paths, _paths_overrides: &PathsOverrides, args: &ArgMatche
         // Unmanaged service
         #[cfg(unix)]
         {
-            if let Err(err) = fork_daemon(_paths_overrides) {
+            if let Err(err) = fork_daemon(_paths_overrides, &paths.runtime) {
                 error_eprintln!("unable to start service (unmanaged): {}", err);
                 return SERVICE_FAILURE;
             }
@@ -152,16 +152,26 @@ fn start_main(paths: &Paths, _paths_overrides: &PathsOverrides, args: &ArgMatche
     error_eprintln!("unable to start service: timed out");
 
     error_eprintln!(
-    "Hint: sometimes this happens because another rEspanso process is left running for some reason."
-  );
-    error_eprintln!(
-    "      Please try running 'espanso restart' or manually killing all rEspanso processes, then try again."
-  );
+        "See {} and {} for the startup failure.",
+        paths.runtime.join("startup.log").display(),
+        paths.runtime.join("espanso.log").display()
+    );
 
     SERVICE_TIMED_OUT
 }
 
 fn stop_main(paths: &Paths) -> i32 {
+    // A crashing worker releases its lock between retries. Stop the owning
+    // daemon directly so stop.sh works during that interval as well.
+    if crate::lock::acquire_daemon_lock(&paths.runtime).is_none() {
+        return match stop::terminate_daemon(&paths.runtime) {
+            Ok(()) => SERVICE_SUCCESS,
+            Err(err) => {
+                error_eprintln!("unable to stop rEspanso daemon: {}", err);
+                SERVICE_FAILURE
+            }
+        };
+    }
     let lock_file = acquire_worker_lock(&paths.runtime);
     if lock_file.is_some() {
         error_eprintln!("espanso is not running!");

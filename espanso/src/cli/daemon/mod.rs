@@ -290,6 +290,10 @@ fn daemon_main(args: CliModuleArgs) -> i32 {
                         consecutive_failures = 0;
                     }
                     consecutive_failures = consecutive_failures.saturating_add(1);
+                    if consecutive_failures >= 5 {
+                        error!("worker failed five consecutive times before reaching stable uptime; stopping daemon. See startup.log and espanso.log before restarting.");
+                        return DAEMON_GENERAL_ERROR;
+                    }
                     let delay = restart_backoff(consecutive_failures);
                     error!(
                         "worker pid {} exited unexpectedly with code {} after {:?}; restarting in {:?}",
@@ -368,7 +372,19 @@ fn spawn_worker(
         .name(format!("worker-status-monitor-{pid}"))
         .spawn(move || {
             let code = match child.wait() {
-                Ok(status) => status.code().unwrap_or(WORKER_ERROR_EXIT_NO_CODE),
+                Ok(status) => {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::process::ExitStatusExt;
+                        if let Some(signal) = status.signal() {
+                            error!(
+                                "worker pid {pid} terminated by signal {signal} (core dumped: {})",
+                                status.core_dumped()
+                            );
+                        }
+                    }
+                    status.code().unwrap_or(WORKER_ERROR_EXIT_NO_CODE)
+                }
                 Err(error) => {
                     error!("unable to wait for worker pid {pid}: {error}");
                     WORKER_ERROR_EXIT_NO_CODE
