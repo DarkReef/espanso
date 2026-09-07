@@ -20,7 +20,7 @@
 use crate::Injector;
 
 use anyhow::{bail, ensure, Result};
-use log::{error, warn};
+use log::{error, info, warn};
 
 mod default;
 mod ffi;
@@ -33,17 +33,48 @@ pub struct X11ProxyInjector {
 
 impl X11ProxyInjector {
     pub fn new() -> Result<Self> {
-        let default_injector = match default::X11DefaultInjector::new() {
-            Ok(injector) => Some(injector),
-            Err(err) => {
-                error!("X11DefaultInjector could not be initialized: {:?}", err);
-                warn!("falling back to xdotool injector");
-                None
+        // The native X11 injector builds its reverse keyboard map through
+        // XOpenIM/XCreateIC/Xutf8LookupString. On some hardened Astra/KDE X11
+        // installations that path can terminate the process inside Xlib/XIM
+        // before Rust can return an error. The portable Astra build therefore
+        // defaults to the simpler libxdo backend. Developers can opt back into
+        // the historical behaviour with RESPANSO_X11_INJECTOR=auto.
+        let requested_mode = std::env::var("RESPANSO_X11_INJECTOR")
+            .unwrap_or_else(|_| "xdotool".to_string())
+            .to_ascii_lowercase();
+        let try_default = matches!(requested_mode.as_str(), "auto" | "native" | "default");
+
+        info!(
+            "[rESP-DIAG] X11ProxyInjector init begin: requested_mode={}",
+            requested_mode
+        );
+
+        let default_injector = if try_default {
+            info!("[rESP-DIAG] X11DefaultInjector init begin");
+            match default::X11DefaultInjector::new() {
+                Ok(injector) => {
+                    info!("[rESP-DIAG] X11DefaultInjector init success");
+                    Some(injector)
+                }
+                Err(err) => {
+                    error!("X11DefaultInjector could not be initialized: {:?}", err);
+                    warn!("falling back to xdotool injector");
+                    None
+                }
             }
+        } else {
+            info!(
+                "[rESP-DIAG] X11DefaultInjector skipped; using xdotool-safe mode"
+            );
+            None
         };
 
+        info!("[rESP-DIAG] X11XDOToolInjector init begin");
         let xdotool_injector = match xdotool::X11XDOToolInjector::new() {
-            Ok(injector) => Some(injector),
+            Ok(injector) => {
+                info!("[rESP-DIAG] X11XDOToolInjector init success");
+                Some(injector)
+            }
             Err(err) => {
                 error!("X11XDOToolInjector could not be initialized: {:?}", err);
                 None
@@ -53,6 +84,12 @@ impl X11ProxyInjector {
         if default_injector.is_none() && xdotool_injector.is_none() {
             bail!("unable to initialize injectors, neither the default or xdotool fallback could be initialized");
         }
+
+        info!(
+            "[rESP-DIAG] X11ProxyInjector init complete: default={}, xdotool={}",
+            default_injector.is_some(),
+            xdotool_injector.is_some()
+        );
 
         Ok(X11ProxyInjector {
             default_injector,
