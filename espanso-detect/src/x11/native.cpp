@@ -30,10 +30,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <vector>
 
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
 #include <X11/Xlibint.h>
+#include <X11/Xproto.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/XInput2.h>
 #include <X11/extensions/XTest.h>
@@ -70,6 +72,24 @@ typedef struct {
 
 void detect_event_callback(XPointer, XRecordInterceptData *);
 int detect_error_callback(Display *display, XErrorEvent *error);
+
+// XGrabKey errors are asynchronous. The return value of XGrabKey itself does
+// not report BadAccess/BadValue, so checking it directly can never reliably
+// detect a shortcut already owned by KDE or another X11 client. During hotkey
+// registration we temporarily install this trap and force a round-trip with
+// XSync so the failure can be converted into a normal HotKeyResult instead of
+// escaping through Xlib's process-wide error path.
+static int hotkey_grab_error_code = Success;
+
+static int detect_hotkey_grab_error_callback(Display *display,
+                                             XErrorEvent *error) {
+    if (error->request_code == X_GrabKey) {
+        hotkey_grab_error_code = error->error_code;
+        return 0;
+    }
+
+    return detect_error_callback(display, error);
+}
 
 static void emit_raw_event(DetectContext *context, int event_type, int key_code,
                            unsigned int state) {
@@ -321,18 +341,44 @@ HotKeyResult detect_register_hotkey(void *_context, HotKeyRequest request,
     result.success = 1;
 
     Window root = DefaultRootWindow(context->ctrl_disp);
+    std::vector<unsigned int> grabbed_modifiers;
+
+    // Flush any older X requests before switching the process-wide handler,
+    // then make each XGrabKey request synchronous. This is required because
+    // XGrabKey reports ownership conflicts asynchronously via XErrorEvent.
+    XSync(context->ctrl_disp, False);
+    XSetErrorHandler(&detect_hotkey_grab_error_callback);
+
     for (uint state = 0; state < 256; state++) {
         if ((state == 0 || (state & ~valid_modifiers) != 0) &&
             (state & valid_modifiers) == 0) {
             uint final_modifiers = state | target_modifiers;
-            int res = XGrabKey(context->ctrl_disp, key_code, final_modifiers,
-                               root, False, GrabModeAsync, GrabModeAsync);
-            if (res == BadAccess || res == BadValue) {
+
+            hotkey_grab_error_code = Success;
+            XGrabKey(context->ctrl_disp, key_code, final_modifiers, root, False,
+                     GrabModeAsync, GrabModeAsync);
+            XSync(context->ctrl_disp, False);
+
+            if (hotkey_grab_error_code != Success) {
                 result.success = 0;
+                break;
             }
+
+            grabbed_modifiers.push_back(final_modifiers);
         }
     }
 
+    if (result.success == 0) {
+        // Do not leave a partially registered shortcut behind when one of the
+        // NumLock/CapsLock modifier variants is already owned by another
+        // client. Only undo grabs that succeeded in this registration call.
+        for (unsigned int modifiers : grabbed_modifiers) {
+            XUngrabKey(context->ctrl_disp, key_code, modifiers, root);
+        }
+        XSync(context->ctrl_disp, False);
+    }
+
+    XSetErrorHandler(&detect_error_callback);
     return result;
 }
 
