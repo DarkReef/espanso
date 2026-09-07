@@ -30,6 +30,10 @@ static void write_native_log(const char *line) {
     }
 }
 
+extern "C" void detect_write_x11_log(const char *line) {
+    write_native_log(line);
+}
+
 static int respanso_x11_error_handler(Display *display, XErrorEvent *error) {
     char error_text[256] = {0};
     if (display && error) {
