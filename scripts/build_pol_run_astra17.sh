@@ -33,12 +33,14 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   libxrandr-dev \
   libxtst-dev \
   pkg-config \
-  xdotool
+  xdotool xvfb xauth
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
   | sh -s -- -y --profile minimal --default-toolchain stable
 # shellcheck disable=SC1091
 . "$HOME/.cargo/env"
+
+bash scripts/test_astra_x11.sh
 
 echo "Build host: $(ldd --version | head -n1)"
 rustc --version
@@ -50,6 +52,8 @@ cargo build --locked --release \
   -p espanso --bin espanso \
   --no-default-features \
   --features modulo,vendored-tls
+
+timeout 30s xvfb-run -a bash scripts/test_astra_worker.sh target/release/espanso
 
 cargo test --locked --workspace --no-default-features \
   --features espanso/modulo,espanso/vendored-tls
@@ -289,6 +293,11 @@ if [[ -f "$ROOT/runtime/tray.log" ]]; then
 fi
 echo
 
+echo '--- engine log tail ---'
+tail -n 80 "$ROOT/runtime/espanso.log" 2>/dev/null || true
+echo '--- startup / native X11 log tail ---'
+tail -n 80 "$ROOT/runtime/startup.log" 2>/dev/null || true
+echo
 echo '--- core version ---'
 "$ROOT/rEspanso-core" --version || true
 echo

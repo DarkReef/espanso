@@ -29,6 +29,29 @@ use std::{
 
 use crate::{EventHandler, IPCClient, IPCServer};
 
+// Linux resolves /proc/self/fd through an open directory descriptor. This
+// keeps sockaddr_un short while the socket itself remains in the configured
+// runtime directory, with the same permissions and isolation as before.
+fn with_socket_path<T>(
+    id: &str,
+    parent_dir: &Path,
+    operation: impl FnOnce(&Path) -> std::io::Result<T>,
+) -> std::io::Result<T> {
+    let path = parent_dir.join(format!("{id}.sock"));
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::{ffi::OsStrExt, io::AsRawFd};
+        if path.as_os_str().as_bytes().len() >= 108 {
+            let directory = std::fs::File::open(parent_dir)?;
+            let short_path = std::path::PathBuf::from(format!(
+                "/proc/self/fd/{}/{id}.sock", directory.as_raw_fd()
+            ));
+            return operation(&short_path);
+        }
+    }
+    operation(&path)
+}
+
 pub struct UnixIPCServer {
     listener: UnixListener,
 }
@@ -42,7 +65,7 @@ impl UnixIPCServer {
             std::fs::remove_file(&socket_path)?;
         }
 
-        let listener = UnixListener::bind(&socket_path)?;
+        let listener = with_socket_path(id, parent_dir, |path| UnixListener::bind(path))?;
 
         info!(
             "binded to IPC unix socket: {}",
@@ -107,8 +130,7 @@ pub struct UnixIPCClient {
 
 impl UnixIPCClient {
     pub fn new(id: &str, parent_dir: &Path) -> Result<Self> {
-        let socket_path = parent_dir.join(format!("{id}.sock"));
-        let stream = UnixStream::connect(socket_path)?;
+        let stream = with_socket_path(id, parent_dir, |path| UnixStream::connect(path))?;
 
         Ok(Self { stream })
     }
@@ -142,5 +164,28 @@ impl<Event: Serialize + DeserializeOwned> IPCClient<Event> for UnixIPCClient {
         self.stream.flush()?;
 
         Ok(())
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod path_tests {
+    use super::*;
+    use std::io::Read;
+
+    #[test]
+    fn long_unicode_runtime_connects_to_the_same_socket() {
+        let root = std::env::temp_dir().join(format!("respanso-ipc-long-{}", std::process::id()));
+        let parent = root.join("Новая папка".repeat(8));
+        std::fs::create_dir_all(&parent).unwrap();
+        let server = UnixIPCServer::new("worker", &parent).unwrap();
+        let mut client = UnixIPCClient::new("worker", &parent).unwrap();
+        client.stream.write_all(b"ok").unwrap();
+        let (mut stream, _) = server.listener.accept().unwrap();
+        let mut message = [0; 2];
+        stream.read_exact(&mut message).unwrap();
+        assert_eq!(&message, b"ok");
+        assert!(parent.join("worker.sock").exists());
+        drop((stream, client, server));
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

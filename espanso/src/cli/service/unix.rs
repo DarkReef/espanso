@@ -19,11 +19,17 @@
 
 use crate::cli::util::CommandExt;
 use anyhow::Result;
+use std::{fs::OpenOptions, os::unix::fs::OpenOptionsExt, path::Path};
 use thiserror::Error;
 
 use crate::cli::PathsOverrides;
 
-pub fn fork_daemon(paths_overrides: &PathsOverrides) -> Result<()> {
+pub fn fork_daemon(paths_overrides: &PathsOverrides, runtime: &Path) -> Result<()> {
+    let log_path = runtime.join("startup.log");
+    if log_path.metadata().is_ok_and(|metadata| metadata.len() > 1_048_576) {
+        std::fs::rename(&log_path, runtime.join("startup.previous.log"))?;
+    }
+    let startup_log = OpenOptions::new().create(true).append(true).mode(0o600).open(log_path)?;
     let pid = unsafe { libc::fork() };
     if pid < 0 {
         return Err(ForkError::ForkFailed.into());
@@ -53,14 +59,16 @@ pub fn fork_daemon(paths_overrides: &PathsOverrides) -> Result<()> {
         }
     };
 
-    spawn_launcher(paths_overrides)
+    spawn_launcher(paths_overrides, startup_log)
 }
 
-pub fn spawn_launcher(paths_overrides: &PathsOverrides) -> Result<()> {
+fn spawn_launcher(paths_overrides: &PathsOverrides, startup_log: std::fs::File) -> Result<()> {
     let espanso_exe_path = std::env::current_exe()?;
     let mut command = std::process::Command::new(espanso_exe_path.to_string_lossy().to_string());
     command.args(["launcher"]);
     command.with_paths_overrides(paths_overrides);
+    command.stdout(startup_log.try_clone()?);
+    command.stderr(startup_log);
 
     let mut child = command.spawn()?;
     let result = child.wait()?;

@@ -10,13 +10,17 @@
 #include "native.h"
 
 #include <locale.h>
+#include <errno.h>
+#include <mutex>
+#include <vector>
 #include <memory>
 #include <stdio.h>
 #include <string.h>
-#include <sys/select.h>
+#include <poll.h>
 
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
+#include <X11/Xproto.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/XInput2.h>
 #include <X11/keysym.h>
@@ -28,6 +32,27 @@ typedef struct {
     void *rust_instance;
     EventCallback event_callback;
 } DetectContext;
+
+// Xlib's handler is process-wide. Intercept only the exact expected grab
+// failure on this thread/connection; preserve GTK's handler for other errors.
+struct GrabErrorTrap {
+    Display *display;
+    unsigned long serial;
+    bool denied;
+};
+static thread_local GrabErrorTrap *active_grab_trap = nullptr;
+static XErrorHandler previous_error_handler = nullptr;
+static std::once_flag error_handler_once;
+
+static int hotkey_error_handler(Display *display, XErrorEvent *error) {
+    if (active_grab_trap && active_grab_trap->display == display &&
+        active_grab_trap->serial == error->serial &&
+        error->request_code == X_GrabKey && error->error_code == BadAccess) {
+        active_grab_trap->denied = true;
+        return 0;
+    }
+    return previous_error_handler ? previous_error_handler(display, error) : 0;
+}
 
 static void emit_input_event(DetectContext *context, int event_type,
                              int key_code, unsigned int state) {
@@ -231,18 +256,46 @@ HotKeyResult detect_register_hotkey(void *_context, HotKeyRequest request,
 
     result.state = target_modifiers;
     result.key_code = key_code;
-    result.success = 1;
+    std::call_once(error_handler_once, [] {
+        previous_error_handler = XSetErrorHandler(hotkey_error_handler);
+    });
+    // Drain earlier requests before identifying each grab by its serial.
+    XSync(context->display, False);
+    std::vector<unsigned int> grabbed;
+    bool denied = false;
 
     Window root = DefaultRootWindow(context->display);
     for (uint32_t state = 0; state < 256; state++) {
         if ((state == 0 || (state & ~valid_modifiers) != 0) &&
             (state & valid_modifiers) == 0) {
             const uint32_t final_modifiers = state | target_modifiers;
+            GrabErrorTrap trap = {context->display,
+                                  NextRequest(context->display), false};
+            active_grab_trap = &trap;
             XGrabKey(context->display, key_code, final_modifiers, root, False,
                      GrabModeAsync, GrabModeAsync);
+            XSync(context->display, False);
+            active_grab_trap = nullptr;
+            if (trap.denied) {
+                denied = true;
+                break;
+            }
+            grabbed.push_back(final_modifiers);
         }
     }
-    XFlush(context->display);
+    if (denied) {
+        // A partially registered shortcut would behave differently with Caps /
+        // Num Lock. Release only grabs made by this registration attempt.
+        for (unsigned int modifiers : grabbed) {
+            XUngrabKey(context->display, key_code, modifiers, root);
+        }
+        fprintf(stderr, "rEspanso: hotkey keycode=%u modifiers=0x%x unavailable "
+                        "(XGrabKey BadAccess); shortcut disabled, input continues\n",
+                key_code, target_modifiers);
+    } else {
+        result.success = 1;
+    }
+    XSync(context->display, False);
 
     return result;
 }
@@ -318,12 +371,13 @@ int32_t detect_eventloop(void *_context, EventCallback callback) {
             process_event(context, &event);
         }
 
-        fd_set fds;
-        FD_ZERO(&fds);
-        FD_SET(fd, &fds);
-        timeval timeout = {2, 0};
-        const int result = select(fd + 1, &fds, NULL, NULL, &timeout);
+        pollfd descriptor = {fd, POLLIN, 0};
+        const int result = poll(&descriptor, 1, 2000);
+        if (result > 0 && (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL))) {
+            return -2;
+        }
         if (result < 0) {
+            if (errno == EINTR) continue;
             return -2;
         }
     }

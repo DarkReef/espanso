@@ -12,6 +12,9 @@ on:
       - 'espanso-editor/**'
       - 'espanso/**'
       - 'espanso-detect/**'
+      - 'espanso-ipc/**'
+      - 'espanso-inject/**'
+      - 'scripts/test_astra_*'
       - 'Cargo.toml'
       - 'Cargo.lock'
   pull_request:
