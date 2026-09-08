@@ -1,14 +1,16 @@
 /*
  * Astra Linux / X11 detector for rEspanso pol_run.
  *
- * Hardened Astra X servers may disable the X11 RECORD extension. This
- * implementation therefore listens for global keyboard/mouse input through
- * XInput2 raw events and keeps the existing XGrabKey path for Espanso hotkeys.
- * It requires no root privileges and no access to /dev/input.
+ * Hardened Astra X servers may disable the X11 RECORD extension and can also
+ * suppress XInput2 raw keyboard delivery. Text expansion therefore uses
+ * XQueryKeymap polling for global keyboard transitions. XInput2 is retained
+ * only for global mouse button events. This requires no root privileges and
+ * no access to /dev/input.
  */
 
 #include "native.h"
 
+#include <chrono>
 #include <locale.h>
 #include <memory>
 #include <stdio.h>
@@ -30,8 +32,19 @@ extern "C" void detect_write_x11_log(const char *line);
 typedef struct {
     Display *display;
     int xi_opcode;
+    bool xi2_mouse_enabled;
     void *rust_instance;
     EventCallback event_callback;
+
+    char previous_keymap[32];
+    bool keymap_initialized;
+
+    unsigned long long poll_count;
+    unsigned long long press_count;
+    unsigned long long release_count;
+    unsigned long long translated_count;
+    unsigned long long empty_translation_count;
+    std::chrono::steady_clock::time_point last_diag;
 } DetectContext;
 
 // XGrabKey reports ownership conflicts asynchronously. Without an explicit
@@ -74,6 +87,30 @@ static int hotkey_grab_error_handler(Display *display, XErrorEvent *error) {
     return 0;
 }
 
+static unsigned int current_xkb_state(Display *display) {
+    XkbStateRec xkb_state = {};
+    if (XkbGetState(display, XkbUseCoreKbd, &xkb_state) != Success) {
+        return 0;
+    }
+
+    // XKeyEvent.state keeps modifier masks in the low bits and the active
+    // keyboard group in bits 13-14. XkbStateRec.mods is the effective modifier
+    // state (base + latched + locked), which is exactly what XLookupString
+    // expects for a synthetic XKeyEvent.
+    return static_cast<unsigned int>(xkb_state.mods) |
+           ((static_cast<unsigned int>(xkb_state.group) & 0x3U) << 13);
+}
+
+static bool is_modifier_keycode(Display *display, int key_code) {
+    const KeySym sym = XkbKeycodeToKeysym(display, key_code, 0, 0);
+    return sym == XK_Shift_L || sym == XK_Shift_R ||
+           sym == XK_Control_L || sym == XK_Control_R ||
+           sym == XK_Alt_L || sym == XK_Alt_R ||
+           sym == XK_Meta_L || sym == XK_Meta_R ||
+           sym == XK_Super_L || sym == XK_Super_R ||
+           sym == XK_Caps_Lock || sym == XK_Num_Lock;
+}
+
 static void emit_input_event(DetectContext *context, int event_type,
                              int key_code, unsigned int state) {
     if (!context || !context->event_callback) {
@@ -98,20 +135,43 @@ static void emit_input_event(DetectContext *context, int event_type,
         raw_event.state = state;
         raw_event.type = event_type;
 
-        int res = XLookupString(&raw_event, event.buffer,
-                                sizeof(event.buffer) - 1, NULL, NULL);
+        // Ask Xlib for both the printable bytes and the resolved KeySym. Using
+        // the KeySym returned by XLookupString (rather than XLookupKeysym index
+        // 0) preserves Shift and the active XKB group for RU/EN layouts.
+        KeySym resolved_sym = NoSymbol;
+        XComposeStatus compose = {};
+        const int res = XLookupString(&raw_event, event.buffer,
+                                      sizeof(event.buffer) - 1,
+                                      &resolved_sym, &compose);
         if (res > 0) {
             event.buffer_len = res;
+            event.buffer[res] = '\0';
+            if (event_type == KeyPress) {
+                context->translated_count++;
+            }
         } else {
             memset(event.buffer, 0, sizeof(event.buffer));
             event.buffer_len = 0;
+            if (event_type == KeyPress) {
+                context->empty_translation_count++;
+            }
+        }
+
+        if (resolved_sym == NoSymbol) {
+            resolved_sym = XkbKeycodeToKeysym(context->display, key_code, 0, 0);
         }
 
         event.event_type = INPUT_EVENT_TYPE_KEYBOARD;
         event.key_code = key_code;
-        event.key_sym = XLookupKeysym(&raw_event, 0);
+        event.key_sym = static_cast<int32_t>(resolved_sym);
         event.status = event_type == KeyPress ? INPUT_STATUS_PRESSED
                                               : INPUT_STATUS_RELEASED;
+
+        if (event_type == KeyPress) {
+            context->press_count++;
+        } else {
+            context->release_count++;
+        }
     } else if (event_type == ButtonPress || event_type == ButtonRelease) {
         event.event_type = INPUT_EVENT_TYPE_MOUSE;
         event.key_code = key_code;
@@ -124,24 +184,85 @@ static void emit_input_event(DetectContext *context, int event_type,
     }
 }
 
-static unsigned int current_xkb_state(Display *display) {
-    XkbStateRec xkb_state = {};
-    if (XkbGetState(display, XkbUseCoreKbd, &xkb_state) != Success) {
-        return 0;
+static void maybe_log_input_stats(DetectContext *context) {
+    const auto now = std::chrono::steady_clock::now();
+    if (now - context->last_diag < std::chrono::seconds(5)) {
+        return;
     }
+    context->last_diag = now;
 
-    // XKeyEvent.state keeps modifier masks in the low bits and the active
-    // keyboard group in bits 13-14. Preserving the group is important on
-    // Russian/English layouts because XLookupString uses it for translation.
-    return static_cast<unsigned int>(xkb_state.mods) |
-           ((static_cast<unsigned int>(xkb_state.group) & 0x3U) << 13);
+    char line[512] = {0};
+    snprintf(line, sizeof(line),
+             "[rESP-INPUT] pid=%ld backend=xquerykeymap polls=%llu "
+             "presses=%llu releases=%llu translated=%llu empty=%llu "
+             "xi2_mouse=%s\n",
+             static_cast<long>(getpid()), context->poll_count,
+             context->press_count, context->release_count,
+             context->translated_count, context->empty_translation_count,
+             context->xi2_mouse_enabled ? "on" : "off");
+    detect_write_x11_log(line);
 }
 
-static bool initialize_xinput2(DetectContext *context) {
+static bool key_is_down(const char keymap[32], int key_code) {
+    const unsigned int code = static_cast<unsigned int>(key_code);
+    return (static_cast<unsigned char>(keymap[code >> 3]) &
+            static_cast<unsigned char>(1U << (code & 7U))) != 0;
+}
+
+static void poll_keyboard(DetectContext *context) {
+    char current_keymap[32] = {0};
+    if (!XQueryKeymap(context->display, current_keymap)) {
+        return;
+    }
+
+    context->poll_count++;
+
+    if (!context->keymap_initialized) {
+        memcpy(context->previous_keymap, current_keymap,
+               sizeof(context->previous_keymap));
+        context->keymap_initialized = true;
+        maybe_log_input_stats(context);
+        return;
+    }
+
+    const unsigned int state = current_xkb_state(context->display);
+
+    // Modifier presses must reach Rust before ordinary key presses from the
+    // same poll. Releases use the opposite order. This preserves Espanso's
+    // modifier-state middleware even when two transitions happen inside one
+    // 5 ms polling interval.
+    for (int pass = 0; pass < 4; ++pass) {
+        for (int key_code = 8; key_code < 256; ++key_code) {
+            const bool was_down = key_is_down(context->previous_keymap, key_code);
+            const bool is_down = key_is_down(current_keymap, key_code);
+            if (was_down == is_down) {
+                continue;
+            }
+
+            const bool modifier = is_modifier_keycode(context->display, key_code);
+            if (pass == 0 && is_down && modifier) {
+                emit_input_event(context, KeyPress, key_code, state);
+            } else if (pass == 1 && is_down && !modifier) {
+                emit_input_event(context, KeyPress, key_code, state);
+            } else if (pass == 2 && !is_down && !modifier) {
+                emit_input_event(context, KeyRelease, key_code, state);
+            } else if (pass == 3 && !is_down && modifier) {
+                emit_input_event(context, KeyRelease, key_code, state);
+            }
+        }
+    }
+
+    memcpy(context->previous_keymap, current_keymap,
+           sizeof(context->previous_keymap));
+    maybe_log_input_stats(context);
+}
+
+static bool initialize_xinput2_mouse(DetectContext *context) {
     int event = 0;
     int error = 0;
     if (!XQueryExtension(context->display, "XInputExtension",
                          &context->xi_opcode, &event, &error)) {
+        context->xi_opcode = 0;
         return false;
     }
 
@@ -149,13 +270,12 @@ static bool initialize_xinput2(DetectContext *context) {
     int minor = 0;
     if (XIQueryVersion(context->display, &major, &minor) != Success ||
         major < 2) {
+        context->xi_opcode = 0;
         return false;
     }
 
     unsigned char mask[(XI_LASTEVENT + 7) / 8];
     memset(mask, 0, sizeof(mask));
-    XISetMask(mask, XI_RawKeyPress);
-    XISetMask(mask, XI_RawKeyRelease);
     XISetMask(mask, XI_RawButtonPress);
     XISetMask(mask, XI_RawButtonRelease);
 
@@ -166,6 +286,7 @@ static bool initialize_xinput2(DetectContext *context) {
 
     Window root = DefaultRootWindow(context->display);
     if (XISelectEvents(context->display, root, &event_mask, 1) != Success) {
+        context->xi_opcode = 0;
         return false;
     }
 
@@ -188,8 +309,17 @@ void *detect_initialize(void *_rust_instance, int32_t *error_code) {
     std::unique_ptr<DetectContext> context(new DetectContext());
     context->display = XOpenDisplay(NULL);
     context->xi_opcode = 0;
+    context->xi2_mouse_enabled = false;
     context->rust_instance = _rust_instance;
     context->event_callback = nullptr;
+    memset(context->previous_keymap, 0, sizeof(context->previous_keymap));
+    context->keymap_initialized = false;
+    context->poll_count = 0;
+    context->press_count = 0;
+    context->release_count = 0;
+    context->translated_count = 0;
+    context->empty_translation_count = 0;
+    context->last_diag = std::chrono::steady_clock::now();
 
     if (!context->display) {
         *error_code = -1;
@@ -204,18 +334,30 @@ void *detect_initialize(void *_rust_instance, int32_t *error_code) {
         return nullptr;
     }
 
-    if (!initialize_xinput2(context.get())) {
-        // Rust currently maps -2 to the historical XRecordMissing error. In
-        // this Astra-specific backend the practical meaning is that no usable
-        // global X11 input source is available.
-        *error_code = -2;
-        XCloseDisplay(context->display);
-        return nullptr;
-    }
+    // Text input no longer depends on XInput2: Astra may allow XI2 setup while
+    // withholding raw keyboard events. XI2 is optional and used only to keep
+    // mouse clicks as matcher separators.
+    context->xi2_mouse_enabled = initialize_xinput2_mouse(context.get());
 
     XKeysymToKeycode(context->display, XK_F1);
+
+    // Baseline the current keyboard bitmap so keys already held during startup
+    // are not emitted as synthetic presses.
+    XQueryKeymap(context->display, context->previous_keymap);
+    context->keymap_initialized = true;
+
+    char line[512] = {0};
+    snprintf(line, sizeof(line),
+             "[rESP-INPUT] pid=%ld keyboard=xquerykeymap-poll interval_ms=5 "
+             "xi2_mouse=%s\n",
+             static_cast<long>(getpid()),
+             context->xi2_mouse_enabled ? "on" : "off");
+    detect_write_x11_log(line);
+
     fprintf(stderr,
-            "rEspanso: using XInput2 raw-event detector (Astra X11 backend)\n");
+            "rEspanso: using XQueryKeymap keyboard detector "
+            "(Astra X11 backend, XI2 mouse=%s)\n",
+            context->xi2_mouse_enabled ? "on" : "off");
 
     return context.release();
 }
@@ -347,7 +489,8 @@ static void process_event(DetectContext *context, XEvent *event) {
         return;
     }
 
-    if (event->type != GenericEvent ||
+    if (!context->xi2_mouse_enabled || context->xi_opcode == 0 ||
+        event->type != GenericEvent ||
         event->xcookie.extension != context->xi_opcode) {
         return;
     }
@@ -359,19 +502,12 @@ static void process_event(DetectContext *context, XEvent *event) {
     const int evtype = event->xcookie.evtype;
     XIRawEvent *raw = static_cast<XIRawEvent *>(event->xcookie.data);
     if (raw) {
-        const unsigned int state = current_xkb_state(context->display);
         switch (evtype) {
-        case XI_RawKeyPress:
-            emit_input_event(context, KeyPress, raw->detail, state);
-            break;
-        case XI_RawKeyRelease:
-            emit_input_event(context, KeyRelease, raw->detail, state);
-            break;
         case XI_RawButtonPress:
-            emit_input_event(context, ButtonPress, raw->detail, state);
+            emit_input_event(context, ButtonPress, raw->detail, 0);
             break;
         case XI_RawButtonRelease:
-            emit_input_event(context, ButtonRelease, raw->detail, state);
+            emit_input_event(context, ButtonRelease, raw->detail, 0);
             break;
         default:
             break;
@@ -397,10 +533,15 @@ int32_t detect_eventloop(void *_context, EventCallback callback) {
             process_event(context, &event);
         }
 
+        // Poll at 200 Hz. This is fast enough to catch normal/rapid typing but
+        // cheap compared with the rest of the desktop, and avoids any reliance
+        // on RECORD, evdev permissions, or raw XI2 keyboard delivery.
+        poll_keyboard(context);
+
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(fd, &fds);
-        timeval timeout = {2, 0};
+        timeval timeout = {0, 5000};
         const int result = select(fd + 1, &fds, NULL, NULL, &timeout);
         if (result < 0) {
             return -2;
