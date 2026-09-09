@@ -60,6 +60,7 @@ mod interop {
     use super::super::interop::{Interoperable, SearchItem, SearchMetadata};
     use super::types;
     use std::ffi::{c_void, CString};
+    use std::os::raw::c_int;
 
     pub struct OwnedSearch {
         title: CString,
