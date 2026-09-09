@@ -65,6 +65,15 @@ impl StatsMiddleware {
     }
 }
 
+fn is_safe_static_trigger(trigger: &str, trigger_args: &HashMap<String, String>) -> bool {
+    // Regex triggers with captures can contain patient-derived values directly
+    // in the typed trigger (for example a numeric measurement). Do not persist
+    // those values. Also reject unexpectedly large/control-containing strings.
+    trigger_args.is_empty()
+        && trigger.len() <= 128
+        && !trigger.chars().any(|c| c == '\0' || c == '\r' || c == '\n')
+}
+
 impl Middleware for StatsMiddleware {
     fn name(&self) -> &'static str {
         "stats"
@@ -74,31 +83,36 @@ impl Middleware for StatsMiddleware {
         match &event.etype {
             EventType::RenderingRequested(r_event) => {
                 if let Some(trigger) = &r_event.trigger {
-                    let mut pend = self.pending.borrow_mut();
-                    if pend.len() > 4096 {
-                        // simple capacity cap
-                        pend.clear();
+                    if is_safe_static_trigger(trigger, &r_event.trigger_args) {
+                        let mut pend = self.pending.borrow_mut();
+                        if pend.len() > 4096 {
+                            pend.clear();
+                        }
+                        pend.insert(
+                            event.source_id,
+                            PendingEntry {
+                                trigger: trigger.clone(),
+                            },
+                        );
                     }
-                    pend.insert(
-                        event.source_id,
-                        PendingEntry {
-                            trigger: trigger.clone(),
-                        },
-                    );
                 }
             }
             EventType::ImageRequested(i_event) => {
                 if let Some(trigger) = &i_event.trigger {
-                    let mut pend = self.pending.borrow_mut();
-                    if pend.len() > 4096 {
-                        pend.clear();
+                    if trigger.len() <= 128
+                        && !trigger.chars().any(|c| c == '\0' || c == '\r' || c == '\n')
+                    {
+                        let mut pend = self.pending.borrow_mut();
+                        if pend.len() > 4096 {
+                            pend.clear();
+                        }
+                        pend.insert(
+                            event.source_id,
+                            PendingEntry {
+                                trigger: trigger.clone(),
+                            },
+                        );
                     }
-                    pend.insert(
-                        event.source_id,
-                        PendingEntry {
-                            trigger: trigger.clone(),
-                        },
-                    );
                 }
             }
             EventType::DiscardPrevious(e) => {
