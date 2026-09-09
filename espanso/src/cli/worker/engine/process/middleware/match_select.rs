@@ -77,7 +77,7 @@ impl MatchSelector for MatchSelectorAdapter<'_> {
             .collect();
 
         let hint = if is_search {
-            Some("Search matches by content or trigger (or type > to see commands)")
+            Some("Поиск по шаблонам и триггерам · Ctrl+D — добавить/убрать избранное")
         } else {
             None
         };
