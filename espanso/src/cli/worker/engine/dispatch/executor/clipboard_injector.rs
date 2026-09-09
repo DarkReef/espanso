@@ -33,6 +33,8 @@ use espanso_engine::{
     process::SelectedTextProvider,
 };
 
+use super::with_synthetic_input_guard;
+
 const SELECTION_COPY_TIMEOUT: Duration = Duration::from_millis(800);
 const SELECTION_COPY_POLL_INTERVAL: Duration = Duration::from_millis(20);
 const SELECTION_RESTORE_DELAY: Duration = Duration::from_millis(30);
@@ -118,15 +120,20 @@ impl<'a> ClipboardInjectorAdapter<'a> {
             vec![Key::Control, Key::V]
         };
 
-        self.injector.send_key_combination(
-            &combination,
-            InjectionOptions {
-                delay: params.paste_shortcut_event_delay as i32,
-                disable_fast_inject: params.disable_x11_fast_inject,
-                x11_use_xdotool_fallback: params.x11_use_xdotool_backend,
-                ..Default::default()
-            },
-        )?;
+        // On the Astra XQueryKeymap backend the synthetic Ctrl+V/Shift+Insert
+        // generated here is globally visible to the detector. Do not let the
+        // paste shortcut feed characters/modifiers back into the matcher.
+        with_synthetic_input_guard(|| {
+            self.injector.send_key_combination(
+                &combination,
+                InjectionOptions {
+                    delay: params.paste_shortcut_event_delay as i32,
+                    disable_fast_inject: params.disable_x11_fast_inject,
+                    x11_use_xdotool_fallback: params.x11_use_xdotool_backend,
+                    ..Default::default()
+                },
+            )
+        })?;
 
         Ok(())
     }
@@ -139,15 +146,18 @@ impl<'a> ClipboardInjectorAdapter<'a> {
             vec![Key::Control, Key::C]
         };
 
-        self.injector.send_key_combination(
-            &combination,
-            InjectionOptions {
-                delay: params.paste_shortcut_event_delay as i32,
-                disable_fast_inject: params.disable_x11_fast_inject,
-                x11_use_xdotool_fallback: params.x11_use_xdotool_backend,
-                ..Default::default()
-            },
-        )?;
+        // The same feedback rule applies to Ctrl+C when selected text is read.
+        with_synthetic_input_guard(|| {
+            self.injector.send_key_combination(
+                &combination,
+                InjectionOptions {
+                    delay: params.paste_shortcut_event_delay as i32,
+                    disable_fast_inject: params.disable_x11_fast_inject,
+                    x11_use_xdotool_fallback: params.x11_use_xdotool_backend,
+                    ..Default::default()
+                },
+            )
+        })?;
 
         Ok(())
     }
@@ -291,7 +301,7 @@ impl ImageInjector for ClipboardInjectorAdapter<'_> {
         if !path.is_file() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                "image can't be found in the given path",
+                "image can't be found at the given path",
             )
             .into());
         }
