@@ -31,6 +31,12 @@
 extern "C" void detect_write_x11_log(const char *line);
 
 typedef struct {
+    int key_code;
+    uint32_t target_state;
+    uint32_t valid_modifiers_mask;
+} PolledHotKey;
+
+typedef struct {
     Display *display;
     int xi_opcode;
     bool xi2_mouse_enabled;
@@ -40,12 +46,18 @@ typedef struct {
     char previous_keymap[32];
     bool keymap_initialized;
 
+    // Hotkeys that could not be owned with XGrabKey (for example because KDE
+    // already owns the chord, or Astra denies passive grabs) are detected from
+    // the same XQueryKeymap snapshots used for text triggers.
+    std::vector<PolledHotKey> polled_hotkeys;
+
     unsigned long long poll_count;
     unsigned long long press_count;
     unsigned long long release_count;
     unsigned long long translated_count;
     unsigned long long empty_translation_count;
     unsigned long long recovered_shift_count;
+    unsigned long long polled_hotkey_count;
     std::chrono::steady_clock::time_point last_diag;
 } DetectContext;
 
@@ -186,6 +198,32 @@ static void emit_input_event(DetectContext *context, int event_type,
     }
 }
 
+static void maybe_emit_polled_hotkey(DetectContext *context, int key_code,
+                                     unsigned int state) {
+    if (!context || !context->event_callback) {
+        return;
+    }
+
+    for (const PolledHotKey &hotkey : context->polled_hotkeys) {
+        if (hotkey.key_code != key_code) {
+            continue;
+        }
+
+        // Ignore NumLock/CapsLock and other unrelated modifier bits, matching
+        // the semantics of the normal XGrabKey registration path.
+        if ((state & hotkey.valid_modifiers_mask) != hotkey.target_state) {
+            continue;
+        }
+
+        InputEvent event = {};
+        event.event_type = INPUT_EVENT_TYPE_HOTKEY;
+        event.key_code = key_code;
+        event.state = hotkey.target_state;
+        context->event_callback(context->rust_instance, event);
+        context->polled_hotkey_count++;
+    }
+}
+
 static void maybe_log_input_stats(DetectContext *context) {
     const auto now = std::chrono::steady_clock::now();
     if (now - context->last_diag < std::chrono::seconds(5)) {
@@ -193,15 +231,17 @@ static void maybe_log_input_stats(DetectContext *context) {
     }
     context->last_diag = now;
 
-    char line[640] = {0};
+    char line[768] = {0};
     snprintf(line, sizeof(line),
              "[rESP-INPUT] pid=%ld backend=xquerykeymap polls=%llu "
              "presses=%llu releases=%llu translated=%llu empty=%llu "
-             "shift_recovered=%llu xi2_mouse=%s\n",
+             "shift_recovered=%llu hotkeys_polled=%llu hotkey_fallbacks=%zu "
+             "xi2_mouse=%s\n",
              static_cast<long>(getpid()), context->poll_count,
              context->press_count, context->release_count,
              context->translated_count, context->empty_translation_count,
-             context->recovered_shift_count,
+             context->recovered_shift_count, context->polled_hotkey_count,
+             context->polled_hotkeys.size(),
              context->xi2_mouse_enabled ? "on" : "off");
     detect_write_x11_log(line);
 }
@@ -282,6 +322,12 @@ static void poll_keyboard(DetectContext *context) {
                     press_state |= ShiftMask;
                     context->recovered_shift_count++;
                 }
+
+                // If XGrabKey is unavailable, recognize the chord from the
+                // same physical transition before forwarding the normal key
+                // event. The Rust side receives the exact same HotKey event it
+                // would have received from a successful passive grab.
+                maybe_emit_polled_hotkey(context, key_code, press_state);
                 emit_input_event(context, KeyPress, key_code, press_state);
             } else if (pass == 2 && !is_down && !modifier) {
                 emit_input_event(context, KeyRelease, key_code, state);
@@ -359,6 +405,7 @@ void *detect_initialize(void *_rust_instance, int32_t *error_code) {
     context->translated_count = 0;
     context->empty_translation_count = 0;
     context->recovered_shift_count = 0;
+    context->polled_hotkey_count = 0;
     context->last_diag = std::chrono::steady_clock::now();
 
     if (!context->display) {
@@ -498,6 +545,24 @@ HotKeyResult detect_register_hotkey(void *_context, HotKeyRequest request,
             XUngrabKey(context->display, key_code, modifiers, root);
         }
         XSync(context->display, False);
+
+        // Astra/KDE may reject passive grabs even though XQueryKeymap works
+        // globally. Register a non-exclusive polling fallback instead, and
+        // report success to Rust so it creates the normal (key,state)->id map.
+        PolledHotKey fallback = {};
+        fallback.key_code = key_code;
+        fallback.target_state = target_modifiers;
+        fallback.valid_modifiers_mask = valid_modifiers;
+        context->polled_hotkeys.push_back(fallback);
+        result.success = 1;
+
+        char line[512] = {0};
+        snprintf(line, sizeof(line),
+                 "[rESP-HOTKEY] pid=%ld backend=xquerykeymap-fallback "
+                 "keycode=%u modifiers=0x%x\n",
+                 static_cast<long>(getpid()),
+                 static_cast<unsigned int>(key_code), target_modifiers);
+        detect_write_x11_log(line);
     }
 
     XSetErrorHandler(previous_hotkey_error_handler);
