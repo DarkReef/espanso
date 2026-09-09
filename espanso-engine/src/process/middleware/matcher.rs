@@ -17,7 +17,7 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use log::trace;
+use log::{info, trace};
 use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},
@@ -156,6 +156,10 @@ impl<State> Middleware for MatcherMiddleware<'_, State> {
                 }
 
                 if !all_results.is_empty() {
+                    // Do not log the trigger or typed text. On the Astra medical
+                    // workstation we only need to know whether input made it
+                    // through the detector and matcher boundary.
+                    info!("[rESP-MATCH] detected count={}", all_results.len());
                     return Event::caused_by(
                         event.source_id,
                         EventType::MatchesDetected(MatchesDetectedEvent {
