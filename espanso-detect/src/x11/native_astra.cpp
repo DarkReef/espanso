@@ -11,6 +11,7 @@
 #include "native.h"
 
 #include <chrono>
+#include <errno.h>
 #include <locale.h>
 #include <memory>
 #include <stdio.h>
@@ -44,6 +45,7 @@ typedef struct {
     unsigned long long release_count;
     unsigned long long translated_count;
     unsigned long long empty_translation_count;
+    unsigned long long recovered_shift_count;
     std::chrono::steady_clock::time_point last_diag;
 } DetectContext;
 
@@ -191,14 +193,15 @@ static void maybe_log_input_stats(DetectContext *context) {
     }
     context->last_diag = now;
 
-    char line[512] = {0};
+    char line[640] = {0};
     snprintf(line, sizeof(line),
              "[rESP-INPUT] pid=%ld backend=xquerykeymap polls=%llu "
              "presses=%llu releases=%llu translated=%llu empty=%llu "
-             "xi2_mouse=%s\n",
+             "shift_recovered=%llu xi2_mouse=%s\n",
              static_cast<long>(getpid()), context->poll_count,
              context->press_count, context->release_count,
              context->translated_count, context->empty_translation_count,
+             context->recovered_shift_count,
              context->xi2_mouse_enabled ? "on" : "off");
     detect_write_x11_log(line);
 }
@@ -207,6 +210,21 @@ static bool key_is_down(const char keymap[32], int key_code) {
     const unsigned int code = static_cast<unsigned int>(key_code);
     return (static_cast<unsigned char>(keymap[code >> 3]) &
             static_cast<unsigned char>(1U << (code & 7U))) != 0;
+}
+
+static bool shift_is_down_in_keymap(Display *display, const char keymap[32]) {
+    const KeyCode left = XKeysymToKeycode(display, XK_Shift_L);
+    const KeyCode right = XKeysymToKeycode(display, XK_Shift_R);
+    return (left != 0 && key_is_down(keymap, left)) ||
+           (right != 0 && key_is_down(keymap, right));
+}
+
+static bool key_has_distinct_shift_level(Display *display, int key_code,
+                                         unsigned int state) {
+    const int group = static_cast<int>((state >> 13) & 0x3U);
+    const KeySym base = XkbKeycodeToKeysym(display, key_code, group, 0);
+    const KeySym shifted = XkbKeycodeToKeysym(display, key_code, group, 1);
+    return base != NoSymbol && shifted != NoSymbol && base != shifted;
 }
 
 static void poll_keyboard(DetectContext *context) {
@@ -226,11 +244,26 @@ static void poll_keyboard(DetectContext *context) {
     }
 
     const unsigned int state = current_xkb_state(context->display);
+    const bool previous_shift_down =
+        shift_is_down_in_keymap(context->display, context->previous_keymap);
+    const bool current_shift_down =
+        shift_is_down_in_keymap(context->display, current_keymap);
+
+    // XQueryKeymap gives us snapshots, not per-key event timestamps. A common
+    // fast sequence such as Shift+';' can therefore look like this:
+    // previous poll: Shift down, ';' up
+    // current poll:  Shift up,   ';' down
+    // The application correctly received ':' because Shift was down at the
+    // real key press, but translating from only the current XKB state would
+    // incorrectly produce ';'. If Shift was released inside the same polling
+    // interval, preserve it for newly-pressed shift-sensitive keys. This also
+    // fixes other shifted trigger characters without recording typed content.
+    const bool recover_released_shift = previous_shift_down && !current_shift_down;
 
     // Modifier presses must reach Rust before ordinary key presses from the
     // same poll. Releases use the opposite order. This preserves Espanso's
     // modifier-state middleware even when two transitions happen inside one
-    // 5 ms polling interval.
+    // polling interval.
     for (int pass = 0; pass < 4; ++pass) {
         for (int key_code = 8; key_code < 256; ++key_code) {
             const bool was_down = key_is_down(context->previous_keymap, key_code);
@@ -243,7 +276,13 @@ static void poll_keyboard(DetectContext *context) {
             if (pass == 0 && is_down && modifier) {
                 emit_input_event(context, KeyPress, key_code, state);
             } else if (pass == 1 && is_down && !modifier) {
-                emit_input_event(context, KeyPress, key_code, state);
+                unsigned int press_state = state;
+                if (recover_released_shift &&
+                    key_has_distinct_shift_level(context->display, key_code, state)) {
+                    press_state |= ShiftMask;
+                    context->recovered_shift_count++;
+                }
+                emit_input_event(context, KeyPress, key_code, press_state);
             } else if (pass == 2 && !is_down && !modifier) {
                 emit_input_event(context, KeyRelease, key_code, state);
             } else if (pass == 3 && !is_down && modifier) {
@@ -319,6 +358,7 @@ void *detect_initialize(void *_rust_instance, int32_t *error_code) {
     context->release_count = 0;
     context->translated_count = 0;
     context->empty_translation_count = 0;
+    context->recovered_shift_count = 0;
     context->last_diag = std::chrono::steady_clock::now();
 
     if (!context->display) {
@@ -348,7 +388,7 @@ void *detect_initialize(void *_rust_instance, int32_t *error_code) {
 
     char line[512] = {0};
     snprintf(line, sizeof(line),
-             "[rESP-INPUT] pid=%ld keyboard=xquerykeymap-poll interval_ms=5 "
+             "[rESP-INPUT] pid=%ld keyboard=xquerykeymap-poll interval_ms=2 "
              "xi2_mouse=%s\n",
              static_cast<long>(getpid()),
              context->xi2_mouse_enabled ? "on" : "off");
@@ -533,17 +573,20 @@ int32_t detect_eventloop(void *_context, EventCallback callback) {
             process_event(context, &event);
         }
 
-        // Poll at 200 Hz. This is fast enough to catch normal/rapid typing but
-        // cheap compared with the rest of the desktop, and avoids any reliance
-        // on RECORD, evdev permissions, or raw XI2 keyboard delivery.
+        // Poll at 500 Hz. The shorter window materially reduces ambiguity
+        // between printable key presses and nearby modifier releases while
+        // remaining cheap on a local X11 connection.
         poll_keyboard(context);
 
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(fd, &fds);
-        timeval timeout = {0, 5000};
+        timeval timeout = {0, 2000};
         const int result = select(fd + 1, &fds, NULL, NULL, &timeout);
         if (result < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             return -2;
         }
     }
