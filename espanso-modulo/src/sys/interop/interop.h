@@ -83,6 +83,8 @@ typedef struct SearchItem {
     const char *id;
     const char *label;
     const char *trigger;
+    const int usageCount;
+    const int favorite;
 } SearchItem;
 
 typedef struct SearchResults {
