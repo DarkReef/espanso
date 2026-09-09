@@ -90,6 +90,17 @@ impl X11ProxyInjector {
             default_injector.is_some(),
             xdotool_injector.is_some()
         );
+        if xdotool_injector.is_some() {
+            // Espanso's patched "fast" libxdo path sends synthetic KeyPress /
+            // KeyRelease events with XSendEvent. Hardened Astra/KDE clients can
+            // ignore those events even though libxdo itself initializes fine.
+            // The original libxdo path uses the XTEST extension instead and is
+            // what the xdotool command-line utility normally relies on. Force
+            // that path whenever this proxy selects xdotool.
+            info!(
+                "[rESP-INJECT] xdotool backend will use libxdo/XTest; fast XSendEvent disabled"
+            );
+        }
 
         Ok(X11ProxyInjector {
             default_injector,
@@ -97,7 +108,10 @@ impl X11ProxyInjector {
         })
     }
 
-    fn get_active_injector(&self, options: &crate::InjectionOptions) -> Result<&dyn Injector> {
+    fn get_active_injector(
+        &self,
+        options: &crate::InjectionOptions,
+    ) -> Result<(&dyn Injector, bool)> {
         ensure!(
             self.default_injector.is_some() || self.xdotool_injector.is_some(),
             "unable to get active injector, neither default or xdotool fallback are available."
@@ -105,28 +119,51 @@ impl X11ProxyInjector {
 
         if options.x11_use_xdotool_fallback {
             if let Some(xdotool_injector) = self.xdotool_injector.as_ref() {
-                return Ok(xdotool_injector);
+                return Ok((xdotool_injector, true));
             } else if let Some(default_injector) = self.default_injector.as_ref() {
-                return Ok(default_injector);
+                return Ok((default_injector, false));
             }
         } else if let Some(default_injector) = self.default_injector.as_ref() {
-            return Ok(default_injector);
+            return Ok((default_injector, false));
         } else if let Some(xdotool_injector) = self.xdotool_injector.as_ref() {
-            return Ok(xdotool_injector);
+            return Ok((xdotool_injector, true));
         }
 
         unreachable!()
+    }
+
+    fn prepare_options(
+        &self,
+        options: crate::InjectionOptions,
+    ) -> Result<(&dyn Injector, crate::InjectionOptions)> {
+        let (injector, is_xdotool) = self.get_active_injector(&options)?;
+        let mut safe_options = options;
+        if is_xdotool {
+            safe_options.disable_fast_inject = true;
+        }
+        Ok((injector, safe_options))
     }
 }
 
 impl Injector for X11ProxyInjector {
     fn send_string(&self, string: &str, options: crate::InjectionOptions) -> Result<()> {
-        self.get_active_injector(&options)?
-            .send_string(string, options)
+        let (injector, options) = self.prepare_options(options)?;
+        info!(
+            "[rESP-INJECT] send_string backend={} bytes={}",
+            if options.disable_fast_inject { "xdotool-xtest" } else { "native" },
+            string.len()
+        );
+        injector.send_string(string, options)
     }
 
     fn send_keys(&self, keys: &[crate::keys::Key], options: crate::InjectionOptions) -> Result<()> {
-        self.get_active_injector(&options)?.send_keys(keys, options)
+        let (injector, options) = self.prepare_options(options)?;
+        info!(
+            "[rESP-INJECT] send_keys backend={} count={}",
+            if options.disable_fast_inject { "xdotool-xtest" } else { "native" },
+            keys.len()
+        );
+        injector.send_keys(keys, options)
     }
 
     fn send_key_combination(
@@ -134,7 +171,12 @@ impl Injector for X11ProxyInjector {
         keys: &[crate::keys::Key],
         options: crate::InjectionOptions,
     ) -> Result<()> {
-        self.get_active_injector(&options)?
-            .send_key_combination(keys, options)
+        let (injector, options) = self.prepare_options(options)?;
+        info!(
+            "[rESP-INJECT] send_key_combination backend={} count={}",
+            if options.disable_fast_inject { "xdotool-xtest" } else { "native" },
+            keys.len()
+        );
+        injector.send_key_combination(keys, options)
     }
 }
