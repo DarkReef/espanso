@@ -33,6 +33,7 @@ pub mod match_cli;
 pub mod modulo;
 pub mod package;
 pub mod path;
+pub mod search_stats;
 pub mod service;
 pub mod stats;
 pub mod util;
