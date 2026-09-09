@@ -19,6 +19,15 @@
 search_shortcut: CTRL+ALT+SPACE
 search_trigger: ":search"
 
+# --- Local usage statistics ---
+
+# rEspanso stores only the identifier/trigger of a successfully used template
+# and its timestamp. Replacement contents, form values, clipboard data and
+# patient text are never written to the statistics database. Favorites are
+# stored in the same local database. Set enabled: false to disable recording.
+stats:
+  enabled: true
+
 # --- Astra / legacy application injection safety ---
 
 # Medical/legacy X11 applications can react badly to a zero-delay burst of
