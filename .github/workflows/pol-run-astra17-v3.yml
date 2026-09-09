@@ -10,6 +10,7 @@ on:
       - 'espanso-ai/**'
       - 'espanso-engine/**'
       - 'espanso-editor/**'
+      - 'espanso-modulo/**'
       - 'espanso/**'
       - 'espanso-detect/**'
       - 'espanso-inject/**'
