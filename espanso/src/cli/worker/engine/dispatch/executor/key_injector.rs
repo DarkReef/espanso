@@ -22,7 +22,7 @@ use std::convert::TryInto;
 
 use espanso_engine::dispatch::KeyInjector;
 
-use super::InjectParamsProvider;
+use super::{with_synthetic_input_guard, InjectParamsProvider};
 
 pub struct KeyInjectorAdapter<'a> {
     injector: &'a dyn Injector,
@@ -63,7 +63,7 @@ impl KeyInjector for KeyInjectorAdapter<'_> {
         };
 
         let converted_keys: Vec<_> = keys.iter().map(convert_to_inject_key).collect();
-        self.injector.send_keys(&converted_keys, injection_options)
+        with_synthetic_input_guard(|| self.injector.send_keys(&converted_keys, injection_options))
     }
 }
 
