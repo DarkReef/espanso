@@ -23,7 +23,7 @@ use espanso_inject::{InjectionOptions, Injector};
 
 use espanso_engine::dispatch::TextInjector;
 
-use super::InjectParamsProvider;
+use super::{with_synthetic_input_guard, InjectParamsProvider};
 
 pub struct EventInjectorAdapter<'a> {
     injector: &'a dyn Injector,
@@ -70,17 +70,19 @@ impl TextInjector for EventInjectorAdapter<'_> {
             x11_use_xdotool_fallback: params.x11_use_xdotool_backend,
         };
 
-        // We don't use the lines() method because it skips emtpy lines, which is not what we want.
-        for (i, line) in text.split(split_sequence).enumerate() {
-            // We simulate an Return press between lines
-            if i > 0 {
-                self.injector
-                    .send_keys(&[espanso_inject::keys::Key::Enter], injection_options)?;
+        with_synthetic_input_guard(|| {
+            // We don't use the lines() method because it skips empty lines, which is not what we want.
+            for (i, line) in text.split(split_sequence).enumerate() {
+                // We simulate an Return press between lines
+                if i > 0 {
+                    self.injector
+                        .send_keys(&[espanso_inject::keys::Key::Enter], injection_options)?;
+                }
+
+                self.injector.send_string(line, injection_options)?;
             }
 
-            self.injector.send_string(line, injection_options)?;
-        }
-
-        Ok(())
+            Ok(())
+        })
     }
 }
