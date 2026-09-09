@@ -21,6 +21,10 @@ use crate::Injector;
 
 use anyhow::{bail, ensure, Result};
 use log::{error, info, warn};
+use std::{
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant},
+};
 
 mod default;
 mod ffi;
@@ -31,6 +35,86 @@ mod xdotool;
 // libxdo/XTest path, so enforce a small lower bound even when the configuration
 // leaves key/inject delay at the upstream X11 default of 0 ms.
 const XTEST_SAFE_MIN_DELAY_MS: i32 = 12;
+
+// Trigger compensation (Backspace sequence) and the replacement/paste are two
+// dispatcher operations. Keep their target pinned briefly so that if the
+// application closes/crashes or focus moves after the trigger was erased, the
+// replacement is NOT pasted into whatever window happens to receive focus.
+const PENDING_TARGET_TTL: Duration = Duration::from_secs(2);
+
+#[derive(Clone, Copy)]
+struct PendingInjectionTarget {
+    window: ffi::Window,
+    since: Instant,
+}
+
+fn pending_target_state() -> &'static Mutex<Option<PendingInjectionTarget>> {
+    static STATE: OnceLock<Mutex<Option<PendingInjectionTarget>>> = OnceLock::new();
+    STATE.get_or_init(|| Mutex::new(None))
+}
+
+fn current_focused_window() -> Result<ffi::Window> {
+    let display = unsafe { ffi::XOpenDisplay(std::ptr::null()) };
+    if display.is_null() {
+        bail!("unable to open X11 display while validating injection focus");
+    }
+
+    let mut window: ffi::Window = 0;
+    let mut revert_to = 0;
+    let status = unsafe { ffi::XGetInputFocus(display, &mut window, &mut revert_to) };
+    unsafe { ffi::XCloseDisplay(display) };
+
+    ensure!(status != 0, "XGetInputFocus failed while validating injection focus");
+    ensure!(window > 1, "no concrete X11 window has keyboard focus");
+    Ok(window)
+}
+
+fn set_pending_target(window: ffi::Window) {
+    if let Ok(mut state) = pending_target_state().lock() {
+        *state = Some(PendingInjectionTarget {
+            window,
+            since: Instant::now(),
+        });
+    }
+}
+
+fn clear_pending_target() {
+    if let Ok(mut state) = pending_target_state().lock() {
+        *state = None;
+    }
+}
+
+fn expected_target_or_current() -> Result<ffi::Window> {
+    let current = current_focused_window()?;
+    let mut state = pending_target_state()
+        .lock()
+        .map_err(|_| anyhow::anyhow!("injection target state lock poisoned"))?;
+
+    if let Some(target) = *state {
+        if target.since.elapsed() <= PENDING_TARGET_TTL {
+            ensure!(
+                target.window == current,
+                "focused window changed after trigger compensation; refusing to inject replacement"
+            );
+            return Ok(target.window);
+        }
+    }
+
+    *state = Some(PendingInjectionTarget {
+        window: current,
+        since: Instant::now(),
+    });
+    Ok(current)
+}
+
+fn ensure_target_still_focused(expected: ffi::Window) -> Result<()> {
+    let current = current_focused_window()?;
+    ensure!(
+        current == expected,
+        "focused window changed during synthetic injection; aborting remaining input"
+    );
+    Ok(())
+}
 
 pub struct X11ProxyInjector {
     default_injector: Option<default::X11DefaultInjector>,
@@ -104,7 +188,7 @@ impl X11ProxyInjector {
             // what the xdotool command-line utility normally relies on. Force
             // that path whenever this proxy selects xdotool.
             info!(
-                "[rESP-INJECT] xdotool backend will use libxdo/XTest; fast XSendEvent disabled; min_delay_ms={}",
+                "[rESP-INJECT] xdotool backend will use libxdo/XTest; fast XSendEvent disabled; min_delay_ms={}; focus_guard=on",
                 XTEST_SAFE_MIN_DELAY_MS
             );
         }
@@ -156,24 +240,44 @@ impl X11ProxyInjector {
 impl Injector for X11ProxyInjector {
     fn send_string(&self, string: &str, options: crate::InjectionOptions) -> Result<()> {
         let (injector, options) = self.prepare_options(options)?;
+        let expected_window = expected_target_or_current()?;
         info!(
             "[rESP-INJECT] send_string backend={} bytes={} delay_ms={}",
             if options.disable_fast_inject { "xdotool-xtest" } else { "native" },
             string.len(),
             options.delay
         );
-        injector.send_string(string, options)
+        injector.send_string(string, options)?;
+        ensure_target_still_focused(expected_window)?;
+        clear_pending_target();
+        Ok(())
     }
 
     fn send_keys(&self, keys: &[crate::keys::Key], options: crate::InjectionOptions) -> Result<()> {
         let (injector, options) = self.prepare_options(options)?;
+        let expected_window = current_focused_window()?;
+        let is_trigger_compensation = !keys.is_empty()
+            && keys
+                .iter()
+                .all(|key| matches!(key, crate::keys::Key::Backspace));
+
+        if is_trigger_compensation {
+            // This is the destructive half of a normal replacement. Pin the
+            // destination before erasing the trigger so the following text or
+            // Ctrl+V cannot leak into another application if focus changes.
+            set_pending_target(expected_window);
+        }
+
         info!(
-            "[rESP-INJECT] send_keys backend={} count={} delay_ms={}",
+            "[rESP-INJECT] send_keys backend={} count={} delay_ms={} target_pinned={}",
             if options.disable_fast_inject { "xdotool-xtest" } else { "native" },
             keys.len(),
-            options.delay
+            options.delay,
+            is_trigger_compensation
         );
-        injector.send_keys(keys, options)
+        injector.send_keys(keys, options)?;
+        ensure_target_still_focused(expected_window)?;
+        Ok(())
     }
 
     fn send_key_combination(
@@ -182,12 +286,16 @@ impl Injector for X11ProxyInjector {
         options: crate::InjectionOptions,
     ) -> Result<()> {
         let (injector, options) = self.prepare_options(options)?;
+        let expected_window = expected_target_or_current()?;
         info!(
             "[rESP-INJECT] send_key_combination backend={} count={} delay_ms={}",
             if options.disable_fast_inject { "xdotool-xtest" } else { "native" },
             keys.len(),
             options.delay
         );
-        injector.send_key_combination(keys, options)
+        injector.send_key_combination(keys, options)?;
+        ensure_target_still_focused(expected_window)?;
+        clear_pending_target();
+        Ok(())
     }
 }
