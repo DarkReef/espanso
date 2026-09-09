@@ -26,10 +26,12 @@
 #include "../common/common.h"
 #include "../interop/interop.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <wx/scrolwin.h>
 
 // https://docs.wxwidgets.org/stable/classwx_frame.html
 const long DEFAULT_STYLE = wxSTAY_ON_TOP | wxCLOSE_BOX | wxCAPTION;
@@ -38,6 +40,7 @@ const int PADDING = 5;
 const int MULTILINE_MIN_HEIGHT = 100;
 const int MULTILINE_MIN_WIDTH = 100;
 const int PREVIEW_MIN_HEIGHT = 120;
+const int FORM_SCROLL_RATE = 8;
 const char *PREVIEW_SENTINEL_ID = "__respanso_preview__";
 const int PREVIEW_MODE_LAYOUT = 0;
 const int PREVIEW_MODE_LIVE = 1;
@@ -119,7 +122,7 @@ class FormFrame : public wxFrame {
   public:
     FormFrame(const wxString &title, const wxPoint &pos, const wxSize &size);
 
-    wxPanel *panel;
+    wxScrolledWindow *panel;
     std::vector<void *> fields;
     std::unordered_map<std::string, std::unique_ptr<FieldWrapper>> idMap;
     wxButton *submit;
@@ -136,7 +139,7 @@ class FormFrame : public wxFrame {
     int lastPreviewStatus;
 
   private:
-    void AddComponent(wxPanel *parent, wxBoxSizer *sizer, FieldMetadata meta);
+    void AddComponent(wxWindow *parent, wxBoxSizer *sizer, FieldMetadata meta);
     void Submit();
     void OnSubmitBtn(wxCommandEvent &event);
     void OnPreviewBtn(wxCommandEvent &event);
@@ -184,7 +187,12 @@ FormFrame::FormFrame(const wxString &title, const wxPoint &pos,
     lastPreviewStatus = 0;
     previewTimer.SetOwner(this, ID_PreviewTimer);
 
-    panel = new wxPanel(this, wxID_ANY);
+    // A plain wxPanel clipped controls whenever the form's best size exceeded
+    // max_form_height/max_form_width. Use a real scrolled window instead so
+    // large clinical forms remain fully reachable on smaller Astra displays.
+    panel = new wxScrolledWindow(this, wxID_ANY, wxDefaultPosition,
+                                 wxDefaultSize, wxVSCROLL | wxHSCROLL);
+    panel->SetScrollRate(FORM_SCROLL_RATE, FORM_SCROLL_RATE);
     wxBoxSizer *vbox = new wxBoxSizer(wxVERTICAL);
     panel->SetSizer(vbox);
 
@@ -214,7 +222,7 @@ FormFrame::FormFrame(const wxString &title, const wxPoint &pos,
 
         previewControl = new wxTextCtrl(
             panel, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
-            wxTE_MULTILINE | wxTE_READONLY);
+            wxTE_MULTILINE | wxTE_READONLY | wxVSCROLL);
         previewControl->SetMinSize(
             wxSize(MULTILINE_MIN_WIDTH, PREVIEW_MIN_HEIGHT));
         vbox->Add(previewControl, 1, wxEXPAND | wxALL, PADDING);
@@ -251,11 +259,21 @@ FormFrame::FormFrame(const wxString &title, const wxPoint &pos,
         }
     }
 
-    this->SetClientSize(panel->GetBestSize());
+    panel->Layout();
+    panel->FitInside();
+
+    // Keep the historical compact sizing for small forms, but clamp the
+    // viewport to the configured maximum. Anything beyond it stays in the
+    // virtual area and is reachable with the scroll bars / mouse wheel.
+    wxSize desiredSize = vbox->GetMinSize();
+    desiredSize.SetWidth(std::min(desiredSize.GetWidth(), size.GetWidth()));
+    desiredSize.SetHeight(std::min(desiredSize.GetHeight(), size.GetHeight()));
+    this->SetClientSize(desiredSize);
+    panel->FitInside();
     this->CentreOnScreen();
 }
 
-void FormFrame::AddComponent(wxPanel *parent, wxBoxSizer *sizer,
+void FormFrame::AddComponent(wxWindow *parent, wxBoxSizer *sizer,
                              FieldMetadata meta) {
     void *control = nullptr;
 
@@ -278,7 +296,7 @@ void FormFrame::AddComponent(wxPanel *parent, wxBoxSizer *sizer,
             static_cast<const TextMetadata *>(meta.specific);
         long style = 0;
         if (textMeta->multiline) {
-            style |= wxTE_MULTILINE;
+            style |= wxTE_MULTILINE | wxVSCROLL;
         }
 
         auto textControl = new wxTextCtrl(
@@ -375,7 +393,7 @@ void FormFrame::AddComponent(wxPanel *parent, wxBoxSizer *sizer,
         const RowMetadata *rowMeta =
             static_cast<const RowMetadata *>(meta.specific);
 
-        auto innerPanel = new wxPanel(panel, wxID_ANY);
+        auto innerPanel = new wxPanel(parent, wxID_ANY);
         wxBoxSizer *hbox = new wxBoxSizer(wxHORIZONTAL);
         innerPanel->SetSizer(hbox);
         sizer->Add(innerPanel, 0, wxEXPAND | wxALL, 0);
@@ -530,7 +548,10 @@ void FormFrame::UpdateHelpText() {
         helpText->SetLabel(wxString::FromUTF8(
             "Enter — вставить, Esc — отменить"));
     }
-    this->SetClientSize(panel->GetBestSize());
+    // Do not resize the frame back to the full best size on every focus change:
+    // that would defeat the bounded scroll viewport for large forms.
+    panel->Layout();
+    panel->FitInside();
 }
 
 void FormFrame::OnSubmitBtn(wxCommandEvent &event) { Submit(); }
