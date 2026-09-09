@@ -18,10 +18,7 @@
  */
 
 use serde::{Deserialize, Serialize};
-use std::{
-    convert::TryInto,
-    path::{Path, PathBuf},
-};
+use std::{convert::TryInto, path::PathBuf};
 
 use crate::{
     cli::search_stats::{self, SearchStatsSnapshot},
@@ -37,26 +34,34 @@ pub trait ModuloSearchUIOptionProvider {
 pub struct ModuloSearchUI<'a> {
     manager: &'a ModuloManager,
     option_provider: &'a dyn ModuloSearchUIOptionProvider,
-    stats_dir: PathBuf,
 }
 
 impl<'a> ModuloSearchUI<'a> {
     pub fn new(
         manager: &'a ModuloManager,
         option_provider: &'a dyn ModuloSearchUIOptionProvider,
-        stats_dir: &Path,
     ) -> Self {
         Self {
             manager,
             option_provider,
-            stats_dir: stats_dir.to_path_buf(),
         }
+    }
+
+    fn stats_dir(&self) -> PathBuf {
+        // The portable Astra launcher exports ESPANSO_CONFIG_DIR to exactly the
+        // same root that is passed through --config_dir and used by stats.rs.
+        // Keep a conservative current-directory fallback for non-portable
+        // developer invocations instead of failing the Search UI.
+        std::env::var_os("ESPANSO_CONFIG_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
     }
 }
 
 impl SearchUI for ModuloSearchUI<'_> {
     fn show(&self, items: &[SearchItem], hint: Option<&str>) -> anyhow::Result<Option<String>> {
-        let snapshot = search_stats::snapshot(&self.stats_dir);
+        let stats_dir = self.stats_dir();
+        let snapshot = search_stats::snapshot(&stats_dir);
         let modulo_config = ModuloSearchConfig {
             title: "rEspanso",
             hint,
@@ -76,8 +81,7 @@ impl SearchUI for ModuloSearchUI<'_> {
         for change in result.favorite_changes {
             if let Some(item) = items.iter().find(|item| item.id == change.id) {
                 if let Some(trigger) = item.tag.as_deref() {
-                    if let Err(err) =
-                        search_stats::set_favorite(&self.stats_dir, trigger, change.favorite)
+                    if let Err(err) = search_stats::set_favorite(&stats_dir, trigger, change.favorite)
                     {
                         log::warn!("stats: unable to update favorite: {err}");
                     }
