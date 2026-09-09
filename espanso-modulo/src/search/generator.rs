@@ -30,6 +30,8 @@ pub fn generate(config: SearchConfig) -> types::Search {
             trigger: item.trigger,
             search_terms: item.search_terms,
             is_builtin: item.is_builtin,
+            usage_count: item.usage_count,
+            favorite: item.favorite,
         })
         .collect();
 
