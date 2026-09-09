@@ -113,12 +113,15 @@ pub fn init_and_spawn(
                                 return;
                             }
 
-                            // Generate a monotonically increasing id for the current event
+                            // Generate a monotonically increasing id for the current event.
                             let source_id = sequencer_clone.next_id();
 
-                            sender
-                                .send((event, source_id))
-                                .expect("unable to send to the source channel");
+                            // During a normal worker restart the engine receiver can disappear
+                            // a few milliseconds before the native detector thread notices the
+                            // shutdown. That is not an exceptional condition: silently drop the
+                            // late event instead of panicking the detector thread and turning a
+                            // clean restart into exit code 90.
+                            let _ = sender.send((event, source_id));
                         }))
                         .expect("detect eventloop crashed");
                 }
