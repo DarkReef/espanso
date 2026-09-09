@@ -20,7 +20,6 @@
 use crate::icon::IconPaths;
 use clap::ArgMatches;
 use espanso_modulo::search::*;
-use std::collections::HashMap;
 
 pub fn search_main(matches: &ArgMatches, icon_paths: &IconPaths) -> i32 {
     let as_json: bool = matches.is_present("json");
@@ -55,10 +54,22 @@ pub fn search_main(matches: &ArgMatches, icon_paths: &IconPaths) -> i32 {
 
     let search = generator::generate(config);
     let result = show(search, algorithm);
-    let mut result_map = HashMap::new();
-    result_map.insert("selected", result);
+    let favorite_changes: Vec<_> = result
+        .favorite_changes
+        .into_iter()
+        .map(|change| {
+            serde_json::json!({
+                "id": change.id,
+                "favorite": change.favorite,
+            })
+        })
+        .collect();
+    let result = serde_json::json!({
+        "selected": result.selected,
+        "favorite_changes": favorite_changes,
+    });
 
-    let output = serde_json::to_string(&result_map).expect("unable to encode values as JSON");
+    let output = serde_json::to_string(&result).expect("unable to encode values as JSON");
     println!("{output}");
 
     0
