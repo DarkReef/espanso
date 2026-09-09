@@ -11,6 +11,14 @@
 # To make customization easier, this file contains some of the commonly used
 # parameters. Feel free to uncomment and tune them to fit your needs!
 
+# --- Astra/KDE search ---
+
+# Alt+Space is commonly owned by KDE/KWin. The Astra portable build therefore
+# uses a less conflict-prone search chord by default. If passive X11 grabs are
+# denied, rEspanso transparently falls back to its XQueryKeymap hotkey backend.
+search_shortcut: CTRL+ALT+SPACE
+search_trigger: ":search"
+
 # --- Toggle key
 
 # Customize the key used to disable and enable espanso (when double tapped)
