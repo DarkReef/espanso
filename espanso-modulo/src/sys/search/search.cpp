@@ -28,6 +28,7 @@
 #include "wx/htmllbox.h"
 
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -72,6 +73,9 @@ void *resultData = nullptr;
 wxArrayString wxItems;
 wxArrayString wxTriggers;
 wxArrayString wxIds;
+wxArrayInt wxUsageCounts;
+wxArrayInt wxFavorites;
+std::unordered_map<std::string, bool> favoriteOverrides;
 
 // App Code
 
@@ -87,11 +91,7 @@ class ResultListBox : public wxHtmlListBox {
                   const wxPoint &pos, const wxSize &size);
 
   protected:
-    // override this method to return data to be shown in the listbox (this is
-    // mandatory)
     virtual wxString OnGetItem(size_t n) const;
-
-    // change the appearance by overriding these functions (this is optional)
     virtual void OnDrawBackground(wxDC &dc, const wxRect &rect, size_t n) const;
 
     bool isDark = false;
@@ -126,10 +126,9 @@ void ResultListBox::OnDrawBackground(wxDC &dc, const wxRect &rect,
     dc.DrawRectangle(0, 0, rect.GetRight(), rect.GetBottom());
 }
 
-// Helper function to escape HTML special characters
 wxString EscapeHtml(const wxString &str) {
     wxString escaped = str;
-    escaped.Replace(wxT("&"), wxT("&amp;"));  // Must be first to avoid double-escaping
+    escaped.Replace(wxT("&"), wxT("&amp;"));
     escaped.Replace(wxT("<"), wxT("&lt;"));
     escaped.Replace(wxT(">"), wxT("&gt;"));
     escaped.Replace(wxT("\""), wxT("&quot;"));
@@ -141,16 +140,16 @@ wxString ResultListBox::OnGetItem(size_t n) const {
     wxString shortcut =
         (n < 8) ? wxString::Format(wxT("Alt+%i"), (int)n + 1) : " ";
 
-    // Escape HTML special characters in label and trigger to prevent them
-    // from being interpreted as HTML tags (fixes issue #974)
     wxString escapedLabel = EscapeHtml(wxItems[n]);
     wxString escapedTrigger = EscapeHtml(wxTriggers[n]);
+    wxString favorite = wxFavorites[n] ? wxT("<font color='#f1c40f'>&#9733;</font> ") : wxT("");
+    wxString usage = wxString::Format(wxT("%d/мес"), wxUsageCounts[n]);
 
     wxString result = wxString::Format(
-        wxT("<font color='%s'><table width='100%%'><tr><td>%s</td><td "
-            "align='right'><b>%s</b> <font color='#636e72'> "
-            "%s</font></td></tr></table></font>"),
-        textColor, escapedLabel, escapedTrigger, shortcut);
+        wxT("<font color='%s'><table width='100%%'><tr><td>%s%s</td><td "
+            "align='right'><font color='#636e72'>%s</font> &nbsp; <b>%s</b> "
+            "<font color='#636e72'>%s</font></td></tr></table></font>"),
+        textColor, favorite, escapedLabel, usage, escapedTrigger, shortcut);
 
     return result;
 }
@@ -163,6 +162,8 @@ class SearchFrame : public wxFrame {
     wxTextCtrl *searchBar = nullptr;
     wxStaticBitmap *iconPanel = nullptr;
     wxStaticText *helpText = nullptr;
+    wxButton *allTab = nullptr;
+    wxButton *favoritesTab = nullptr;
     ResultListBox *resultBox = nullptr;
     void SetItems(SearchItem *items, int itemSize);
 
@@ -171,6 +172,10 @@ class SearchFrame : public wxFrame {
     void OnQueryChange(wxCommandEvent &event);
     void OnItemClickEvent(wxCommandEvent &event);
     void OnActivate(wxActivateEvent &event);
+    void OnAllTab(wxCommandEvent &event);
+    void OnFavoritesTab(wxCommandEvent &event);
+    void Requery();
+    void ToggleFavorite();
 
     // Mouse events
     void OnMouseCaptureLost(wxMouseCaptureLostEvent &event);
@@ -184,6 +189,8 @@ class SearchFrame : public wxFrame {
     void SelectNext();
     void SelectPrevious();
     void Submit();
+
+    bool favoritesOnly = false;
 };
 
 bool SearchApp::OnInit() {
@@ -195,6 +202,7 @@ bool SearchApp::OnInit() {
     Activate(frame);
     return true;
 }
+
 SearchFrame::SearchFrame(const wxString &title, const wxPoint &pos,
                          const wxSize &size)
     : wxFrame(NULL, wxID_ANY, title, pos, size, DEFAULT_STYLE) {
@@ -203,7 +211,6 @@ SearchFrame::SearchFrame(const wxString &title, const wxPoint &pos,
 #if wxCHECK_VERSION(3, 1, 3)
     bool isDark = wxSystemSettings::GetAppearance().IsDark();
 #else
-    // Workaround needed for previous versions of wxWidgets
     const wxColour bg = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW);
     const wxColour fg = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT);
     unsigned int bgSum = (bg.Red() + bg.Blue() + bg.Green());
@@ -255,7 +262,23 @@ SearchFrame::SearchFrame(const wxString &title, const wxPoint &pos,
         helpText->SetFont(helpFont);
     }
 
-    wxArrayString choices;
+    wxBoxSizer *tabsBox = new wxBoxSizer(wxHORIZONTAL);
+    int allTabId = NewControlId();
+    int favoritesTabId = NewControlId();
+    allTab = new wxButton(panel, allTabId, wxString::FromUTF8("Все"),
+                          wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+    favoritesTab =
+        new wxButton(panel, favoritesTabId, wxString::FromUTF8("★ Избранное"),
+                     wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+    tabsBox->Add(allTab, 0, wxLEFT | wxBOTTOM, 8);
+    tabsBox->Add(favoritesTab, 0, wxLEFT | wxBOTTOM, 6);
+    tabsBox->AddStretchSpacer(1);
+    wxStaticText *favoriteHint = new wxStaticText(
+        panel, wxID_ANY, wxString::FromUTF8("Ctrl+D — добавить/убрать избранное"));
+    tabsBox->Add(favoriteHint, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT | wxBOTTOM, 8);
+    vbox->Add(tabsBox, 0, wxEXPAND);
+    allTab->Disable();
+
     int resultId = NewControlId();
     resultBox = new ResultListBox(panel, isDark, resultId, wxDefaultPosition,
                                   wxSize(MIN_WIDTH, MIN_HEIGHT));
@@ -266,8 +289,9 @@ SearchFrame::SearchFrame(const wxString &title, const wxPoint &pos,
     Bind(wxEVT_TEXT, &SearchFrame::OnQueryChange, this, textId);
     Bind(wxEVT_LISTBOX_DCLICK, &SearchFrame::OnItemClickEvent, this, resultId);
     Bind(wxEVT_ACTIVATE, &SearchFrame::OnActivate, this, wxID_ANY);
+    Bind(wxEVT_BUTTON, &SearchFrame::OnAllTab, this, allTabId);
+    Bind(wxEVT_BUTTON, &SearchFrame::OnFavoritesTab, this, favoritesTabId);
 
-    // Events to handle the mouse drag
     if (iconPanel) {
         iconPanel->Bind(wxEVT_LEFT_UP, &SearchFrame::OnMouseLUp, this);
         iconPanel->Bind(wxEVT_LEFT_DOWN, &SearchFrame::OnMouseLDown, this);
@@ -283,13 +307,15 @@ SearchFrame::SearchFrame(const wxString &title, const wxPoint &pos,
     this->SetSizeHints(MIN_WIDTH, MIN_HEIGHT);
     this->CentreOnScreen();
 
-    // Trigger the first data update
     queryCallback("", (void *)this, data);
 }
 
 void SearchFrame::OnCharEvent(wxKeyEvent &event) {
     if (event.GetKeyCode() == WXK_ESCAPE) {
         Close(true);
+    } else if ((event.GetKeyCode() == 'D' || event.GetKeyCode() == 'd') &&
+               event.RawControlDown()) {
+        ToggleFavorite();
     } else if (event.GetKeyCode() == WXK_TAB) {
         if (wxGetKeyState(WXK_SHIFT)) {
             SelectPrevious();
@@ -297,7 +323,7 @@ void SearchFrame::OnCharEvent(wxKeyEvent &event) {
             SelectNext();
         }
     } else if (event.GetUnicodeKey() >= '1' &&
-               event.GetUnicodeKey() <= '9') { // Alt + num shortcut
+               event.GetUnicodeKey() <= '9') {
         int index = event.GetUnicodeKey() - '1';
         if (wxGetKeyState(WXK_ALT)) {
             if (resultBox->GetItemCount() > index) {
@@ -315,12 +341,9 @@ void SearchFrame::OnCharEvent(wxKeyEvent &event) {
         SelectNext();
     } else if (event.GetKeyCode() == 'P' && event.RawControlDown()) {
         SelectPrevious();
-    } else if (event.GetKeyCode() == WXK_RETURN || event.GetKeyCode() == WXK_NUMPAD_ENTER) {
+    } else if (event.GetKeyCode() == WXK_RETURN ||
+               event.GetKeyCode() == WXK_NUMPAD_ENTER) {
 #ifdef __WXOSX__
-        // Don't consume Enter while an IME composition is in progress —
-        // the user is committing a candidate (e.g. selecting a Chinese
-        // character), not confirming the highlighted match. Let the event
-        // propagate so the IME can finalize its selection.
         if (IsImeComposingInKeyWindow()) {
             event.Skip();
             return;
@@ -332,16 +355,35 @@ void SearchFrame::OnCharEvent(wxKeyEvent &event) {
     }
 }
 
+void SearchFrame::Requery() {
+    wxString queryString = searchBar->GetValue();
+    const char *query = queryString.ToUTF8();
+    queryCallback(query, (void *)this, data);
+}
+
 void SearchFrame::OnQueryChange(wxCommandEvent &event) {
     if (helpText != nullptr) {
         helpText->Destroy();
         panel->Layout();
         helpText = nullptr;
     }
+    Requery();
+}
 
-    wxString queryString = searchBar->GetValue();
-    const char *query = queryString.ToUTF8();
-    queryCallback(query, (void *)this, data);
+void SearchFrame::OnAllTab(wxCommandEvent &event) {
+    favoritesOnly = false;
+    allTab->Disable();
+    favoritesTab->Enable();
+    Requery();
+    searchBar->SetFocus();
+}
+
+void SearchFrame::OnFavoritesTab(wxCommandEvent &event) {
+    favoritesOnly = true;
+    favoritesTab->Disable();
+    allTab->Enable();
+    Requery();
+    searchBar->SetFocus();
 }
 
 void SearchFrame::OnItemClickEvent(wxCommandEvent &event) {
@@ -408,25 +450,66 @@ void SearchFrame::SetItems(SearchItem *items, int itemSize) {
     wxItems.Clear();
     wxIds.Clear();
     wxTriggers.Clear();
+    wxUsageCounts.Clear();
+    wxFavorites.Clear();
 
     for (int i = 0; i < itemSize; i++) {
-        wxString item = wxString::FromUTF8(items[i].label);
-        wxItems.Add(item);
+        std::string key = items[i].id ? items[i].id : "";
+        bool favorite = items[i].favorite != 0;
+        std::unordered_map<std::string, bool>::const_iterator overrideIt =
+            favoriteOverrides.find(key);
+        if (overrideIt != favoriteOverrides.end()) {
+            favorite = overrideIt->second;
+        }
 
-        wxString id = wxString::FromUTF8(items[i].id);
-        wxIds.Add(id);
+        if (favoritesOnly && !favorite) {
+            continue;
+        }
 
-        wxString trigger = wxString::FromUTF8(items[i].trigger);
-        wxTriggers.Add(trigger);
+        wxItems.Add(wxString::FromUTF8(items[i].label));
+        wxIds.Add(wxString::FromUTF8(items[i].id));
+        wxTriggers.Add(wxString::FromUTF8(items[i].trigger));
+        wxUsageCounts.Add(items[i].usageCount < 0 ? 0 : items[i].usageCount);
+        wxFavorites.Add(favorite ? 1 : 0);
     }
 
-    resultBox->SetItemCount(itemSize);
+    resultBox->SetItemCount(wxItems.GetCount());
 
-    if (itemSize > 0) {
+    if (!wxItems.IsEmpty()) {
         resultBox->SetSelection(0);
+    } else {
+        resultBox->SetSelection(wxNOT_FOUND);
     }
     resultBox->RefreshAll();
     resultBox->Refresh();
+}
+
+void SearchFrame::ToggleFavorite() {
+    if (resultBox->GetItemCount() == 0 ||
+        resultBox->GetSelection() == wxNOT_FOUND) {
+        return;
+    }
+
+    long index = resultBox->GetSelection();
+    bool favorite = wxFavorites[index] == 0;
+    wxFavorites[index] = favorite ? 1 : 0;
+
+    wxString id = wxIds[index];
+    std::string key = std::string(id.ToUTF8());
+    favoriteOverrides[key] = favorite;
+
+    if (resultCallback) {
+        wxString callbackId = wxString::FromUTF8("__respanso_favorite__:") + id +
+                              (favorite ? wxT(":1") : wxT(":0"));
+        resultCallback(callbackId.ToUTF8(), resultData);
+    }
+
+    if (favoritesOnly && !favorite) {
+        Requery();
+    } else {
+        resultBox->RefreshAll();
+        resultBox->Refresh();
+    }
 }
 
 void SearchFrame::SelectNext() {
@@ -470,7 +553,6 @@ extern "C" void interop_show_search(SearchMetadata *_metadata,
                                     QueryCallback _queryCallback, void *_data,
                                     ResultCallback _resultCallback,
                                     void *_resultData) {
-// Setup high DPI support on Windows
 #ifdef __WXMSW__
     SetProcessDPIAware();
 #endif
@@ -480,6 +562,7 @@ extern "C" void interop_show_search(SearchMetadata *_metadata,
     resultCallback = _resultCallback;
     data = _data;
     resultData = _resultData;
+    favoriteOverrides.clear();
 
     wxApp::SetInstance(new SearchApp());
     int argc = 0;
