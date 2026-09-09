@@ -28,6 +28,8 @@ pub mod types {
         pub trigger: Option<String>,
         pub search_terms: Vec<String>,
         pub is_builtin: bool,
+        pub usage_count: i64,
+        pub favorite: bool,
     }
 
     #[derive(Debug)]
@@ -36,6 +38,18 @@ pub mod types {
         pub icon: Option<String>,
         pub hint: Option<String>,
         pub items: Vec<SearchItem>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct FavoriteChange {
+        pub id: String,
+        pub favorite: bool,
+    }
+
+    #[derive(Debug, Default)]
+    pub struct SearchResult {
+        pub selected: Option<String>,
+        pub favorite_changes: Vec<FavoriteChange>,
     }
 }
 
@@ -95,7 +109,7 @@ mod interop {
                 String::new()
             };
 
-            let hint = CString::new(hint).expect("unable to convert search icon to CString");
+            let hint = CString::new(hint).expect("unable to convert search hint to CString");
 
             let hint_ptr = if search.hint.is_some() {
                 hint.as_ptr()
@@ -124,6 +138,8 @@ mod interop {
         id: CString,
         label: CString,
         trigger: CString,
+        usage_count: c_int,
+        favorite: c_int,
     }
 
     impl OwnedSearchItem {
@@ -132,6 +148,8 @@ mod interop {
                 id: self.id.as_ptr(),
                 label: self.label.as_ptr(),
                 trigger: self.trigger.as_ptr(),
+                usageCount: self.usage_count,
+                favorite: self.favorite,
             }
         }
     }
@@ -149,7 +167,16 @@ mod interop {
                 CString::new(String::new()).expect("unable to convert item trigger to CString")
             };
 
-            Self { id, label, trigger }
+            let usage_count = item.usage_count.clamp(0, c_int::MAX as i64) as c_int;
+            let favorite = if item.favorite { 1 } else { 0 };
+
+            Self {
+                id,
+                label,
+                trigger,
+                usage_count,
+                favorite,
+            }
         }
     }
 }
@@ -162,7 +189,9 @@ struct SearchData {
     algorithm: Box<SearchAlgorithmCallback>,
 }
 
-pub fn show(search: types::Search, algorithm: Box<SearchAlgorithmCallback>) -> Option<String> {
+const FAVORITE_CALLBACK_PREFIX: &str = "__respanso_favorite__:";
+
+pub fn show(search: types::Search, algorithm: Box<SearchAlgorithmCallback>) -> types::SearchResult {
     use super::interop::{
         interop_show_search, update_items, Interoperable, SearchItem, SearchMetadata,
     };
@@ -194,14 +223,22 @@ pub fn show(search: types::Search, algorithm: Box<SearchAlgorithmCallback>) -> O
         }
     }
 
-    let mut result: Option<String> = None;
+    let mut result = types::SearchResult::default();
 
     extern "C" fn result_callback(id: *const c_char, result: *mut c_void) {
         let id = unsafe { CStr::from_ptr(id) };
         let id = id.to_string_lossy().to_string();
-        let result: *mut Option<String> = result as *mut Option<String>;
-        unsafe {
-            *result = Some(id);
+        let result = unsafe { &mut *(result as *mut types::SearchResult) };
+
+        if let Some(payload) = id.strip_prefix(FAVORITE_CALLBACK_PREFIX) {
+            if let Some((item_id, favorite)) = payload.rsplit_once(':') {
+                result.favorite_changes.push(types::FavoriteChange {
+                    id: item_id.to_owned(),
+                    favorite: favorite == "1",
+                });
+            }
+        } else {
+            result.selected = Some(id);
         }
     }
 
@@ -211,7 +248,7 @@ pub fn show(search: types::Search, algorithm: Box<SearchAlgorithmCallback>) -> O
             search_callback,
             std::ptr::from_ref::<SearchData>(&search_data) as *const c_void,
             result_callback,
-            std::ptr::from_mut::<Option<String>>(&mut result) as *mut c_void,
+            std::ptr::from_mut::<types::SearchResult>(&mut result) as *mut c_void,
         );
     }
 
