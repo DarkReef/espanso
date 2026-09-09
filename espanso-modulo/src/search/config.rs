@@ -62,4 +62,10 @@ pub struct SearchItem {
 
     #[serde(default)]
     pub is_builtin: bool,
+
+    #[serde(default)]
+    pub usage_count: i64,
+
+    #[serde(default)]
+    pub favorite: bool,
 }
