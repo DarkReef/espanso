@@ -23,7 +23,8 @@ TextViewFrame::TextViewFrame(wxWindow *parent, wxWindowID id,
 
     text_content =
         new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition,
-                       wxDefaultSize, wxTE_MULTILINE | wxTE_READONLY);
+                       wxDefaultSize,
+                       wxTE_MULTILINE | wxTE_READONLY | wxVSCROLL);
     text_content->SetFont(wxFont(wxNORMAL_FONT->GetPointSize(),
                                  wxFONTFAMILY_TELETYPE, wxFONTSTYLE_NORMAL,
                                  wxFONTWEIGHT_NORMAL, false, wxEmptyString));
