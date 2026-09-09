@@ -1,8 +1,8 @@
-name: pol_run Astra 1.7 X11 full portable
+name: rEspanso Astra 1.7 X11 full portable
 
 on:
   push:
-    branches: [pol_run]
+    branches: [pol_run, respanso-stats]
     paths:
       - '.github/workflows/pol-run-astra17-v3.yml'
       - 'scripts/build_pol_run_astra17.sh'
@@ -17,7 +17,7 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
   pull_request:
-    branches: [pol_run]
+    branches: [pol_run, respanso-stats]
   workflow_dispatch:
 
 permissions:
@@ -85,7 +85,7 @@ jobs:
       - name: Upload full Astra portable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rEspanso-pol_run-Astra17-X11-Full-x86_64
+          name: rEspanso-${{ github.ref_name }}-Astra17-X11-Full-x86_64
           path: |
             target/pol-run-astra-full/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz
             target/pol-run-astra-full/rEspanso-pol_run-Astra17-X11-Full-x86_64.sha256
