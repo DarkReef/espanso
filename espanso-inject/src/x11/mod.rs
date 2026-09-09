@@ -26,6 +26,12 @@ mod default;
 mod ffi;
 mod xdotool;
 
+// Legacy X11 applications (including old Delphi/Wine front-ends) can be
+// surprisingly sensitive to bursts of synthetic key events. Astra uses the
+// libxdo/XTest path, so enforce a small lower bound even when the configuration
+// leaves key/inject delay at the upstream X11 default of 0 ms.
+const XTEST_SAFE_MIN_DELAY_MS: i32 = 12;
+
 pub struct X11ProxyInjector {
     default_injector: Option<default::X11DefaultInjector>,
     xdotool_injector: Option<xdotool::X11XDOToolInjector>,
@@ -98,7 +104,8 @@ impl X11ProxyInjector {
             // what the xdotool command-line utility normally relies on. Force
             // that path whenever this proxy selects xdotool.
             info!(
-                "[rESP-INJECT] xdotool backend will use libxdo/XTest; fast XSendEvent disabled"
+                "[rESP-INJECT] xdotool backend will use libxdo/XTest; fast XSendEvent disabled; min_delay_ms={}",
+                XTEST_SAFE_MIN_DELAY_MS
             );
         }
 
@@ -140,6 +147,7 @@ impl X11ProxyInjector {
         let mut safe_options = options;
         if is_xdotool {
             safe_options.disable_fast_inject = true;
+            safe_options.delay = safe_options.delay.max(XTEST_SAFE_MIN_DELAY_MS);
         }
         Ok((injector, safe_options))
     }
@@ -149,9 +157,10 @@ impl Injector for X11ProxyInjector {
     fn send_string(&self, string: &str, options: crate::InjectionOptions) -> Result<()> {
         let (injector, options) = self.prepare_options(options)?;
         info!(
-            "[rESP-INJECT] send_string backend={} bytes={}",
+            "[rESP-INJECT] send_string backend={} bytes={} delay_ms={}",
             if options.disable_fast_inject { "xdotool-xtest" } else { "native" },
-            string.len()
+            string.len(),
+            options.delay
         );
         injector.send_string(string, options)
     }
@@ -159,9 +168,10 @@ impl Injector for X11ProxyInjector {
     fn send_keys(&self, keys: &[crate::keys::Key], options: crate::InjectionOptions) -> Result<()> {
         let (injector, options) = self.prepare_options(options)?;
         info!(
-            "[rESP-INJECT] send_keys backend={} count={}",
+            "[rESP-INJECT] send_keys backend={} count={} delay_ms={}",
             if options.disable_fast_inject { "xdotool-xtest" } else { "native" },
-            keys.len()
+            keys.len(),
+            options.delay
         );
         injector.send_keys(keys, options)
     }
@@ -173,9 +183,10 @@ impl Injector for X11ProxyInjector {
     ) -> Result<()> {
         let (injector, options) = self.prepare_options(options)?;
         info!(
-            "[rESP-INJECT] send_key_combination backend={} count={}",
+            "[rESP-INJECT] send_key_combination backend={} count={} delay_ms={}",
             if options.disable_fast_inject { "xdotool-xtest" } else { "native" },
-            keys.len()
+            keys.len(),
+            options.delay
         );
         injector.send_key_combination(keys, options)
     }
