@@ -36,6 +36,8 @@ Open the top-level `Clinical Extender` section and use:
 
 A new library starts with a compact general-practice seed set. It is deliberately editable and is intended as a scaffold, not as an immutable clinical protocol. The current seed covers common cardiovascular, metabolic, renal, respiratory, gastrointestinal, thyroid, hematology and musculoskeletal patterns.
 
+Seed migration is non-destructive: an existing template with the same `code_pattern`, and an existing investigation with the same ID, are left unchanged. New seed items are only appended when missing.
+
 Before clinical use, adapt the texts and investigation set to local clinical guidelines, local orders, available diagnostics and your organisation's documentation requirements.
 
 ## Template format
@@ -63,7 +65,7 @@ Example:
       Артериальной гипертензией страдает длительное время.
   investigation_ids:
     - echocardiography
-    - urine_acr
+    - mau
 ```
 
 The UI is the preferred editor because it keeps investigation IDs consistent.

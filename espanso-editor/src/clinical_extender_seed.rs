@@ -26,7 +26,6 @@ fn ensure_common_clinical_seed(db: &mut ClinicalDatabase) -> usize {
         ("tsh", "ТТГ"),
         ("free_t4", "Свободный Т4"),
         ("hba1c", "HbA1c"),
-        ("urine_acr", "Альбумин/креатинин мочи (АКМ/МАУ)"),
         ("holter", "Холтеровское мониторирование ЭКГ"),
         ("spirometry", "Спирометрия"),
         ("bronchodilator_test", "Бронходилатационный тест"),
@@ -51,9 +50,9 @@ fn ensure_common_clinical_seed(db: &mut ClinicalDatabase) -> usize {
         seed_template(
             "I10",
             "Эссенциальная (первичная) гипертензия",
-            &["АГ", "ГИПЕРТОНИЯ"],
+            &["ГИПЕРТОНИЯ"],
             "Артериальная гипертензия диагностирована ранее. Длительность заболевания: [уточнить]. Постоянная антигипертензивная терапия: [уточнить]. Домашний контроль АД: [уточнить].",
-            &["echocardiography", "urine_acr", "creatinine_egfr", "potassium", "lipid_profile"],
+            &["echocardiography", "mau", "creatinine_egfr", "potassium", "lipid_profile"],
         ),
         seed_template(
             "I48.*",
@@ -74,14 +73,14 @@ fn ensure_common_clinical_seed(db: &mut ClinicalDatabase) -> usize {
             "Сахарный диабет 2 типа",
             &["СД2", "СД 2", "ДИАБЕТ 2"],
             "Сахарный диабет 2 типа: длительность [уточнить]. Сахароснижающая терапия [уточнить]. Самоконтроль гликемии [уточнить]. Наличие известных микрососудистых и макрососудистых осложнений [уточнить].",
-            &["hba1c", "creatinine_egfr", "urine_acr", "lipid_profile", "alt_ast"],
+            &["hba1c", "creatinine_egfr", "mau", "lipid_profile", "alt_ast"],
         ),
         seed_template(
             "N18.*",
             "Хроническая болезнь почек",
             &["ХБП", "CKD"],
             "ХБП: стадия и категория альбуминурии [уточнить]. Исходный уровень креатинина/рСКФ и динамика [уточнить]. Нефротоксичные препараты и эпизоды ОПП [уточнить].",
-            &["creatinine_egfr", "potassium", "sodium", "urine_acr", "cbc"],
+            &["creatinine_egfr", "potassium", "sodium", "mau", "cbc"],
         ),
         seed_template(
             "J44.*",
@@ -229,5 +228,16 @@ mod seed_tests {
         assert!(document.examination_plan.contains("Холтеровское"));
         assert!(document.examination_plan.contains("HbA1c"));
         assert!(document.examination_plan.contains("рСКФ"));
+    }
+
+    #[test]
+    fn hypertension_alias_remains_unambiguous() {
+        let mut db = ClinicalDatabase::default();
+        ensure_common_clinical_seed(&mut db);
+        let tokens = parse_diagnosis_input("АГ");
+        let (_, matched, unknown) = compose(&db, &tokens);
+        assert!(unknown.is_empty());
+        assert_eq!(matched.iter().filter(|item| item.as_str() == "I11.9").count(), 1);
+        assert!(!matched.iter().any(|item| item == "I10"));
     }
 }
