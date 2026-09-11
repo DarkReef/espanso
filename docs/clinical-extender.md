@@ -1,111 +1,73 @@
 # Clinical Extender
 
-Clinical Extender — локальный конструктор медицинского осмотра внутри rEspanso Match Studio.
+Clinical Extender is a local deterministic composer for reusable clinical text fragments. It is exposed as a first-class top-level section of rEspanso Match Studio alongside Rules, Settings, Rhai and AI/MCP.
 
-## Принцип работы
+## Privacy model
 
-Врач вводит несколько кодов МКБ-10 или псевдонимов через запятую, например:
+The current visit text is kept in memory only. Saving Clinical Extender writes only the reusable template library to:
 
-```text
-I11.9, M42.1, ХСН
+`<config_root>/clinical_extender/nosologies.yml`
+
+The template library must not contain patient identifiers or patient-specific data.
+
+## Composition model
+
+A visit is assembled in this order:
+
+1. BASE therapeutic profile.
+2. Matching wildcard templates such as `I11.*`.
+3. Exact diagnosis templates such as `I11.9`.
+4. Aliases such as `АГ`, `ГБ`, `ХСН` resolve to their template.
+5. Manual clinician edits remain in the visit editor until an explicit full rebuild.
+
+Structured investigations use stable IDs and are de-duplicated before rendering. Free-text sections are appended in deterministic order while exact duplicate fragments are removed.
+
+## Main workflow
+
+Open the top-level `Clinical Extender` section and use:
+
+- `Осмотр` to enter codes/aliases and compose the current note.
+- `Редактор нозологий` to create or edit reusable templates.
+- `Обновить из шаблонов` to refresh only untouched fields.
+- `Пересобрать всё` to intentionally replace manual edits with the current templates.
+- Per-section copy buttons or `Копировать весь осмотр` to move text into any HIS/EMR.
+
+## Starter library
+
+A new library starts with a compact general-practice seed set. It is deliberately editable and is intended as a scaffold, not as an immutable clinical protocol. The current seed covers common cardiovascular, metabolic, renal, respiratory, gastrointestinal, thyroid, hematology and musculoskeletal patterns.
+
+Before clinical use, adapt the texts and investigation set to local clinical guidelines, local orders, available diagnostics and your organisation's documentation requirements.
+
+## Template format
+
+Each template contains:
+
+- `is_base`: whether it applies to every composed visit.
+- `code_pattern`: exact ICD-10 code or a trailing-star prefix such as `I48.*`.
+- `title`: human-readable name.
+- `aliases`: shorthand accepted in the diagnosis input.
+- `sections`: complaints, disease history, life history, past diseases, objective status, free examination-plan text, treatment and recommendations.
+- `investigation_ids`: references to the structured investigation catalog.
+
+Example:
+
+```yaml
+- is_base: false
+  code_pattern: I11.9
+  title: Гипертензивная болезнь сердца без сердечной недостаточности
+  aliases:
+    - АГ
+    - ГБ
+  sections:
+    disease_history: >-
+      Артериальной гипертензией страдает длительное время.
+  investigation_ids:
+    - echocardiography
+    - urine_acr
 ```
 
-Clinical Extender последовательно объединяет:
+The UI is the preferred editor because it keeps investigation IDs consistent.
 
-1. базовый терапевтический профиль;
-2. общие шаблоны по маске (`I11.*`, `M42.*`), если они созданы;
-3. точные шаблоны (`I11.9`, `M42.1`);
-4. структурированный список исследований без дублей.
+## Safety boundary
 
-Текст текущего пациента не сохраняется на диск. На диск записывается только библиотека шаблонов.
-
-## Интерфейс
-
-В разделе `ИИ / MCP` появился переключатель `Clinical Extender`.
-
-Внутри Clinical Extender две вкладки:
-
-- **Осмотр** — ввод нозологий и редактирование сформированных полей;
-- **Редактор нозологий** — создание и изменение шаблонов.
-
-Поля осмотра:
-
-- Жалобы;
-- Анамнез заболевания;
-- Анамнез жизни;
-- Перенесённые заболевания / операции;
-- Объективно;
-- План обследования;
-- Лечение;
-- Рекомендации.
-
-Кнопка **Обновить из шаблонов** сохраняет поля, которые врач уже изменил вручную. Кнопка **Пересобрать всё** заменяет в том числе ручные правки.
-
-Каждое поле можно копировать отдельно или скопировать весь осмотр целиком.
-
-## План обследования
-
-Исследования хранятся атомарно, поэтому одинаковые позиции не дублируются.
-
-Стартовый базовый профиль содержит:
-
-```text
-ОАК, ОАМ, БХА, ЭКГ
-```
-
-Стартовые примеры:
-
-- `I11.9` добавляет `ЭхоКГ`, `МАУ`;
-- `I50.9` / `ХСН` добавляет `NT-proBNP`;
-- `M42.1` добавляет рентгенографию соответствующего отдела позвоночника.
-
-Это только редактируемые стартовые шаблоны, а не встроенная медицинская рекомендация. Их можно полностью изменить в редакторе нозологий.
-
-## Хранение
-
-Библиотека сохраняется в:
-
-```text
-<config_root>/clinical_extender/nosologies.yml
-```
-
-Файл содержит каталог исследований и шаблоны нозологий. Клинический текст текущего пациента в этот файл не попадает.
-
-## Маски и псевдонимы
-
-Точный код:
-
-```text
-I11.9
-```
-
-Маска группы:
-
-```text
-I11.*
-```
-
-Псевдонимы задаются через запятую:
-
-```text
-АГ, ГБ
-```
-
-При вводе точного кода Clinical Extender может применить и общий шаблон группы, и точный шаблон. Это позволяет хранить общие элементы один раз.
-
-## Ручные правки
-
-Clinical Extender отслеживает, отличается ли поле от последней автоматически сформированной версии. При обычном обновлении изменённые вручную поля не перезаписываются.
-
-Для намеренного возврата отдельного поля к шаблону используется кнопка `↻ из шаблона` рядом с полем.
-
-## Тесты
-
-В модуле есть unit-тесты на:
-
-- объединение и дедупликацию обследований;
-- псевдонимы (`ХСН` → `I50.9`);
-- композицию wildcard + точного кода;
-- сохранение ручной правки при обычном обновлении.
-
-GitHub Actions для реализации Clinical Extender не используются.
+Clinical Extender is deterministic template composition, not autonomous diagnosis or treatment. Its starter content is an editable draft. The clinician remains responsible for checking that generated text matches the actual patient and current evidence/guidelines. AI/MCP stays in a separate top-level section and should only rewrite text after local de-identification and explicit review.
