@@ -17,7 +17,7 @@ impl StudioShell {
     fn new(config_root: PathBuf) -> Self {
         Self {
             studio: MatchStudioApp::new(config_root.clone()),
-            clinical: crate::clinical_extender::ClinicalExtender::load(config_root),
+            clinical: crate::clinical_extender::ClinicalExtender::load_seeded(config_root),
             active_tab: ShellTab::Rules,
         }
     }
