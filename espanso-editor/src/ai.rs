@@ -6,6 +6,12 @@ use std::{
     time::Duration,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkspaceSection {
+    Ai,
+    Clinical,
+}
+
 pub struct AiPanel {
     root: PathBuf,
     settings: Settings,
@@ -18,6 +24,8 @@ pub struct AiPanel {
     pending: Option<Receiver<Result<String, String>>>,
     target: Option<u64>,
     insert_pending: Option<Receiver<Result<String, String>>>,
+    section: WorkspaceSection,
+    clinical: crate::clinical_extender::ClinicalExtender,
 }
 impl AiPanel {
     pub fn new(root: PathBuf, selected: String, target: Option<u64>) -> Self {
@@ -27,6 +35,7 @@ impl AiPanel {
         };
         let key = espanso_ai::load_key(&root, settings.provider).unwrap_or_default();
         let saved_settings = serde_json::to_string(&settings).unwrap_or_default();
+        let clinical = crate::clinical_extender::ClinicalExtender::load(root.clone());
         Self {
             root,
             saved_settings,
@@ -39,12 +48,32 @@ impl AiPanel {
             pending: None,
             target,
             insert_pending: None,
+            section: WorkspaceSection::Ai,
+            clinical,
         }
     }
     pub fn dirty(&self) -> bool {
         serde_json::to_string(&self.settings).unwrap_or_default() != self.saved_settings
+            || self.clinical.dirty()
     }
     pub fn ui(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(&mut self.section, WorkspaceSection::Ai, "ИИ / MCP");
+            ui.selectable_value(
+                &mut self.section,
+                WorkspaceSection::Clinical,
+                "Clinical Extender",
+            );
+        });
+        ui.separator();
+
+        match self.section {
+            WorkspaceSection::Ai => self.ai_ui(ui),
+            WorkspaceSection::Clinical => self.clinical.ui(ui),
+        }
+    }
+
+    fn ai_ui(&mut self, ui: &mut egui::Ui) {
         if let Some(rx) = &self.pending {
             if let Ok(result) = rx.try_recv() {
                 self.pending = None;
@@ -182,12 +211,12 @@ impl eframe::App for AiPanel {
 pub fn run(root: PathBuf, selected: String, target: Option<u64>) -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([820.0, 740.0])
-            .with_min_inner_size([540.0, 420.0]),
+            .with_inner_size([920.0, 780.0])
+            .with_min_inner_size([620.0, 460.0]),
         ..Default::default()
     };
     eframe::run_native(
-        "rEspanso · ИИ",
+        "rEspanso · ИИ / Clinical Extender",
         options,
         Box::new(move |_| Ok(Box::new(AiPanel::new(root, selected, target)))),
     )
