@@ -62,6 +62,24 @@ If the file changed between steps 1 and 5, rEspanso rejects the write and requir
 
 For a new file, omit `expected_hash`.
 
+## Agent audit trail
+
+Mutation attempts are recorded in a local operational audit trail. The active log is `mcp-audit.jsonl`; when it reaches roughly 2 MiB it is rotated to `mcp-audit.1.jsonl` and a new active file is started.
+
+Each JSONL record contains only:
+
+- UTC timestamp;
+- Agent ID and registered display name when authentication can be resolved;
+- action: `create`, `write` or `delete`;
+- relative workspace path;
+- result: `success` or `failure`.
+
+The audit log never stores file contents, prompt text, medical text, API keys or MCP agent tokens. On Unix-like systems newly created audit files use owner-only mode `0600`.
+
+The latest 100 entries can be inspected directly in **ИИ / MCP → Журнал действий MCP-агентов**. The audit file is outside the MCP workspace, so an agent cannot read or rewrite it through `workspace_*` tools.
+
+This is an application-level audit trail rather than MCP's protocol `logging` facility. It is deliberately local and independent from the transport.
+
 ## Runtime and Studio refresh
 
 The rEspanso daemon watches the configuration tree recursively. Valid changes to `.yml`, `.yaml` and `.rhai` trigger the existing stable-change debounce and, when `auto_restart` is enabled, the worker is restarted against the reloaded configuration. Invalid YAML is not silently promoted over the last healthy worker.
