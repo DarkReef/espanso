@@ -26,7 +26,7 @@ RESPANSO_MCP_TOKEN=<one-time displayed token>
 
 An unknown, disabled or incorrectly authenticated process does not receive the `workspace_*` tools in discovery. A registered agent is still constrained by its per-agent permissions and the global Studio write switch.
 
-Rotating a token invalidates the old token. Deleting or disabling a registration prevents subsequent MCP processes from authenticating with it.
+Workspace authorization is revalidated on every workspace tool call. Disabling or deleting an agent, changing its permissions, or rotating its token therefore takes effect without trusting a long-lived authorization cached at process startup. After token rotation, an already-running client must be restarted or otherwise relaunched with the new environment token before its next workspace operation can succeed.
 
 ## Scope
 
