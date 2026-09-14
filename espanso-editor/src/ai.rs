@@ -99,6 +99,8 @@ impl AiPanel {
                     ui.label("Ваш контекст (тоже передаётся провайдеру)");
                     if ui.add(egui::TextEdit::multiline(&mut self.settings.context).desired_rows(4).desired_width(f32::INFINITY)).changed() { self.reviewed = false; }
                     ui.checkbox(&mut self.settings.mcp_allow_rewrite, "Разрешить отправку текста через MCP-инструмент rewrite_text");
+                    ui.checkbox(&mut self.settings.mcp_allow_workspace_write, "Разрешить MCP-агенту изменять триггеры и Rhai-скрипты");
+                    ui.small("Запись агента ограничена match/**/*.yml|yaml и scripts/**/*.rhai. Перед заменой существующего файла MCP требует его актуальный hash; YAML/Rhai проверяются до записи, удалённые файлы переносятся в .respanso-mcp-trash.");
                     if ui.button("Сохранить настройки ИИ").clicked() { self.status = self.settings.save(&self.root).map(|_| { self.saved_settings = serde_json::to_string(&self.settings).unwrap_or_default(); "Настройки сохранены".into() }).unwrap_or_else(|e|e); }
                 });
                 ui.separator();
