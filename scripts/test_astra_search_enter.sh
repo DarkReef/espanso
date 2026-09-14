@@ -27,7 +27,7 @@ cat >"$TEST_DIR/search.json" <<'JSON'
 {
   "title": "rEspanso X11 Search Smoke",
   "hint": "Press Enter",
-  "algorithm": "fuzzy",
+  "algorithm": "ikey",
   "items": [
     {
       "id": "astra-enter-ok",
