@@ -2,9 +2,9 @@
 set -Eeuo pipefail
 
 # Full rEspanso portable build for Astra Linux 1.7 / KDE / X11.
-# The script is intended to run inside Debian 10 (buster), whose glibc is 2.28.
-# Nothing here is installed on the target Astra workstation: the resulting
-# archive is unpacked in the user's home directory and started with run.sh.
+# Run this script inside Debian 10 (buster), whose glibc is 2.28.
+# Nothing is installed on the target Astra workstation: the resulting archive
+# is unpacked in the user's home directory and started with run.sh.
 
 cat >/etc/apt/sources.list <<'APT'
 deb http://archive.debian.org/debian buster main
@@ -33,21 +33,23 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   libxrandr-dev \
   libxtst-dev \
   pkg-config \
-  xdotool xvfb xauth
+  xauth \
+  xdotool \
+  xvfb
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
   | sh -s -- -y --profile minimal --default-toolchain stable
 # shellcheck disable=SC1091
 . "$HOME/.cargo/env"
 
+bash -n scripts/build_pol_run_astra17.sh scripts/test_astra_x11.sh scripts/test_astra_worker.sh
 bash scripts/test_astra_x11.sh
 
 echo "Build host: $(ldd --version | head -n1)"
 rustc --version
 cargo --version
 
-# The lockfile includes the X11/OpenGL (glow) Studio dependency graph.
-# Keep validation and the portable binaries on the same resolved versions.
+# X11 core: no Wayland feature. vendored-tls avoids target OpenSSL coupling.
 cargo build --locked --release \
   -p espanso --bin espanso \
   --no-default-features \
@@ -55,9 +57,13 @@ cargo build --locked --release \
 
 timeout 30s xvfb-run -a bash scripts/test_astra_worker.sh target/release/espanso
 
+# Run the complete workspace test suite with the same X11 feature selection
+# before packaging anything. This includes espanso-ai MCP/workspace tests and
+# the Match Studio library tests.
 cargo test --locked --workspace --no-default-features \
   --features espanso/modulo,espanso/vendored-tls
 
+# Match Studio is explicitly eframe + glow + X11 in espanso-editor/Cargo.toml.
 cargo build --locked --release \
   -p espanso-editor --bin espanso-editor
 
@@ -68,9 +74,9 @@ OUT="target/pol-run-astra-full"
 PACKAGE="rEspanso-pol_run-Astra17-X11-Full-x86_64"
 ROOT="$OUT/$PACKAGE"
 
-# Build a tiny wxWidgets taskbar helper. wxWidgets/GTK is already required by
-# Match Studio, so this adds a KDE tray icon without installing anything on the
-# target Astra workstation.
+# Build a small wxWidgets taskbar helper. wxWidgets/GTK is already part of the
+# Astra compatibility stack, so this adds a KDE tray icon without installing
+# anything on the workstation.
 # shellcheck disable=SC2046
 g++ -O2 -pipe -std=c++11 scripts/pol_run_tray.cpp \
   $(wx-config --cxxflags) $(wx-config --libs) \
@@ -105,9 +111,9 @@ ldd "$CORE" >"$ROOT/core-build-ldd.txt"
 ldd "$STUDIO" >"$ROOT/studio-build-ldd.txt"
 ldd "$TRAY" >"$ROOT/tray-build-ldd.txt"
 
-# Bundle the ABI-sensitive libraries that caused the Astra failure. We do NOT
-# bundle glibc or the X11/GL stack: those must stay coupled to the target KDE/X11
-# session. wxWidgets, GCC runtime and OpenSSL 1.1 can safely live next to the app.
+# Bundle ABI-sensitive libraries that are known to differ on Astra. Do not
+# bundle glibc or the X11/OpenGL stack: those must remain coupled to the target
+# KDE/X11 session.
 for ldd_file in \
   "$ROOT/core-build-ldd.txt" \
   "$ROOT/studio-build-ldd.txt" \
@@ -123,10 +129,25 @@ for ldd_file in \
   done <"$ldd_file"
 done
 
+cat >"$ROOT/check-x11.sh" <<'CHECK_X11'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+if [[ -z "${DISPLAY:-}" ]]; then
+  echo 'rEspanso X11: DISPLAY не задан. Запустите приложение из пользовательской X11-сессии.' >&2
+  exit 1
+fi
+if [[ -n "${XDG_SESSION_TYPE:-}" && "${XDG_SESSION_TYPE,,}" != 'x11' ]]; then
+  echo "rEspanso X11: текущая сессия '${XDG_SESSION_TYPE}' не является X11." >&2
+  echo 'Войдите в KDE/X11-сессию; XWayland не считается поддерживаемым режимом для перехвата ввода.' >&2
+  exit 1
+fi
+CHECK_X11
+
 cat >"$ROOT/start-tray.sh" <<'TRAY_RUN'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$ROOT/check-x11.sh"
 PIDFILE="$ROOT/runtime/tray.pid"
 LOGFILE="$ROOT/runtime/tray.log"
 
@@ -146,8 +167,6 @@ nohup "$ROOT/rEspanso-Tray" "$ROOT" >>"$LOGFILE" 2>&1 </dev/null &
 tray_pid=$!
 printf '%s\n' "$tray_pid" >"$PIDFILE"
 
-# Give GTK a moment to register with the KDE system tray. Failure of the tray
-# must never prevent the text-expansion engine from starting.
 sleep 0.35
 if ! kill -0 "$tray_pid" 2>/dev/null; then
   rm -f "$PIDFILE"
@@ -160,6 +179,7 @@ cat >"$ROOT/run.sh" <<'RUN'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$ROOT/check-x11.sh"
 CORE="$ROOT/rEspanso-core"
 STUDIO="$ROOT/rEspanso-Match-Studio"
 
@@ -177,9 +197,6 @@ core_args=(
   --runtime_dir "$ROOT/runtime"
 )
 
-# Start the text-expansion engine in unmanaged user mode. No systemd service,
-# package installation or sudo is required. If it is already running from this
-# portable directory, keep it and ensure the KDE tray helper is present.
 if ! "$CORE" "${core_args[@]}" service status >/dev/null 2>&1; then
   "$CORE" "${core_args[@]}" service start --unmanaged || {
     echo "Не удалось запустить движок rEspanso. Запускаю диагностику..." >&2
@@ -189,8 +206,6 @@ if ! "$CORE" "${core_args[@]}" service status >/dev/null 2>&1; then
 fi
 
 "$ROOT/start-tray.sh" || true
-
-# Open the complete Match Studio GUI against the same portable config root.
 exec "$STUDIO" --config-dir "$ROOT"
 RUN
 
@@ -198,6 +213,7 @@ cat >"$ROOT/studio.sh" <<'STUDIO_RUN'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$ROOT/check-x11.sh"
 export LD_LIBRARY_PATH="$ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PATH="$ROOT/bin:$PATH"
 exec "$ROOT/rEspanso-Match-Studio" --config-dir "$ROOT"
@@ -207,6 +223,7 @@ cat >"$ROOT/start-engine.sh" <<'ENGINE'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"$ROOT/check-x11.sh"
 export LD_LIBRARY_PATH="$ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export PATH="$ROOT/bin:$PATH"
 
@@ -317,7 +334,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LD_LIBRARY_PATH="$ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$ROOT/rEspanso-Match-Studio" --mcp --config-dir "$ROOT"
 MCP_RUN
-chmod +x "$ROOT/mcp.sh" "$ROOT/bin/xdotool"
 
 cat >"$ROOT/README-FIRST.txt" <<'README'
 rEspanso pol_run — full portable build for Astra Linux 1.7 / KDE / X11 / x86_64
@@ -325,22 +341,16 @@ rEspanso pol_run — full portable build for Astra Linux 1.7 / KDE / X11 / x86_6
 No sudo and no system installation are required on the workstation.
 
 FIRST START
-  chmod +x run.sh studio.sh start-engine.sh start-tray.sh stop.sh diagnose.sh \
-    rEspanso-core rEspanso-Match-Studio rEspanso-Tray
+  chmod +x *.sh rEspanso-core rEspanso-Match-Studio rEspanso-Tray
   ./run.sh
 
-run.sh does three things:
-  1. starts the rEspanso text-expansion engine in unmanaged user mode;
-  2. starts a persistent KDE/GTK system-tray icon;
-  3. opens the full rEspanso Match Studio GUI.
+run.sh:
+  1. verifies that the current desktop session is X11;
+  2. starts the rEspanso engine in unmanaged user mode;
+  3. starts the persistent KDE/GTK tray icon;
+  4. opens the full Match Studio GUI.
 
-TRAY ICON
-  Left click              open Match Studio
-  Right click             menu
-  Menu > Match Studio     open Match Studio
-  Menu > Stop rEspanso    stop the portable engine and remove the icon
-
-The whole working configuration stays inside this directory:
+The working configuration stays inside this directory:
   config/   global settings
   match/    YAML matches
   scripts/  Rhai scripts
@@ -352,23 +362,43 @@ Useful commands:
   ./start-engine.sh  start engine + tray icon
   ./start-tray.sh    restore only the tray icon
   ./stop.sh          stop engine + tray icon
-  ./diagnose.sh      print ABI/library/display/tray diagnostics
+  ./diagnose.sh      ABI/library/display/tray diagnostics
+  ./mcp.sh           MCP stdio server (agent credentials come from environment)
+
+MCP agent connection:
+  export RESPANSO_MCP_AGENT_ID='<id from Studio>'
+  export RESPANSO_MCP_TOKEN='<token shown by Studio>'
+  ./mcp.sh
 
 Compatibility design:
-  - core, Match Studio and tray are built in Debian 10 / glibc 2.28;
-  - Match Studio uses X11 + OpenGL (glow), not the newer WGPU path;
-  - tray uses wxWidgets/GTK already required by Match Studio;
+  - binaries are built in Debian 10 / glibc 2.28;
+  - core and Studio use X11; Studio uses OpenGL/glow, not WGPU;
+  - native X11 detection uses XInput2 instead of the legacy RECORD extension;
   - wxWidgets 3.0 and selected ABI-sensitive runtimes are bundled in ./lib;
   - glibc and the target X11/OpenGL/GTK stack are deliberately NOT replaced.
 README
 
 chmod +x \
+  "$ROOT/check-x11.sh" \
   "$ROOT/run.sh" \
   "$ROOT/studio.sh" \
   "$ROOT/start-engine.sh" \
   "$ROOT/start-tray.sh" \
   "$ROOT/stop.sh" \
-  "$ROOT/diagnose.sh"
+  "$ROOT/diagnose.sh" \
+  "$ROOT/mcp.sh" \
+  "$ROOT/bin/xdotool"
+
+# Fail packaging immediately if any generated launcher has a shell syntax error.
+bash -n \
+  "$ROOT/check-x11.sh" \
+  "$ROOT/run.sh" \
+  "$ROOT/studio.sh" \
+  "$ROOT/start-engine.sh" \
+  "$ROOT/start-tray.sh" \
+  "$ROOT/stop.sh" \
+  "$ROOT/diagnose.sh" \
+  "$ROOT/mcp.sh"
 
 # Record and enforce the maximum glibc symbol version required by all binaries.
 for pair in "core:$CORE" "studio:$STUDIO" "tray:$TRAY" "xdotool:$ROOT/bin/xdotool"; do
@@ -379,9 +409,9 @@ for pair in "core:$CORE" "studio:$STUDIO" "tray:$TRAY" "xdotool:$ROOT/bin/xdotoo
     | sort -Vu >"$ROOT/${label}-glibc-required.txt" || true
 
   max_glibc="$(sed 's/GLIBC_//' "$ROOT/${label}-glibc-required.txt" | sort -V | tail -n1)"
-  echo "$label maximum required GLIBC: $max_glibc"
+  echo "$label maximum required GLIBC: ${max_glibc:-none}"
   if [[ -n "$max_glibc" && "$(printf '%s\n%s\n' "$max_glibc" '2.28' | sort -V | tail -n1)" != '2.28' ]]; then
-    echo "ERROR: $label requires GLIBC newer than 2.28"
+    echo "ERROR: $label requires GLIBC newer than 2.28" >&2
     exit 1
   fi
 done
@@ -398,15 +428,43 @@ for packaged_ldd in \
   "$ROOT/xdotool-packaged-ldd.txt"; do
   if grep -q 'not found' "$packaged_ldd"; then
     cat "$packaged_ldd"
-    echo "ERROR: package has unresolved libraries: $packaged_ldd"
+    echo "ERROR: package has unresolved libraries: $packaged_ldd" >&2
     exit 1
   fi
 done
 
-# Smoke tests that do not require an X server.
+# Smoke tests that do not require a real X server.
 LD_LIBRARY_PATH="$ROOT/lib" "$ROOT/rEspanso-core" --version
-printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"ping"}' \
-  | "$ROOT/mcp.sh" | grep -q '"result":{}'
+
+# Modern MCP 2026-07-28 has no ping method. Probe server/discover with the
+# mandatory per-request _meta envelope instead.
+modern_probe="$(
+  printf '%s\n' \
+    '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"astra-build-smoke","version":"1"}}}}' \
+    | env -u RESPANSO_MCP_AGENT_ID -u RESPANSO_MCP_TOKEN "$ROOT/mcp.sh"
+)"
+printf '%s\n' "$modern_probe" | grep -q '"resultType":"complete"'
+printf '%s\n' "$modern_probe" | grep -q '"supportedVersions":\["2026-07-28","2025-06-18"\]'
+
+# Also protect backward compatibility: legacy MCP must still initialize and its
+# ping result is the legacy empty object, not the modern resultType envelope.
+legacy_probe="$(
+  printf '%s\n' \
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"astra-build-smoke","version":"1"}}}' \
+    '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+    '{"jsonrpc":"2.0","id":2,"method":"ping"}' \
+    | env -u RESPANSO_MCP_AGENT_ID -u RESPANSO_MCP_TOKEN "$ROOT/mcp.sh"
+)"
+printf '%s\n' "$legacy_probe" | grep -q '"protocolVersion":"2025-06-18"'
+printf '%s\n' "$legacy_probe" | grep -q '"result":{}'
+
+# Ensure modern ping is rejected, as required by the 2026-07-28 era.
+modern_ping="$(
+  printf '%s\n' \
+    '{"jsonrpc":"2.0","id":3,"method":"ping","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}' \
+    | env -u RESPANSO_MCP_AGENT_ID -u RESPANSO_MCP_TOKEN "$ROOT/mcp.sh"
+)"
+printf '%s\n' "$modern_ping" | grep -q '"code":-32601'
 
 tar -C "$OUT" -czf "$OUT/$PACKAGE.tar.gz" "$PACKAGE"
 sha256sum "$OUT/$PACKAGE.tar.gz" >"$OUT/$PACKAGE.sha256"
