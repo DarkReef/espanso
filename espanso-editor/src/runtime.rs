@@ -20,9 +20,9 @@ pub struct RuntimeMonitor {
 }
 
 impl RuntimeMonitor {
-    pub fn new(config_root: PathBuf) -> Self {
+    pub fn new() -> Self {
         Self {
-            config_root,
+            config_root: detect_config_root(),
             system: System::new(),
             running: false,
             process_ids: Vec::new(),
@@ -208,8 +208,41 @@ impl RuntimeMonitor {
 
 impl Default for RuntimeMonitor {
     fn default() -> Self {
-        Self::new(PathBuf::new())
+        Self::new()
     }
+}
+
+fn detect_config_root() -> PathBuf {
+    if let Ok(value) = std::env::var("ESPANSO_CONFIG_DIR") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+
+    let args = std::env::args().collect::<Vec<_>>();
+    for (index, arg) in args.iter().enumerate() {
+        if arg == "--config-dir" || arg == "--config_dir" {
+            if let Some(value) = args.get(index + 1) {
+                if !value.is_empty() {
+                    return PathBuf::from(value);
+                }
+            }
+        }
+        if let Some(value) = arg
+            .strip_prefix("--config-dir=")
+            .or_else(|| arg.strip_prefix("--config_dir="))
+        {
+            if !value.is_empty() {
+                return PathBuf::from(value);
+            }
+        }
+    }
+
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
