@@ -2,14 +2,16 @@ use eframe::egui;
 use std::{
     path::{Path, PathBuf},
     process::Command,
-    thread,
     time::{Duration, Instant},
 };
+#[cfg(not(target_os = "linux"))]
+use std::thread;
 use sysinfo::{PidExt, ProcessExt, System, SystemExt};
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
 pub struct RuntimeMonitor {
+    config_root: PathBuf,
     system: System,
     running: bool,
     process_ids: Vec<u32>,
@@ -18,8 +20,9 @@ pub struct RuntimeMonitor {
 }
 
 impl RuntimeMonitor {
-    pub fn new() -> Self {
+    pub fn new(config_root: PathBuf) -> Self {
         Self {
+            config_root,
             system: System::new(),
             running: false,
             process_ids: Vec::new(),
@@ -38,12 +41,14 @@ impl RuntimeMonitor {
         }
 
         self.system.refresh_processes();
+        let current_pid = std::process::id();
         let mut process_ids = self
             .system
             .processes()
             .iter()
             .filter_map(|(pid, process)| {
-                is_respanso_process(process.name()).then_some(pid.as_u32())
+                let pid = pid.as_u32();
+                (pid != current_pid && is_respanso_runtime_process(process.name())).then_some(pid)
             })
             .collect::<Vec<_>>();
         process_ids.sort_unstable();
@@ -72,9 +77,11 @@ impl RuntimeMonitor {
     pub fn restart_button(&mut self, ui: &mut egui::Ui) -> Option<String> {
         let clicked = ui
             .button("(Пере)запустить rEspanso")
-            .on_hover_text(
-                "Завершает найденные процессы rEspanso и запускает нативную portable-версию рядом с Match Studio",
-            )
+            .on_hover_text(if cfg!(target_os = "linux") {
+                "Перезапускает portable rEspanso через service restart --unmanaged, не завершая процессы вслепую"
+            } else {
+                "Перезапускает найденный runtime rEspanso"
+            })
             .clicked();
         if !clicked {
             return None;
@@ -88,14 +95,83 @@ impl RuntimeMonitor {
         })
     }
 
+    #[cfg(target_os = "linux")]
+    fn restart_respanso(&mut self) -> Result<String, String> {
+        let executable = find_respanso_executable()?;
+        let executable_root = executable
+            .parent()
+            .ok_or_else(|| "Не удалось определить папку запуска rEspanso".to_owned())?;
+        if self.config_root.as_os_str().is_empty() {
+            return Err("Не определён корень конфигурации rEspanso".into());
+        }
+
+        let package_dir = self.config_root.join("packages");
+        let runtime_dir = self.config_root.join("runtime");
+        std::fs::create_dir_all(&package_dir)
+            .map_err(|error| format!("Не удалось создать packages/: {error}"))?;
+        std::fs::create_dir_all(&runtime_dir)
+            .map_err(|error| format!("Не удалось создать runtime/: {error}"))?;
+
+        // The Astra/X11 portable build is deliberately unmanaged. Use the
+        // service lifecycle instead of killing processes by their executable
+        // name: the daemon owns the worker and already waits for its locks to
+        // be released before starting the next generation.
+        let status = Command::new(&executable)
+            .current_dir(executable_root)
+            .arg("--config_dir")
+            .arg(&self.config_root)
+            .arg("--package_dir")
+            .arg(&package_dir)
+            .arg("--runtime_dir")
+            .arg(&runtime_dir)
+            .arg("service")
+            .arg("restart")
+            .arg("--unmanaged")
+            .status()
+            .map_err(|error| {
+                format!(
+                    "Не удалось выполнить service restart через {}: {error}",
+                    executable.display()
+                )
+            })?;
+
+        if !status.success() {
+            return Err(format!(
+                "service restart завершился с кодом {}. Проверьте runtime/startup.log и runtime/espanso.log",
+                status.code().map_or_else(|| "signal".to_owned(), |code| code.to_string())
+            ));
+        }
+
+        // The service restart does not kill the tray. If the tray had already
+        // disappeared, restore it only for the canonical portable layout where
+        // scripts and the active config root are the same directory.
+        if executable_root == self.config_root {
+            let tray_script = executable_root.join("start-tray.sh");
+            if tray_script.is_file() {
+                let _ = Command::new(&tray_script)
+                    .current_dir(executable_root)
+                    .spawn();
+            }
+        }
+
+        Ok(format!(
+            "rEspanso перезапущен через unmanaged service: {}",
+            executable.display()
+        ))
+    }
+
+    #[cfg(not(target_os = "linux"))]
     fn restart_respanso(&mut self) -> Result<String, String> {
         self.system.refresh_processes();
+        let current_pid = std::process::id();
         let stopped = self
             .system
             .processes()
-            .values()
-            .filter(|process| is_respanso_process(process.name()))
-            .filter(|process| process.kill())
+            .iter()
+            .filter(|(pid, process)| {
+                pid.as_u32() != current_pid && is_respanso_runtime_process(process.name())
+            })
+            .filter(|(_, process)| process.kill())
             .count();
 
         if stopped > 0 {
@@ -132,7 +208,7 @@ impl RuntimeMonitor {
 
 impl Default for RuntimeMonitor {
     fn default() -> Self {
-        Self::new()
+        Self::new(PathBuf::new())
     }
 }
 
@@ -198,9 +274,12 @@ fn executable_candidates() -> &'static [&'static str] {
     ]
 }
 
-fn is_respanso_process(name: &str) -> bool {
+fn is_respanso_runtime_process(name: &str) -> bool {
     let normalized = name.to_ascii_lowercase();
-    normalized.contains("respanso") && !normalized.contains("match studio")
+    normalized.contains("respanso")
+        && !normalized.contains("match")
+        && !normalized.contains("studio")
+        && !normalized.contains("tray")
 }
 
 #[cfg(test)]
@@ -208,14 +287,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn recognizes_only_respanso_process_names() {
-        assert!(is_respanso_process("rEspansod.exe"));
-        assert!(is_respanso_process("rEspanso.exe"));
-        assert!(is_respanso_process("rEspanso-core.exe"));
-        assert!(is_respanso_process("RESPANSO-service.exe"));
-        assert!(!is_respanso_process("espansod.exe"));
-        assert!(!is_respanso_process("espanso.exe"));
-        assert!(!is_respanso_process("rEspanso Match Studio.exe"));
+    fn recognizes_only_respanso_runtime_process_names() {
+        assert!(is_respanso_runtime_process("rEspansod.exe"));
+        assert!(is_respanso_runtime_process("rEspanso.exe"));
+        assert!(is_respanso_runtime_process("rEspanso-core.exe"));
+        assert!(is_respanso_runtime_process("RESPANSO-service.exe"));
+        assert!(!is_respanso_runtime_process("espansod.exe"));
+        assert!(!is_respanso_runtime_process("espanso.exe"));
+        assert!(!is_respanso_runtime_process("rEspanso Match Studio.exe"));
+        assert!(!is_respanso_runtime_process("rEspanso-Match-S"));
+        assert!(!is_respanso_runtime_process("rEspanso-Tray"));
     }
 
     #[test]
