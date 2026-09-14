@@ -84,14 +84,25 @@ impl Session {
                 )
             }
             "workspace_write" => {
-                require(agent.permissions.write_workspace, "запись workspace")?;
                 let object = object_args(args, &["path", "content", "expected_hash", "confirmed"])?;
+                let path = required_string(object, "path")?;
+                if let Err(error) = require(agent.permissions.write_workspace, "запись workspace") {
+                    let _ = crate::audit::record(
+                        root,
+                        &agent.id,
+                        &agent.name,
+                        "write",
+                        path,
+                        false,
+                    );
+                    return Err(error);
+                }
                 let confirmed = object.get("confirmed").and_then(Value::as_bool).unwrap_or(false);
                 let expected_hash = object.get("expected_hash").and_then(Value::as_str);
                 let settings = Settings::load(root)?;
                 workspace::write(
                     root,
-                    required_string(object, "path")?,
+                    path,
                     required_text(object, "content")?,
                     expected_hash,
                     confirmed,
@@ -99,13 +110,24 @@ impl Session {
                 )
             }
             "workspace_delete" => {
-                require(agent.permissions.delete_workspace, "удаление из workspace")?;
                 let object = object_args(args, &["path", "expected_hash", "confirmed"])?;
+                let path = required_string(object, "path")?;
+                if let Err(error) = require(agent.permissions.delete_workspace, "удаление из workspace") {
+                    let _ = crate::audit::record(
+                        root,
+                        &agent.id,
+                        &agent.name,
+                        "delete",
+                        path,
+                        false,
+                    );
+                    return Err(error);
+                }
                 let confirmed = object.get("confirmed").and_then(Value::as_bool).unwrap_or(false);
                 let settings = Settings::load(root)?;
                 workspace::delete(
                     root,
-                    required_string(object, "path")?,
+                    path,
                     required_string(object, "expected_hash")?,
                     confirmed,
                     settings.mcp_allow_workspace_write,
