@@ -90,7 +90,7 @@ fn path_should_reload(path: &Path) -> bool {
         .and_then(|value| value.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-    if extension == "yml" || extension == "yaml" {
+    if matches!(extension.as_str(), "yml" | "yaml" | "rhai") {
         !path
             .file_name()
             .and_then(|name| name.to_str())
@@ -139,7 +139,7 @@ fn debouncer_main(
 
 fn config_fingerprint(root: &Path) -> u64 {
     let mut paths = Vec::new();
-    collect_yaml_paths(root, &mut paths);
+    collect_reload_paths(root, &mut paths);
     paths.sort();
     let mut hasher = DefaultHasher::new();
     for path in paths {
@@ -152,7 +152,7 @@ fn config_fingerprint(root: &Path) -> u64 {
     hasher.finish()
 }
 
-fn collect_yaml_paths(root: &Path, paths: &mut Vec<PathBuf>) {
+fn collect_reload_paths(root: &Path, paths: &mut Vec<PathBuf>) {
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
         Err(_) => return,
@@ -160,7 +160,7 @@ fn collect_yaml_paths(root: &Path, paths: &mut Vec<PathBuf>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_yaml_paths(&path, paths);
+            collect_reload_paths(&path, paths);
         } else if path_should_reload(&path) {
             paths.push(path);
         }
@@ -180,13 +180,23 @@ mod tests {
     }
 
     #[test]
-    fn fingerprint_changes_after_yaml_write() {
+    fn rhai_write_requests_reload() {
+        assert!(event_should_reload(&DebouncedEvent::Write(PathBuf::from(
+            "scripts/clinical.rhai"
+        ))));
+    }
+
+    #[test]
+    fn fingerprint_changes_after_yaml_and_rhai_write() {
         let temp = tempdir::TempDir::new("respanso-watcher").expect("temp dir");
         fs::create_dir_all(temp.path().join("match")).expect("match dir");
-        let file = temp.path().join("match/base.yml");
-        fs::write(&file, "matches: []\n").expect("initial write");
+        fs::create_dir_all(temp.path().join("scripts")).expect("scripts dir");
+        let yaml = temp.path().join("match/base.yml");
+        let rhai = temp.path().join("scripts/a.rhai");
+        fs::write(&yaml, "matches: []\n").expect("initial yaml");
+        fs::write(&rhai, "40 + 2").expect("initial rhai");
         let before = config_fingerprint(temp.path());
-        fs::write(&file, "matches:\n  - trigger: \":a\"\n    replace: a\n").expect("second write");
+        fs::write(&rhai, "84 / 2").expect("second rhai");
         assert_ne!(before, config_fingerprint(temp.path()));
     }
 }
