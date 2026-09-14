@@ -42,7 +42,7 @@ The legacy `ping` result is the normal empty object.
 
 Modern `2026-07-28` clients do not perform the initialize handshake. Every request carries `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` in `params._meta`. Discovery uses `server/discover`. Modern MCP does **not** define `ping`; rEspanso returns `Method not found` for a modern ping request.
 
-`server/discover` advertises both the modern `2026-07-28` revision and the supported legacy `2025-06-18` revision. Modern responses identify the server through `_meta.io.modelcontextprotocol/serverInfo`.
+`server/discover` advertises the modern revision(s) implemented by the server. Legacy compatibility is negotiated separately through the legacy `initialize` flow rather than by listing a 2025 revision in `supportedVersions`. Modern responses identify the server through `_meta.io.modelcontextprotocol/serverInfo`.
 
 ## Scope
 
