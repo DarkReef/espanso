@@ -276,6 +276,15 @@ impl eframe::App for StudioShell {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.studio.runtime.update(ui.ctx());
         self.studio.handle_dropped_config_packages(ui.ctx());
+
+        // Agent edits should become visible promptly. The legacy Studio monitor
+        // already resolves dirty-buffer conflicts and waits for stable file content;
+        // cap its next poll at 500 ms instead of waiting for the normal 3 s cycle.
+        let fast_deadline = Instant::now() + Duration::from_millis(500);
+        if self.studio.next_file_check > fast_deadline {
+            self.studio.next_file_check = fast_deadline;
+        }
+        ui.ctx().request_repaint_after(Duration::from_millis(500));
         self.studio.check_external_file_changes(ui.ctx());
 
         if self.active_tab != ShellTab::Clinical {
