@@ -1,4 +1,5 @@
-//! MCP 2025-06-18 JSON-RPC over stdio. No network listener or implicit clipboard access.
+//! Hybrid MCP JSON-RPC over stdio: legacy 2025-06-18 plus stateless 2026-07-28.
+//! No network listener or implicit clipboard access.
 use crate::{load_key, redact, rewrite, validate_text, workspace, Settings};
 use serde_json::{json, Value};
 use std::{
@@ -7,6 +8,9 @@ use std::{
 };
 
 const MAX_MCP_FRAME: u64 = 1_048_576;
+const MODERN_PROTOCOL: &str = "2026-07-28";
+const LEGACY_PROTOCOL: &str = "2025-06-18";
+const INSTRUCTIONS: &str = "prepare_text is local. Workspace tools are sandboxed to match/**/*.yml|yaml and scripts/**/*.rhai. Read and validation tools are always available. Writes require the local MCP workspace opt-in, explicit confirmed=true, validation, and optimistic concurrency for existing files. Before rewrite_text show the exact text and configured context to the user for review. Redaction is heuristic, not guaranteed anonymization. Never read clipboard or patient files implicitly.";
 
 #[derive(Default)]
 pub struct Session {
@@ -21,6 +25,7 @@ fn error(id: Value, code: i32, message: &str) -> Value {
 fn tool_success(value: Value) -> Value {
     let text = serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string());
     json!({
+        "resultType": "complete",
         "content": [{"type":"text","text":text}],
         "structuredContent": value,
         "isError": false
@@ -29,6 +34,7 @@ fn tool_success(value: Value) -> Value {
 
 fn tool_failure(message: String) -> Value {
     json!({
+        "resultType": "complete",
         "content": [{"type":"text","text":message}],
         "isError": true
     })
@@ -52,6 +58,57 @@ fn required_string<'a>(object: &'a serde_json::Map<String, Value>, key: &str) ->
         .ok_or_else(|| format!("{key} должен быть непустой строкой"))
 }
 
+fn required_text<'a>(object: &'a serde_json::Map<String, Value>, key: &str) -> Result<&'a str, String> {
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("{key} должен быть строкой"))
+}
+
+fn request_protocol(request: &Value) -> Option<&str> {
+    request["params"]["_meta"]["io.modelcontextprotocol/protocolVersion"].as_str()
+}
+
+fn is_modern(request: &Value) -> bool {
+    request_protocol(request) == Some(MODERN_PROTOCOL)
+}
+
+fn discover_result() -> Value {
+    json!({
+        "resultType": "complete",
+        "supportedVersions": [MODERN_PROTOCOL],
+        "capabilities": {"tools": {}},
+        "_meta": {
+            "io.modelcontextprotocol/serverInfo": {
+                "name": "respanso-ai",
+                "version": env!("CARGO_PKG_VERSION"),
+                "description": "rEspanso local AI and trigger/script workspace tools"
+            }
+        },
+        "instructions": INSTRUCTIONS,
+        "ttlMs": 300000,
+        "cacheScope": "private"
+    })
+}
+
+fn tools_result() -> Value {
+    json!({
+        "resultType":"complete",
+        "tools":[
+            {"name":"get_context","description":"Read the masked local rewrite context and provider, never credentials. Show this context with outgoing text before user review.","inputSchema":{"type":"object","properties":{},"additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":false}},
+            {"name":"prepare_text","description":"Locally mask common identifiers. No network. Human review still required.","inputSchema":{"type":"object","properties":{"text":{"type":"string","maxLength":24000}},"required":["text"],"additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":false}},
+            {"name":"rewrite_text","description":"Send user-reviewed text to the configured AI provider. Requires local AI and MCP rewrite opt-in. Never invent clinical facts.","inputSchema":{"type":"object","properties":{"text":{"type":"string","maxLength":24000},"reviewed":{"type":"boolean","const":true}},"required":["text","reviewed"],"additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":true}},
+            {"name":"workspace_list","description":"List editable rEspanso trigger YAML and Rhai script files. Never exposes other configuration or credentials.","inputSchema":{"type":"object","properties":{"scope":{"type":"string","enum":["all","match","scripts"],"default":"all"}},"additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":false}},
+            {"name":"workspace_read","description":"Read one UTF-8 file under match/ or scripts/. Returns a hash that must be supplied before overwriting or deleting an existing file.","inputSchema":{"type":"object","properties":{"path":{"type":"string","maxLength":512}},"required":["path"],"additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":false}},
+            {"name":"workspace_validate","description":"Validate proposed trigger YAML or Rhai source without writing it.","inputSchema":{"type":"object","properties":{"path":{"type":"string","maxLength":512},"content":{"type":"string","maxLength":524288}},"required":["path","content"],"additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":false}},
+            {"name":"workspace_write","description":"Create or replace one validated file under match/ or scripts/. Existing files require expected_hash from workspace_read. Requires local opt-in and confirmed=true.","inputSchema":{"type":"object","properties":{"path":{"type":"string","maxLength":512},"content":{"type":"string","maxLength":524288},"expected_hash":{"type":"string","maxLength":64},"confirmed":{"type":"boolean","const":true}},"required":["path","content","confirmed"],"additionalProperties":false},"annotations":{"readOnlyHint":false,"destructiveHint":true,"idempotentHint":true,"openWorldHint":false}},
+            {"name":"workspace_delete","description":"Remove one match YAML or Rhai script from the active workspace by moving it to .respanso-mcp-trash. Requires expected_hash, local opt-in and confirmed=true.","inputSchema":{"type":"object","properties":{"path":{"type":"string","maxLength":512},"expected_hash":{"type":"string","maxLength":64},"confirmed":{"type":"boolean","const":true}},"required":["path","expected_hash","confirmed"],"additionalProperties":false},"annotations":{"readOnlyHint":false,"destructiveHint":true,"idempotentHint":false,"openWorldHint":false}}
+        ],
+        "ttlMs": 300000,
+        "cacheScope": "private"
+    })
+}
+
 fn workspace_call(root: &Path, name: &str, args: &Value) -> Result<Value, String> {
     match name {
         "workspace_list" => {
@@ -67,7 +124,7 @@ fn workspace_call(root: &Path, name: &str, args: &Value) -> Result<Value, String
             let object = object_args(args, &["path", "content"])?;
             workspace::validate(
                 required_string(object, "path")?,
-                required_string(object, "content")?,
+                required_text(object, "content")?,
             )
         }
         "workspace_write" => {
@@ -78,7 +135,7 @@ fn workspace_call(root: &Path, name: &str, args: &Value) -> Result<Value, String
             workspace::write(
                 root,
                 required_string(object, "path")?,
-                required_string(object, "content")?,
+                required_text(object, "content")?,
                 expected_hash,
                 confirmed,
                 settings.mcp_allow_workspace_write,
@@ -121,7 +178,9 @@ impl Session {
             return None;
         }
         let id = id.unwrap();
+        let modern = is_modern(&request);
         let result = match method {
+            "server/discover" => discover_result(),
             "initialize" if !self.initialized => {
                 if !request["params"]["protocolVersion"].is_string()
                     || !request["params"]["capabilities"].is_object()
@@ -131,24 +190,15 @@ impl Session {
                 }
                 self.initialized = true;
                 json!({
-                    "protocolVersion":"2025-06-18",
+                    "protocolVersion":LEGACY_PROTOCOL,
                     "capabilities":{"tools":{}},
                     "serverInfo":{"name":"respanso-ai","version":env!("CARGO_PKG_VERSION")},
-                    "instructions":"prepare_text is local. Workspace tools are sandboxed to match/**/*.yml|yaml and scripts/**/*.rhai. Read and validation tools are always available. Writes require the local MCP workspace opt-in, explicit confirmed=true, validation, and optimistic concurrency for existing files. Before rewrite_text show the exact text and configured context to the user for review. Redaction is heuristic, not guaranteed anonymization. Never read clipboard or patient files implicitly."
+                    "instructions":INSTRUCTIONS
                 })
             }
-            "ping" => json!({}),
-            _ if !self.ready => return Some(error(id, -32000, "Initialize session first")),
-            "tools/list" => json!({"tools":[
-                {"name":"get_context","description":"Read the masked local rewrite context and provider, never credentials. Show this context with outgoing text before user review.","inputSchema":{"type":"object","properties":{},"additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":false}},
-                {"name":"prepare_text","description":"Locally mask common identifiers. No network. Human review still required.","inputSchema":{"type":"object","properties":{"text":{"type":"string","maxLength":24000}},"required":["text"],"additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":false}},
-                {"name":"rewrite_text","description":"Send user-reviewed text to the configured AI provider. Requires local AI and MCP rewrite opt-in. Never invent clinical facts.","inputSchema":{"type":"object","properties":{"text":{"type":"string","maxLength":24000},"reviewed":{"type":"boolean","const":true}},"required":["text","reviewed"],"additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":true}},
-                {"name":"workspace_list","description":"List editable rEspanso trigger YAML and Rhai script files. Never exposes other configuration or credentials.","inputSchema":{"type":"object","properties":{"scope":{"type":"string","enum":["all","match","scripts"],"default":"all"}},"additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":false}},
-                {"name":"workspace_read","description":"Read one UTF-8 file under match/ or scripts/. Returns a hash that must be supplied before overwriting or deleting an existing file.","inputSchema":{"type":"object","properties":{"path":{"type":"string","maxLength":512}},"required":["path"],"additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":false}},
-                {"name":"workspace_validate","description":"Validate proposed trigger YAML or Rhai source without writing it.","inputSchema":{"type":"object","properties":{"path":{"type":"string","maxLength":512},"content":{"type":"string","maxLength":524288}},"required":["path","content"],"additionalProperties":false},"annotations":{"readOnlyHint":true,"openWorldHint":false}},
-                {"name":"workspace_write","description":"Create or replace one validated file under match/ or scripts/. Existing files require expected_hash from workspace_read. Requires local opt-in and confirmed=true.","inputSchema":{"type":"object","properties":{"path":{"type":"string","maxLength":512},"content":{"type":"string","maxLength":524288},"expected_hash":{"type":"string","maxLength":64},"confirmed":{"type":"boolean","const":true}},"required":["path","content","confirmed"],"additionalProperties":false},"annotations":{"readOnlyHint":false,"destructiveHint":true,"idempotentHint":true,"openWorldHint":false}},
-                {"name":"workspace_delete","description":"Remove one match YAML or Rhai script from the active workspace by moving it to .respanso-mcp-trash. Requires expected_hash, local opt-in and confirmed=true.","inputSchema":{"type":"object","properties":{"path":{"type":"string","maxLength":512},"expected_hash":{"type":"string","maxLength":64},"confirmed":{"type":"boolean","const":true}},"required":["path","expected_hash","confirmed"],"additionalProperties":false},"annotations":{"readOnlyHint":false,"destructiveHint":true,"idempotentHint":false,"openWorldHint":false}}
-            ]}),
+            "ping" if modern || self.ready => json!({"resultType":"complete"}),
+            _ if !modern && !self.ready => return Some(error(id, -32000, "Initialize session first")),
+            "tools/list" => tools_result(),
             "tools/call" => {
                 let args = &request["params"]["arguments"];
                 let name = request["params"]["name"].as_str().unwrap_or_default();
@@ -206,9 +256,9 @@ impl Session {
                     rewrite(&settings, &load_key(root, settings.provider)?, text)
                 });
                 match result {
-                    Ok(text) => json!({"content":[{"type":"text","text":text}],"isError":false}),
+                    Ok(text) => json!({"resultType":"complete","content":[{"type":"text","text":text}],"isError":false}),
                     Err(message) => {
-                        json!({"content":[{"type":"text","text":message}],"isError":true})
+                        json!({"resultType":"complete","content":[{"type":"text","text":message}],"isError":true})
                     }
                 }
             }
@@ -221,7 +271,6 @@ impl Session {
 pub fn serve(root: &Path, mut input: impl BufRead, mut output: impl Write) -> std::io::Result<()> {
     let mut session = Session::default();
     loop {
-        // A malformed peer cannot force an unbounded allocation. Close on oversized frames.
         let mut line = String::new();
         let count = std::io::Read::take(&mut input, MAX_MCP_FRAME + 1).read_line(&mut line)?;
         if count == 0 {
@@ -252,9 +301,9 @@ mod tests {
     fn ready_session(root: &Path) -> Session {
         let mut session = Session::default();
         let init = session
-            .handle(root, json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}))
+            .handle(root, json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":LEGACY_PROTOCOL,"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}))
             .unwrap();
-        assert_eq!(init["result"]["protocolVersion"], "2025-06-18");
+        assert_eq!(init["result"]["protocolVersion"], LEGACY_PROTOCOL);
         assert!(session
             .handle(
                 root,
@@ -262,6 +311,14 @@ mod tests {
             )
             .is_none());
         session
+    }
+
+    fn modern_meta() -> Value {
+        json!({
+            "io.modelcontextprotocol/protocolVersion": MODERN_PROTOCOL,
+            "io.modelcontextprotocol/clientInfo": {"name":"test","version":"1"},
+            "io.modelcontextprotocol/clientCapabilities": {}
+        })
     }
 
     #[test]
@@ -279,6 +336,31 @@ mod tests {
         assert_eq!(reply["result"]["isError"], true);
         let reply = s.handle(root,json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"prepare_text","arguments":{"text":"test@example.org"}}})).unwrap();
         assert_eq!(reply["result"]["content"][0]["text"], "[СКРЫТО]");
+    }
+
+    #[test]
+    fn modern_discovery_and_tools_are_stateless() {
+        let dir = tempdir::TempDir::new("mcp-modern").unwrap();
+        let mut s = Session::default();
+        let discover = s
+            .handle(
+                dir.path(),
+                json!({"jsonrpc":"2.0","id":"d1","method":"server/discover","params":{"_meta":modern_meta()}}),
+            )
+            .unwrap();
+        assert_eq!(discover["result"]["supportedVersions"][0], MODERN_PROTOCOL);
+        let list = s
+            .handle(
+                dir.path(),
+                json!({"jsonrpc":"2.0","id":"t1","method":"tools/list","params":{"_meta":modern_meta()}}),
+            )
+            .unwrap();
+        assert_eq!(list["result"]["resultType"], "complete");
+        assert!(list["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tool| tool["name"] == "workspace_write"));
     }
 
     #[test]
