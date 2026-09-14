@@ -2,9 +2,30 @@
 set -Eeuo pipefail
 
 # Full rEspanso portable build for Astra Linux 1.7 / KDE / X11.
-# Run this script inside Debian 10 (buster), whose glibc is 2.28.
-# Nothing is installed on the target Astra workstation: the resulting archive
-# is unpacked in the user's home directory and started with run.sh.
+# Run this script inside an amd64 Debian 10 (buster) build environment whose
+# glibc is 2.28. Nothing is installed on the target Astra workstation: the
+# resulting archive is unpacked in the user's home directory and started with
+# run.sh.
+
+if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+  echo 'ERROR: build_pol_run_astra17.sh must run as root inside the Debian 10 build container.' >&2
+  exit 1
+fi
+
+if [[ ! -r /etc/os-release ]]; then
+  echo 'ERROR: cannot identify the build operating system.' >&2
+  exit 1
+fi
+# shellcheck disable=SC1091
+. /etc/os-release
+if [[ "${ID:-}" != 'debian' || "${VERSION_ID:-}" != 10* ]]; then
+  echo "ERROR: this portable ABI build must run on Debian 10/buster, got ${PRETTY_NAME:-unknown}." >&2
+  exit 1
+fi
+if [[ "$(dpkg --print-architecture)" != 'amd64' ]]; then
+  echo 'ERROR: this packaging script currently targets amd64/x86_64 only.' >&2
+  exit 1
+fi
 
 cat >/etc/apt/sources.list <<'APT'
 deb http://archive.debian.org/debian buster main
@@ -59,8 +80,10 @@ timeout 30s xvfb-run -a bash scripts/test_astra_worker.sh target/release/espanso
 
 # Run the complete workspace test suite with the same X11 feature selection
 # before packaging anything. This includes espanso-ai MCP/workspace tests and
-# the Match Studio library tests.
-cargo test --locked --workspace --no-default-features \
+# Match Studio library tests. Clear external MCP credentials so the tests are
+# deterministic even if the invoking shell is configured for an agent.
+env -u RESPANSO_MCP_AGENT_ID -u RESPANSO_MCP_TOKEN \
+  cargo test --locked --workspace --no-default-features \
   --features espanso/modulo,espanso/vendored-tls
 
 # Match Studio is explicitly eframe + glow + X11 in espanso-editor/Cargo.toml.
@@ -437,17 +460,19 @@ done
 LD_LIBRARY_PATH="$ROOT/lib" "$ROOT/rEspanso-core" --version
 
 # Modern MCP 2026-07-28 has no ping method. Probe server/discover with the
-# mandatory per-request _meta envelope instead.
+# mandatory per-request _meta envelope. Discover advertises modern revisions;
+# legacy compatibility is tested separately through initialize below.
 modern_probe="$(
   printf '%s\n' \
     '{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"astra-build-smoke","version":"1"}}}}' \
     | env -u RESPANSO_MCP_AGENT_ID -u RESPANSO_MCP_TOKEN "$ROOT/mcp.sh"
 )"
 printf '%s\n' "$modern_probe" | grep -q '"resultType":"complete"'
-printf '%s\n' "$modern_probe" | grep -q '"supportedVersions":\["2026-07-28","2025-06-18"\]'
+printf '%s\n' "$modern_probe" | grep -q '"supportedVersions":\["2026-07-28"\]'
+printf '%s\n' "$modern_probe" | grep -q '"io.modelcontextprotocol/serverInfo"'
 
-# Also protect backward compatibility: legacy MCP must still initialize and its
-# ping result is the legacy empty object, not the modern resultType envelope.
+# Protect backward compatibility: legacy MCP must still initialize and its ping
+# result is the legacy empty object, not the modern resultType envelope.
 legacy_probe="$(
   printf '%s\n' \
     '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"astra-build-smoke","version":"1"}}}' \
@@ -458,7 +483,7 @@ legacy_probe="$(
 printf '%s\n' "$legacy_probe" | grep -q '"protocolVersion":"2025-06-18"'
 printf '%s\n' "$legacy_probe" | grep -q '"result":{}'
 
-# Ensure modern ping is rejected, as required by the 2026-07-28 era.
+# Modern ping was removed in the 2026 era and must be rejected.
 modern_ping="$(
   printf '%s\n' \
     '{"jsonrpc":"2.0","id":3,"method":"ping","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}}}' \
