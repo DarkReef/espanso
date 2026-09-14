@@ -98,14 +98,27 @@ fn service_main(args: CliModuleArgs) -> i32 {
     } else if cli_args.subcommand_matches("status").is_some() {
         return status_main(&paths);
     } else if let Some(sub_args) = cli_args.subcommand_matches("restart") {
-        stop_main(&paths);
-        std::thread::sleep(std::time::Duration::from_millis(300));
-        return start_main(&paths, &paths_overrides, sub_args);
+        return restart_main(&paths, &paths_overrides, sub_args);
     } else {
         eprintln!("Invalid usage, please run `rEspanso service --help` for more information.");
     }
 
     SERVICE_SUCCESS
+}
+
+fn restart_main(paths: &Paths, paths_overrides: &PathsOverrides, args: &ArgMatches) -> i32 {
+    // stop_main already waits until the worker/daemon lock is released. A
+    // fixed delay here used to race slow X11/GTK shutdowns and, worse, a stop
+    // error was ignored before a second instance was started.
+    let stop_result = stop_main(paths);
+    if stop_result != SERVICE_SUCCESS && stop_result != SERVICE_NOT_RUNNING {
+        error_eprintln!(
+            "unable to restart rEspanso because the running instance did not stop cleanly"
+        );
+        return stop_result;
+    }
+
+    start_main(paths, paths_overrides, args)
 }
 
 fn start_main(paths: &Paths, _paths_overrides: &PathsOverrides, args: &ArgMatches) -> i32 {
