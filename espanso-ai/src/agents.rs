@@ -20,7 +20,7 @@ impl Default for AgentPermissions {
     fn default() -> Self {
         Self {
             read_workspace: true,
-            write_workspace: true,
+            write_workspace: false,
             delete_workspace: false,
             rewrite_ai: false,
         }
@@ -373,6 +373,15 @@ mod tests {
             sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn default_permissions_are_read_only() {
+        let permissions = AgentPermissions::default();
+        assert!(permissions.read_workspace);
+        assert!(!permissions.write_workspace);
+        assert!(!permissions.delete_workspace);
+        assert!(!permissions.rewrite_ai);
     }
 
     #[test]
