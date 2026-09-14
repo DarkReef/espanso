@@ -25,6 +25,8 @@ pub struct AiPanel {
     new_agent_name: String,
     new_agent_permissions: AgentPermissions,
     pairing: Option<(String, String, String)>,
+    audit_entries: Vec<audit::AuditEntry>,
+    audit_error: Option<String>,
 }
 
 impl AiPanel {
@@ -36,6 +38,10 @@ impl AiPanel {
         let key = espanso_ai::load_key(&root, settings.provider).unwrap_or_default();
         let saved_settings = serde_json::to_string(&settings).unwrap_or_default();
         let agents = agents::list(&root).unwrap_or_default();
+        let (audit_entries, audit_error) = match audit::recent(&root, 100) {
+            Ok(entries) => (entries, None),
+            Err(error) => (Vec::new(), Some(error)),
+        };
         Self {
             root,
             saved_settings,
@@ -52,6 +58,8 @@ impl AiPanel {
             new_agent_name: String::new(),
             new_agent_permissions: AgentPermissions::default(),
             pairing: None,
+            audit_entries,
+            audit_error,
         }
     }
 
@@ -66,12 +74,24 @@ impl AiPanel {
         }
     }
 
+    fn refresh_audit(&mut self) {
+        match audit::recent(&self.root, 100) {
+            Ok(entries) => {
+                self.audit_entries = entries;
+                self.audit_error = None;
+            }
+            Err(error) => {
+                self.audit_error = Some(error);
+            }
+        }
+    }
+
     fn show_agent_manager(&mut self, ui: &mut egui::Ui) {
         egui::CollapsingHeader::new("MCP-агенты · регистрация и права")
             .default_open(false)
             .show(ui, |ui| {
-                ui.label("Workspace-инструменты доступны только зарегистрированному агенту с парой Agent ID + Token. Токен хранится у агента; rEspanso сохраняет только его SHA-256-хэш.");
-                ui.small("Для процесса MCP задайте RESPANSO_MCP_AGENT_ID и RESPANSO_MCP_TOKEN. Отключение агента, изменение прав или перевыпуск токена проверяется заново при каждом workspace-вызове.");
+                ui.label("Защищённые MCP-инструменты доступны только зарегистрированному агенту с парой Agent ID + Token. Токен хранится у агента; rEspanso сохраняет только его SHA-256-хэш.");
+                ui.small("Для процесса MCP задайте RESPANSO_MCP_AGENT_ID и RESPANSO_MCP_TOKEN. Отключение агента, изменение прав или перевыпуск токена проверяется заново при каждом защищённом MCP-вызове.");
 
                 if let Some((name, id, token)) = self.pairing.clone() {
                     ui.separator();
@@ -101,6 +121,7 @@ impl AiPanel {
 
                 ui.separator();
                 ui.label("Новый агент");
+                ui.small("По умолчанию новый агент получает только чтение workspace. Запись, удаление и rewrite_text включаются явно.");
                 ui.horizontal(|ui| {
                     ui.label("Имя");
                     ui.text_edit_singleline(&mut self.new_agent_name);
@@ -124,6 +145,7 @@ impl AiPanel {
                                 pairing.token,
                             ));
                             self.new_agent_name.clear();
+                            self.new_agent_permissions = AgentPermissions::default();
                             self.refresh_agents();
                             self.status = "MCP-агент зарегистрирован".into();
                         }
@@ -207,42 +229,46 @@ impl AiPanel {
             .default_open(false)
             .show(ui, |ui| {
                 ui.small("Локальный журнал содержит только время, агента, действие, относительный путь и success/failure. Содержимое файлов, токены, API-ключи и медицинский текст не записываются.");
-                ui.small(format!("Файл: {}", audit::log_path(&self.root).display()));
+                ui.horizontal_wrapped(|ui| {
+                    ui.small(format!("Файл: {}", audit::log_path(&self.root).display()));
+                    if ui.button("Обновить журнал").clicked() {
+                        self.refresh_audit();
+                    }
+                });
                 ui.separator();
-                match audit::recent(&self.root, 100) {
-                    Ok(entries) if entries.is_empty() => {
-                        ui.label("Журнал пока пуст.");
-                    }
-                    Ok(entries) => {
-                        for entry in entries {
-                            ui.group(|ui| {
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.monospace(&entry.timestamp_utc);
-                                    ui.strong(&entry.agent_name)
-                                        .on_hover_text(format!("Agent ID: {}", entry.agent_id));
-                                    ui.monospace(&entry.action);
-                                    if entry.result == "success" {
-                                        ui.colored_label(
-                                            egui::Color32::from_rgb(40, 160, 90),
-                                            "success",
-                                        );
-                                    } else {
-                                        ui.colored_label(
-                                            egui::Color32::from_rgb(190, 70, 70),
-                                            "failure",
-                                        );
-                                    }
-                                });
-                                ui.monospace(&entry.path);
-                            });
-                        }
-                    }
-                    Err(error) => {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(190, 70, 70),
-                            format!("Не удалось прочитать журнал: {error}"),
-                        );
-                    }
+
+                if let Some(error) = &self.audit_error {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(190, 70, 70),
+                        format!("Не удалось прочитать журнал: {error}"),
+                    );
+                    return;
+                }
+                if self.audit_entries.is_empty() {
+                    ui.label("Журнал пока пуст.");
+                    return;
+                }
+                for entry in &self.audit_entries {
+                    ui.group(|ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.monospace(&entry.timestamp_utc);
+                            ui.strong(&entry.agent_name)
+                                .on_hover_text(format!("Agent ID: {}", entry.agent_id));
+                            ui.monospace(&entry.action);
+                            if entry.result == "success" {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(40, 160, 90),
+                                    "success",
+                                );
+                            } else {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(190, 70, 70),
+                                    "failure",
+                                );
+                            }
+                        });
+                        ui.monospace(&entry.path);
+                    });
                 }
             });
     }
