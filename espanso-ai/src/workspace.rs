@@ -273,7 +273,17 @@ fn write_validated(path: &Path, content: &[u8]) -> Result<(), String> {
     }
 }
 
-pub fn write(
+fn audit_identity(root: &Path) -> (String, String) {
+    match crate::agents::authenticate_from_env(root) {
+        Ok(agent) => (agent.id, agent.name),
+        Err(_) => (
+            std::env::var("RESPANSO_MCP_AGENT_ID").unwrap_or_else(|_| "unknown".into()),
+            "unauthenticated".into(),
+        ),
+    }
+}
+
+fn write_impl(
     root: &Path,
     relative: &str,
     content: &str,
@@ -320,7 +330,32 @@ pub fn write(
     }))
 }
 
-pub fn delete(
+pub fn write(
+    root: &Path,
+    relative: &str,
+    content: &str,
+    expected_hash: Option<&str>,
+    confirmed: bool,
+    allowed: bool,
+) -> Result<JsonValue, String> {
+    let action = match resolve(root, relative) {
+        Ok((path, _)) if !path.exists() => "create",
+        _ => "write",
+    };
+    let result = write_impl(root, relative, content, expected_hash, confirmed, allowed);
+    let (agent_id, agent_name) = audit_identity(root);
+    let _ = crate::audit::record(
+        root,
+        &agent_id,
+        &agent_name,
+        action,
+        relative,
+        result.is_ok(),
+    );
+    result
+}
+
+fn delete_impl(
     root: &Path,
     relative: &str,
     expected_hash: &str,
@@ -361,6 +396,26 @@ pub fn delete(
     }))
 }
 
+pub fn delete(
+    root: &Path,
+    relative: &str,
+    expected_hash: &str,
+    confirmed: bool,
+    allowed: bool,
+) -> Result<JsonValue, String> {
+    let result = delete_impl(root, relative, expected_hash, confirmed, allowed);
+    let (agent_id, agent_name) = audit_identity(root);
+    let _ = crate::audit::record(
+        root,
+        &agent_id,
+        &agent_name,
+        "delete",
+        relative,
+        result.is_ok(),
+    );
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -399,6 +454,10 @@ mod tests {
         assert_eq!(changed["status"], "written");
         let read_back = read(dir.path(), "match/test.yml").unwrap();
         assert!(read_back["content"].as_str().unwrap().contains("Здравствуйте"));
+        let audit = crate::audit::recent(dir.path(), 10).unwrap();
+        assert!(audit.iter().any(|entry| entry.action == "create" && entry.result == "success"));
+        assert!(audit.iter().any(|entry| entry.action == "write" && entry.result == "failure"));
+        assert!(audit.iter().any(|entry| entry.action == "write" && entry.result == "success"));
     }
 
     #[test]
@@ -431,5 +490,7 @@ mod tests {
         let result = delete(dir.path(), "scripts/test.rhai", hash, true, true).unwrap();
         assert_eq!(result["status"], "moved_to_trash");
         assert!(!dir.path().join("scripts/test.rhai").exists());
+        let audit = crate::audit::recent(dir.path(), 10).unwrap();
+        assert!(audit.iter().any(|entry| entry.action == "delete" && entry.result == "success"));
     }
 }
