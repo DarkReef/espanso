@@ -8,6 +8,7 @@ use std::{
     time::Duration,
 };
 
+pub mod agents;
 pub mod mcp;
 pub mod workspace;
 pub const MAX_TEXT: usize = 24_000;
@@ -74,7 +75,6 @@ fn private_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     fs::create_dir_all(parent).map_err(|_| "Не удалось создать каталог")?;
     let mut file =
         tempfile::NamedTempFile::new_in(parent).map_err(|_| "Не удалось создать файл")?;
-    // NamedTempFile uses owner-only permissions on Unix, including Astra.
     file.write_all(bytes)
         .and_then(|_| file.as_file().sync_all())
         .map_err(|_| "Ошибка записи")?;
@@ -298,54 +298,29 @@ mod tests {
     #[test]
     fn complete_provider_responses_are_parsed() {
         let openai = json!({"status":"completed","output":[{"type":"reasoning"},{"type":"message","content":[{"type":"output_text","text":"Боль 5 дней. Хрипов нет."}]}]});
-        assert_eq!(
-            extract(Provider::Openai, &openai).unwrap(),
-            "Боль 5 дней. Хрипов нет."
-        );
+        assert_eq!(extract(Provider::Openai, &openai).unwrap(), "Боль 5 дней. Хрипов нет.");
         let giga = json!({"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"Боль 5 дней. Хрипов нет."}}]});
-        assert_eq!(
-            extract(Provider::Gigachat, &giga).unwrap(),
-            "Боль 5 дней. Хрипов нет."
-        );
+        assert_eq!(extract(Provider::Gigachat, &giga).unwrap(), "Боль 5 дней. Хрипов нет.");
     }
     #[test]
     fn reject_incomplete_output() {
-        assert!(extract(
-            Provider::Openai,
-            &json!({"status":"incomplete","output":[]})
-        )
-        .is_err());
-        assert!(extract(
-            Provider::Gigachat,
-            &json!({"choices":[{"finish_reason":"length","message":{"content":"partial"}}]})
-        )
-        .is_err());
+        assert!(extract(Provider::Openai, &json!({"status":"incomplete","output":[]})).is_err());
+        assert!(extract(Provider::Gigachat, &json!({"choices":[{"finish_reason":"length","message":{"content":"partial"}}]})).is_err());
     }
     #[test]
     fn disabled_never_calls_network() {
-        assert!(rewrite(&Settings::default(), "secret", "test")
-            .unwrap_err()
-            .contains("отключён"));
+        assert!(rewrite(&Settings::default(), "secret", "test").unwrap_err().contains("отключён"));
     }
     #[test]
     fn credentials_are_separate_and_private() {
         let dir = tempdir::TempDir::new("ai-settings").unwrap();
         Settings::default().save(dir.path()).unwrap();
         save_key(dir.path(), Provider::Openai, "test-secret").unwrap();
-        assert!(!fs::read_to_string(dir.path().join("ai.json"))
-            .unwrap()
-            .contains("secret"));
+        assert!(!fs::read_to_string(dir.path().join("ai.json")).unwrap().contains("secret"));
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            assert_eq!(
-                fs::metadata(dir.path().join(".ai-OPENAI_API_KEY.key"))
-                    .unwrap()
-                    .permissions()
-                    .mode()
-                    & 0o777,
-                0o600
-            );
+            assert_eq!(fs::metadata(dir.path().join(".ai-OPENAI_API_KEY.key")).unwrap().permissions().mode() & 0o777, 0o600);
         }
     }
 }
