@@ -2,6 +2,8 @@
 
 rEspanso exposes a sandboxed MCP workspace for agents that need to inspect or change text-expansion rules and Rhai scripts.
 
+The stdio server supports both the legacy `2025-06-18` initialize flow and the stateless `2026-07-28` flow with `server/discover` and per-request `_meta`.
+
 ## Scope
 
 The MCP process can only access:
