@@ -9,6 +9,7 @@ use std::{
 };
 
 pub mod agents;
+pub mod audit;
 pub mod mcp;
 pub mod workspace;
 pub const MAX_TEXT: usize = 24_000;
@@ -288,7 +289,7 @@ mod tests {
         }
     }
     #[test]
-    fn no_storage_and_context_scrubbed() {
+    fn no_storage_and_context_scrbed() {
         let mut s = Settings::default();
         s.context = "Врач; test@example.org".into();
         let v = payload(&s, "Боль 5 дней");
