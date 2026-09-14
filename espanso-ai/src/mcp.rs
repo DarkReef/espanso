@@ -1,5 +1,5 @@
 //! Hybrid MCP JSON-RPC over stdio: legacy 2025-06-18 plus stateless 2026-07-28.
-//! Workspace editing and provider-backed rewrites are exposed only to a registered agent.
+//! Protected workspace editing and provider-backed rewrites require a registered agent.
 use crate::{
     agents::{self, AuthenticatedAgent},
     load_key, redact, rewrite, validate_text, workspace, Settings,
@@ -13,6 +13,7 @@ use std::{
 const MAX_MCP_FRAME: u64 = 1_048_576;
 const MODERN_PROTOCOL: &str = "2026-07-28";
 const LEGACY_PROTOCOL: &str = "2025-06-18";
+const UNSUPPORTED_PROTOCOL_VERSION: i32 = -32022;
 const INSTRUCTIONS: &str = "prepare_text is local. Workspace tools and rewrite_text are visible only to a registered MCP agent authenticated by RESPANSO_MCP_AGENT_ID and RESPANSO_MCP_TOKEN. The workspace is sandboxed to match/**/*.yml|yaml and scripts/**/*.rhai. Writes require per-agent permission, the local master write opt-in, explicit confirmed=true, validation and optimistic concurrency. Agent authorization is revalidated for every protected call. Redaction is heuristic, not guaranteed anonymization. Never read clipboard or patient files implicitly.";
 
 #[derive(Debug, Clone)]
@@ -57,7 +58,7 @@ impl Session {
                 return Self {
                     auth_error: Some("Не задан RESPANSO_MCP_AGENT_ID".into()),
                     ..Self::default()
-                }
+                };
             }
         };
         let token = match std::env::var("RESPANSO_MCP_TOKEN") {
@@ -66,7 +67,7 @@ impl Session {
                 return Self {
                     auth_error: Some("Не задан RESPANSO_MCP_TOKEN".into()),
                     ..Self::default()
-                }
+                };
             }
         };
         Self::with_credentials(root, id, token)
@@ -86,8 +87,7 @@ impl Session {
         match name {
             "workspace_list" => {
                 require(agent.permissions.read_workspace, "чтение workspace")?;
-                let object = object_args(args, &["scope"])?;
-                let scope = object.get("scope").and_then(Value::as_str).unwrap_or("all");
+                let scope = optional_scope(args)?;
                 workspace::list(root, scope)
             }
             "workspace_read" => {
@@ -118,7 +118,7 @@ impl Session {
                     return Err(error);
                 }
                 let confirmed = object.get("confirmed").and_then(Value::as_bool).unwrap_or(false);
-                let expected_hash = object.get("expected_hash").and_then(Value::as_str);
+                let expected_hash = optional_string(object, "expected_hash")?;
                 let settings = Settings::load(root)?;
                 workspace::write(
                     root,
@@ -181,7 +181,7 @@ impl Session {
 
         if let Some(version) = request_protocol(&request) {
             if version != MODERN_PROTOCOL {
-                return Some(error(id, -32022, "Unsupported protocol version"));
+                return Some(unsupported_version(id, version));
             }
             if let Err(message) = validate_modern_envelope(&request) {
                 return Some(error(id, -32602, &message));
@@ -333,6 +333,18 @@ fn error(id: Value, code: i32, message: &str) -> Value {
     json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}})
 }
 
+fn unsupported_version(id: Value, requested: &str) -> Value {
+    json!({
+        "jsonrpc":"2.0",
+        "id":id,
+        "error":{
+            "code":UNSUPPORTED_PROTOCOL_VERSION,
+            "message":"Unsupported protocol version",
+            "data":{"supported":[MODERN_PROTOCOL],"requested":requested}
+        }
+    })
+}
+
 fn tool_success(value: Value, modern: bool) -> Value {
     let text = serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string());
     if modern {
@@ -374,6 +386,18 @@ fn object_args<'a>(
     Ok(object)
 }
 
+fn optional_scope(args: &Value) -> Result<&str, String> {
+    if args.is_null() {
+        return Ok("all");
+    }
+    let object = object_args(args, &["scope"])?;
+    match object.get("scope") {
+        None => Ok("all"),
+        Some(Value::String(scope)) => Ok(scope.as_str()),
+        Some(_) => Err("scope должен быть строкой".into()),
+    }
+}
+
 fn required_string<'a>(
     object: &'a serde_json::Map<String, Value>,
     key: &str,
@@ -383,6 +407,17 @@ fn required_string<'a>(
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| format!("{key} должен быть непустой строкой"))
+}
+
+fn optional_string<'a>(
+    object: &'a serde_json::Map<String, Value>,
+    key: &str,
+) -> Result<Option<&'a str>, String> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(value)) => Ok(Some(value.as_str())),
+        Some(_) => Err(format!("{key} должен быть строкой")),
+    }
 }
 
 fn required_path<'a>(
@@ -457,7 +492,7 @@ fn discover_result(agent: Option<&AuthenticatedAgent>) -> Value {
     }
     json!({
         "resultType":"complete",
-        "supportedVersions":[MODERN_PROTOCOL,LEGACY_PROTOCOL],
+        "supportedVersions":[MODERN_PROTOCOL],
         "capabilities":{"tools":{}},
         "_meta":meta,
         "instructions":INSTRUCTIONS,
@@ -575,7 +610,7 @@ mod tests {
     }
 
     #[test]
-    fn modern_discovery_advertises_both_eras() {
+    fn modern_discovery_advertises_modern_revision_only() {
         let dir = tempdir::TempDir::new("mcp-discover").unwrap();
         let mut session = Session::default();
         let result = session
@@ -585,17 +620,27 @@ mod tests {
             )
             .unwrap();
         assert_eq!(result["result"]["resultType"], "complete");
-        assert!(result["result"]["supportedVersions"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|version| version == MODERN_PROTOCOL));
-        assert!(result["result"]["supportedVersions"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|version| version == LEGACY_PROTOCOL));
+        assert_eq!(result["result"]["supportedVersions"], json!([MODERN_PROTOCOL]));
         assert!(result["result"]["_meta"]["io.modelcontextprotocol/serverInfo"].is_object());
+    }
+
+    #[test]
+    fn unsupported_modern_revision_returns_spec_error_data() {
+        let dir = tempdir::TempDir::new("mcp-version-error").unwrap();
+        let mut session = Session::default();
+        let request = json!({
+            "jsonrpc":"2.0",
+            "id":1,
+            "method":"server/discover",
+            "params":{"_meta":{
+                "io.modelcontextprotocol/protocolVersion":"2099-01-01",
+                "io.modelcontextprotocol/clientCapabilities":{}
+            }}
+        });
+        let result = session.handle(dir.path(), request).unwrap();
+        assert_eq!(result["error"]["code"], UNSUPPORTED_PROTOCOL_VERSION);
+        assert_eq!(result["error"]["data"]["requested"], "2099-01-01");
+        assert_eq!(result["error"]["data"]["supported"], json!([MODERN_PROTOCOL]));
     }
 
     #[test]
@@ -618,6 +663,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(modern_result["result"]["resultType"], "complete");
+        assert_eq!(modern_result["result"]["cacheScope"], "private");
     }
 
     #[test]
@@ -679,6 +725,34 @@ mod tests {
             .unwrap()
             .iter()
             .any(|tool| tool["name"] == "workspace_write"));
+    }
+
+    #[test]
+    fn workspace_list_accepts_omitted_arguments() {
+        let dir = tempdir::TempDir::new("mcp-list-no-args").unwrap();
+        std::fs::create_dir_all(dir.path().join("match")).unwrap();
+        let permissions = AgentPermissions {
+            read_workspace: true,
+            write_workspace: false,
+            delete_workspace: false,
+            rewrite_ai: false,
+        };
+        let pairing = agents::register(dir.path(), "agent", permissions).unwrap();
+        let mut session = legacy_ready(
+            Session::with_credentials(
+                dir.path(),
+                pairing.agent.id.clone(),
+                pairing.token.clone(),
+            ),
+            dir.path(),
+        );
+        let result = session
+            .handle(
+                dir.path(),
+                json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"workspace_list"}}),
+            )
+            .unwrap();
+        assert_eq!(result["result"]["isError"], false);
     }
 
     #[test]
