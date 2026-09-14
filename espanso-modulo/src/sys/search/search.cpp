@@ -184,6 +184,7 @@ class SearchFrame : public wxFrame {
     void SelectNext();
     void SelectPrevious();
     void Submit();
+    bool submitting = false;
 };
 
 bool SearchApp::OnInit() {
@@ -261,8 +262,10 @@ SearchFrame::SearchFrame(const wxString &title, const wxPoint &pos,
                                   wxSize(MIN_WIDTH, MIN_HEIGHT));
     vbox->Add(resultBox, 5, wxEXPAND | wxALL, 0);
 
+    // Use one keyboard routing path. Binding both wxEVT_CHAR_HOOK on the frame
+    // and wxEVT_CHAR on the focused text control can deliver the same Enter
+    // through two handlers on wxGTK/X11 while focus is changing.
     Bind(wxEVT_CHAR_HOOK, &SearchFrame::OnCharEvent, this, wxID_ANY);
-    searchBar->Bind(wxEVT_CHAR, &SearchFrame::OnCharEvent, this, wxID_ANY);
     Bind(wxEVT_TEXT, &SearchFrame::OnQueryChange, this, textId);
     Bind(wxEVT_LISTBOX_DCLICK, &SearchFrame::OnItemClickEvent, this, resultId);
     Bind(wxEVT_ACTIVATE, &SearchFrame::OnActivate, this, wxID_ANY);
@@ -326,6 +329,9 @@ void SearchFrame::OnCharEvent(wxKeyEvent &event) {
             return;
         }
 #endif
+        // Submit is deferred out of the current key event. Do not Skip(): the
+        // Enter belongs to the search window and must not become navigation or
+        // input in the previously focused application on X11.
         Submit();
     } else {
         event.Skip();
@@ -350,7 +356,10 @@ void SearchFrame::OnItemClickEvent(wxCommandEvent &event) {
 }
 
 void SearchFrame::OnActivate(wxActivateEvent &event) {
-    if (!event.GetActive()) {
+    // During a submitted Enter wxGTK can emit a deactivation before the
+    // deferred callback gets its turn. Keep the frame alive until the result
+    // has been delivered to Rust; ordinary focus loss still dismisses search.
+    if (!event.GetActive() && !submitting) {
         Close(true);
     }
     event.Skip();
@@ -454,16 +463,24 @@ void SearchFrame::SelectPrevious() {
 }
 
 void SearchFrame::Submit() {
-    if (resultBox->GetItemCount() > 0 &&
-        resultBox->GetSelection() != wxNOT_FOUND) {
-        long index = resultBox->GetSelection();
-        wxString id = wxIds[index];
+    if (submitting || resultBox->GetItemCount() == 0 ||
+        resultBox->GetSelection() == wxNOT_FOUND) {
+        return;
+    }
+
+    submitting = true;
+    long index = resultBox->GetSelection();
+    wxString id = wxIds[index];
+
+    // Let the current keyboard/mouse event finish before changing the X11
+    // top-level focus. CallAfter runs on the GUI event loop and also makes a
+    // duplicate submit harmless through the guard above.
+    CallAfter([this, id]() {
         if (resultCallback) {
             resultCallback(id.ToUTF8(), resultData);
         }
-
         Close(true);
-    }
+    });
 }
 
 extern "C" void interop_show_search(SearchMetadata *_metadata,
