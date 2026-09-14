@@ -13,7 +13,7 @@ use std::{
 const MAX_MCP_FRAME: u64 = 1_048_576;
 const MODERN_PROTOCOL: &str = "2026-07-28";
 const LEGACY_PROTOCOL: &str = "2025-06-18";
-const INSTRUCTIONS: &str = "prepare_text is local. Workspace tools are visible only to a registered MCP agent authenticated by RESPANSO_MCP_AGENT_ID and RESPANSO_MCP_TOKEN. The workspace is sandboxed to match/**/*.yml|yaml and scripts/**/*.rhai. Writes require per-agent permission, the local master write opt-in, explicit confirmed=true, validation and optimistic concurrency. Redaction is heuristic, not guaranteed anonymization. Never read clipboard or patient files implicitly.";
+const INSTRUCTIONS: &str = "prepare_text is local. Workspace tools are visible only to a registered MCP agent authenticated by RESPANSO_MCP_AGENT_ID and RESPANSO_MCP_TOKEN. The workspace is sandboxed to match/**/*.yml|yaml and scripts/**/*.rhai. Writes require per-agent permission, the local master write opt-in, explicit confirmed=true, validation and optimistic concurrency. Agent authorization is revalidated for every workspace call. Redaction is heuristic, not guaranteed anonymization. Never read clipboard or patient files implicitly.";
 
 pub struct Session {
     initialized: bool,
@@ -51,16 +51,18 @@ impl Session {
         }
     }
 
-    fn workspace_agent(&self) -> Result<&AuthenticatedAgent, String> {
-        self.agent.as_ref().ok_or_else(|| {
-            self.auth_error
-                .clone()
-                .unwrap_or_else(|| "MCP-агент не аутентифицирован".into())
+    fn workspace_agent(&self, root: &Path) -> Result<AuthenticatedAgent, String> {
+        agents::authenticate_from_env(root).map_err(|error| {
+            if self.agent.is_none() {
+                self.auth_error.clone().unwrap_or(error)
+            } else {
+                error
+            }
         })
     }
 
     fn workspace_call(&self, root: &Path, name: &str, args: &Value) -> Result<Value, String> {
-        let agent = self.workspace_agent()?;
+        let agent = self.workspace_agent(root)?;
         match name {
             "workspace_list" => {
                 require(agent.permissions.read_workspace, "чтение workspace")?;
