@@ -2,6 +2,9 @@ name: Windows x64 portable
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - build/windows-latest
 
 permissions:
   contents: read
