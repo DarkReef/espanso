@@ -20,10 +20,38 @@ core_args=(
   --runtime_dir "$CONFIG/runtime"
 )
 
+dump_diagnostics() {
+  echo '=== Astra restart smoke diagnostics ===' >&2
+  echo "config: $CONFIG" >&2
+  echo '--- runtime directory ---' >&2
+  find "$CONFIG/runtime" -maxdepth 2 -printf '%M %u:%g %s %p\n' 2>&1 || true
+  echo '--- startup.log ---' >&2
+  if [[ -f "$CONFIG/runtime/startup.log" ]]; then
+    cat "$CONFIG/runtime/startup.log" >&2 || true
+  else
+    echo '(missing)' >&2
+  fi
+  echo '--- espanso.log ---' >&2
+  if [[ -f "$CONFIG/runtime/espanso.log" ]]; then
+    cat "$CONFIG/runtime/espanso.log" >&2 || true
+  else
+    echo '(missing)' >&2
+  fi
+  echo '--- matching processes ---' >&2
+  ps -ef | grep -E '[r]Espanso|[e]spanso' >&2 || true
+  echo '=== end Astra restart smoke diagnostics ===' >&2
+}
+
 cleanup() {
+  local rc=$?
+  trap - EXIT
   set +e
+  if (( rc != 0 )); then
+    dump_diagnostics
+  fi
   timeout --kill-after=2s 12s "$CORE" "${core_args[@]}" service stop >/dev/null 2>&1
   rm -rf "$TEST_ROOT"
+  exit "$rc"
 }
 trap cleanup EXIT
 
