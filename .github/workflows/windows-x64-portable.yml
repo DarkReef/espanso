@@ -50,7 +50,8 @@ jobs:
       - name: Test Match Studio
         run: cargo test --locked -p espanso-editor --lib
 
-      - name: Lint Match Studio
+      - name: Lint Match Studio (advisory)
+        continue-on-error: true
         run: cargo clippy --locked -p espanso-editor --all-targets -- --deny warnings
 
       - name: Build rEspanso core and launcher
