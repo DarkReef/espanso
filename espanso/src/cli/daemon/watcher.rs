@@ -91,7 +91,9 @@ fn is_non_runtime_tree(config_root: &Path, path: &Path) -> bool {
     matches!(
         relative.components().next(),
         Some(Component::Normal(name))
-            if name == ".respanso-mcp-trash" || name == "clinical_extender"
+            if name == ".respanso-mcp-trash"
+                || name == "clinical_extender"
+                || name == "runtime"
     )
 }
 
@@ -210,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn clinical_library_and_mcp_trash_do_not_restart_worker() {
+    fn clinical_library_mcp_trash_and_runtime_do_not_restart_worker() {
         let root = Path::new("/config-root");
         assert!(!event_should_reload(
             &DebouncedEvent::Write(root.join("clinical_extender/nosologies.yml")),
@@ -220,6 +222,14 @@ mod tests {
             &DebouncedEvent::Create(
                 root.join(".respanso-mcp-trash/123/match/base.yml"),
             ),
+            root,
+        ));
+        assert!(!event_should_reload(
+            &DebouncedEvent::Create(root.join("runtime/kvs")),
+            root,
+        ));
+        assert!(!event_should_reload(
+            &DebouncedEvent::Write(root.join("runtime/generated.yml")),
             root,
         ));
     }
@@ -239,14 +249,19 @@ mod tests {
     }
 
     #[test]
-    fn fingerprint_ignores_clinical_library_changes() {
+    fn fingerprint_ignores_clinical_library_and_runtime_changes() {
         let temp = tempdir::TempDir::new("respanso-watcher-clinical").expect("temp dir");
-        let dir = temp.path().join("clinical_extender");
-        fs::create_dir_all(&dir).expect("clinical dir");
-        let database = dir.join("nosologies.yml");
+        let clinical_dir = temp.path().join("clinical_extender");
+        let runtime_dir = temp.path().join("runtime");
+        fs::create_dir_all(&clinical_dir).expect("clinical dir");
+        fs::create_dir_all(&runtime_dir).expect("runtime dir");
+        let database = clinical_dir.join("nosologies.yml");
+        let runtime_yaml = runtime_dir.join("generated.yml");
         fs::write(&database, "version: 1\n").expect("initial clinical database");
+        fs::write(&runtime_yaml, "state: 1\n").expect("initial runtime state");
         let before = config_fingerprint(temp.path());
         fs::write(&database, "version: 2\n").expect("changed clinical database");
+        fs::write(&runtime_yaml, "state: 2\n").expect("changed runtime state");
         assert_eq!(before, config_fingerprint(temp.path()));
     }
 }
