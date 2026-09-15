@@ -14,6 +14,12 @@ mkdir -p "$CONFIG/config" "$CONFIG/match" "$CONFIG/packages" "$CONFIG/runtime" "
 printf 'show_icon: false\nauto_restart: true\n' >"$CONFIG/config/default.yml"
 printf 'matches: []\n' >"$CONFIG/match/base.yml"
 
+# The real Astra portable bundle always contains Match Studio in its config
+# root. The launcher uses this marker to skip the interactive first-run wizard;
+# without it this smoke test exercises a fresh installation instead of the
+# portable service lifecycle and correctly times out waiting for user input.
+: >"$CONFIG/rEspanso-Match-Studio"
+
 core_args=(
   --config_dir "$CONFIG"
   --package_dir "$CONFIG/packages"
