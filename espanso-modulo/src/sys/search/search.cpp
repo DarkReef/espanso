@@ -194,6 +194,10 @@ bool SearchApp::OnInit() {
     frame->Show(true);
     SetupWindowStyle(frame);
     Activate(frame);
+    // wxGTK/X11 does not have a platform-specific Activate() helper. Give the
+    // text field explicit keyboard focus so Enter is routed through the frame
+    // char hook even when the WM activation arrives asynchronously.
+    frame->searchBar->SetFocus();
     return true;
 }
 SearchFrame::SearchFrame(const wxString &title, const wxPoint &pos,
@@ -356,11 +360,17 @@ void SearchFrame::OnItemClickEvent(wxCommandEvent &event) {
 }
 
 void SearchFrame::OnActivate(wxActivateEvent &event) {
-    // During a submitted Enter wxGTK can emit a deactivation before the
-    // deferred callback gets its turn. Keep the frame alive until the result
-    // has been delivered to Rust; ordinary focus loss still dismisses search.
+    // wxGTK/X11 can emit a transient deactivate/activate pair while focus is
+    // being assigned to a child control or by XSetInputFocus. Closing the
+    // frame synchronously on the deactivate half races Enter and returns a
+    // null selection. Defer the decision by one GUI turn and only dismiss if
+    // the top-level window is still genuinely inactive.
     if (!event.GetActive() && !submitting) {
-        Close(true);
+        CallAfter([this]() {
+            if (!submitting && !IsActive()) {
+                Close(true);
+            }
+        });
     }
     event.Skip();
 }
