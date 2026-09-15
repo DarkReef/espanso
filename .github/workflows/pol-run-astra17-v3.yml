@@ -2,7 +2,7 @@ name: pol_run Astra 1.7 X11 full portable
 
 on:
   push:
-    branches: [pol_run, feat/clinical-extender]
+    branches: [pol_run, feat/clinical-extender, build/x11-latest]
     paths:
       - '.github/workflows/pol-run-astra17-v3.yml'
       - 'scripts/build_pol_run_astra17.sh'
