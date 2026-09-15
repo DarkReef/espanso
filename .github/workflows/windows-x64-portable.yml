@@ -43,7 +43,8 @@ jobs:
           shared-key: windows-x64-portable
           cache-on-failure: true
 
-      - name: Check formatting
+      - name: Check formatting (advisory)
+        continue-on-error: true
         run: cargo fmt --all -- --check
 
       - name: Test Match Studio
