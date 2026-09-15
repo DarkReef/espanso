@@ -1,0 +1,89 @@
+name: Astra X11 portable build
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Branch, tag, or commit to build
+        required: true
+        default: feat/clinical-extender
+        type: string
+  push:
+    branches:
+      - dev
+    paths:
+      - .github/workflows/astra-x11-manual.yml
+
+permissions:
+  contents: read
+
+env:
+  INITIAL_SOURCE_REF: a378d2ad2aedecdf5ed7a1c01368c1b514255401
+
+jobs:
+  build-astra-x11:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - name: Choose source ref
+        id: source
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            printf 'ref=%s\n' "${{ inputs.source_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            printf 'ref=%s\n' "$INITIAL_SOURCE_REF" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout requested rEspanso source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.source.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Show source revision
+        shell: bash
+        run: |
+          git rev-parse HEAD
+          git status --short
+
+      - name: Pull Debian 10 builder
+        shell: bash
+        run: docker pull debian:buster-slim
+
+      - name: Build Astra 1.7 X11 portable package
+        shell: bash
+        run: |
+          docker run --rm \
+            -v "$PWD:/work" \
+            -w /work \
+            debian:buster-slim \
+            bash scripts/build_pol_run_astra17.sh
+
+      - name: Show generated package
+        if: always()
+        shell: bash
+        run: |
+          find target/pol-run-astra-full -maxdepth 2 -type f -printf '%p %k KiB\n' 2>/dev/null || true
+
+      - name: Upload Astra X11 package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Astra17-X11
+          path: |
+            target/pol-run-astra-full/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz
+            target/pol-run-astra-full/rEspanso-pol_run-Astra17-X11-Full-x86_64.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Astra17-X11-failure-diagnostics
+          path: |
+            target/pol-run-astra-full/**
+            target/release/**/build/**/output
+          if-no-files-found: ignore
+          retention-days: 7
