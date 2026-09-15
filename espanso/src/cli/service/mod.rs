@@ -172,8 +172,22 @@ fn start_main(paths: &Paths, _paths_overrides: &PathsOverrides, args: &ArgMatche
 }
 
 fn stop_main(paths: &Paths) -> i32 {
-    // A crashing worker releases its lock between retries. Stop the owning
-    // daemon directly so stop.sh works during that interval as well.
+    // In the healthy case the worker owns the lifecycle: ExitAllProcesses lets
+    // it shut down the X11/UI engine first and then asks the daemon to exit.
+    // Killing the daemon first makes the worker treat it as an unexpected
+    // crash and can leave the X11 event loop alive until the service timeout.
+    let worker_lock = acquire_worker_lock(&paths.runtime);
+    if worker_lock.is_none() {
+        if let Err(err) = stop::terminate_worker(&paths.runtime) {
+            error_eprintln!("unable to stop rEspanso: {}", err);
+            return SERVICE_FAILURE;
+        }
+        return SERVICE_SUCCESS;
+    }
+    drop(worker_lock);
+
+    // Recovery path: if the worker has already crashed/released its lock but
+    // the owning daemon is still alive, terminate the daemon directly.
     if crate::lock::acquire_daemon_lock(&paths.runtime).is_none() {
         return match stop::terminate_daemon(&paths.runtime) {
             Ok(()) => SERVICE_SUCCESS,
@@ -183,19 +197,9 @@ fn stop_main(paths: &Paths) -> i32 {
             }
         };
     }
-    let lock_file = acquire_worker_lock(&paths.runtime);
-    if lock_file.is_some() {
-        error_eprintln!("espanso is not running!");
-        return SERVICE_NOT_RUNNING;
-    }
-    drop(lock_file);
 
-    if let Err(err) = stop::terminate_worker(&paths.runtime) {
-        error_eprintln!("unable to stop rEspanso: {}", err);
-        return SERVICE_FAILURE;
-    }
-
-    SERVICE_SUCCESS
+    error_eprintln!("espanso is not running!");
+    SERVICE_NOT_RUNNING
 }
 
 fn status_main(paths: &Paths) -> i32 {
