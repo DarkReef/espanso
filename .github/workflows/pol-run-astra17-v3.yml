@@ -39,6 +39,13 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Regenerate lockfile for current manifests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cargo generate-lockfile
+          git diff -- Cargo.lock || true
+
       - name: Build full portable package in Debian 10
         shell: bash
         run: |
