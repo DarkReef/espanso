@@ -310,9 +310,26 @@ pub fn initialize_and_spawn(
 
             let mut engine = espanso_engine::Engine::new(&funnel, &mut processor, &dispatcher);
             let exit_mode = engine.run();
+
+            // The welcome window is a child process. Waiting for it unconditionally during
+            // shutdown can keep the worker lock alive forever (notably on Astra/X11 or when
+            // the first-run window is still open), which makes `service restart` time out.
+            // Shutdown must own the child lifecycle instead of waiting for user interaction.
             if let Some(mut handle) = welcome_handle {
-                handle.wait().expect("welcome screen died");
-            };
+                match handle.try_wait() {
+                    Ok(Some(_)) => {}
+                    Ok(None) => {
+                        if let Err(err) = handle.kill() {
+                            warn!("unable to terminate welcome screen during shutdown: {err}");
+                        } else if let Err(err) = handle.wait() {
+                            warn!("unable to reap welcome screen during shutdown: {err}");
+                        }
+                    }
+                    Err(err) => {
+                        warn!("unable to query welcome screen during shutdown: {err}");
+                    }
+                }
+            }
 
             info!("engine eventloop has terminated, propagating exit event...");
             ui_remote.exit();
