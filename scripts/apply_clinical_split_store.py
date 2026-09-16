@@ -345,7 +345,7 @@ fn serialize_database(db: &ClinicalDatabase) -> Result<String, String> {
 
 fn sanitize_nosology_filename(code: &str) -> String {
     let mut result = String::new();
-    for ch in code.trim() {
+    for ch in code.trim().chars() {
         if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
             result.push(ch);
         } else if ch == '*' {

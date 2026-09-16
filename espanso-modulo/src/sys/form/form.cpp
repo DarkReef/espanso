@@ -34,7 +34,7 @@
 #include <wx/scrolwin.h>
 
 // https://docs.wxwidgets.org/stable/classwx_frame.html
-const long DEFAULT_STYLE = wxSTAY_ON_TOP | wxCLOSE_BOX | wxCAPTION;
+const long DEFAULT_STYLE = wxSTAY_ON_TOP | wxCLOSE_BOX | wxCAPTION | wxRESIZE_BORDER | wxMAXIMIZE_BOX;
 
 const int PADDING = 5;
 const int MULTILINE_MIN_HEIGHT = 100;
@@ -160,11 +160,10 @@ class FormFrame : public wxFrame {
 };
 
 bool FormApp::OnInit() {
-    const wxSize &maxFormSize =
-        wxSize(formMetadata->maxWindowWidth, formMetadata->maxWindowHeight);
+    const wxSize initialFormSize = wxSize(610, 320);
     FormFrame *frame =
         new FormFrame(wxString::FromUTF8(formMetadata->windowTitle),
-                      wxPoint(50, 50), maxFormSize);
+                      wxPoint(50, 50), initialFormSize);
     setFrameIcon(wxString::FromUTF8(formMetadata->iconPath), frame);
     frame->Show(true);
 
@@ -188,6 +187,9 @@ FormFrame::FormFrame(const wxString &title, const wxPoint &pos,
 
     panel = new wxScrolledWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL);
     panel->SetScrollRate(0, 10);
+    wxBoxSizer *frameSizer = new wxBoxSizer(wxVERTICAL);
+    frameSizer->Add(panel, 1, wxEXPAND);
+    this->SetSizer(frameSizer);
     wxBoxSizer *vbox = new wxBoxSizer(wxVERTICAL);
     panel->SetSizer(vbox);
 
@@ -527,14 +529,10 @@ void FormFrame::HandleMultilineFocus(wxFocusEvent &event) {
 
 void FormFrame::FitFormToContent() {
     const wxSize best = panel->GetBestSize();
-    const int maxWidth = std::max(320, formMetadata->maxWindowWidth);
-    const int maxHeight = std::max(180, formMetadata->maxWindowHeight);
-    const int width = std::min(std::max(best.GetWidth(), 320), maxWidth);
-    const int height = std::min(std::max(best.GetHeight(), 180), maxHeight);
-
     panel->SetVirtualSize(best);
     panel->FitInside();
-    this->SetClientSize(wxSize(width, height));
+    this->SetMinClientSize(wxSize(420, 240));
+    this->SetClientSize(wxSize(610, 320));
     this->Layout();
 }
 
