@@ -12,6 +12,7 @@ pub mod runtime;
 #[allow(clippy::pedantic)]
 pub mod settings;
 pub mod storm_logo;
+pub mod theme;
 pub mod trigger_conversion;
 pub mod workspace;
 pub mod yaml_files;
