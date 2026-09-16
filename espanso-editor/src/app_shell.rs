@@ -7,6 +7,18 @@ enum ShellTab {
     Ai,
 }
 
+fn respanso_build_version() -> &'static str {
+    option_env!("RESPANSO_VERSION").unwrap_or("2.4.0")
+}
+
+fn respanso_build_date() -> &'static str {
+    option_env!("RESPANSO_BUILD_DATE").unwrap_or("локальная сборка")
+}
+
+fn respanso_build_sha() -> &'static str {
+    option_env!("RESPANSO_BUILD_SHA").unwrap_or("dev")
+}
+
 struct StudioShell {
     studio: MatchStudioApp,
     clinical: crate::clinical_extender::ClinicalExtender,
@@ -289,6 +301,75 @@ impl StudioShell {
             });
         });
     }
+
+    fn help_dialog(&mut self, context: &egui::Context) {
+        if !self.studio.show_shortcuts {
+            return;
+        }
+
+        let mut open = self.studio.show_shortcuts;
+        egui::Window::new("Справка · горячие клавиши")
+            .open(&mut open)
+            .resizable(false)
+            .collapsible(false)
+            .show(context, |ui| {
+                ui.heading("rEspanso Match Studio");
+                ui.label(format!(
+                    "rEspanso {} · сборка {}",
+                    respanso_build_version(),
+                    respanso_build_date()
+                ));
+                let sha = respanso_build_sha();
+                if sha != "dev" {
+                    ui.label(egui::RichText::new(format!("Commit: {sha}")).weak());
+                }
+                ui.separator();
+                egui::Grid::new("shell_shortcut_grid")
+                    .num_columns(2)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        shortcut_row(ui, "Alt+L", "Обработать выделенный текст во «Вспомогательной»");
+                        shortcut_row(ui, "Ctrl+S", "Сохранить изменения активной вкладки");
+                        shortcut_row(ui, "Ctrl+N", "Создать правило или новый Rhai-скрипт");
+                        shortcut_row(
+                            ui,
+                            "Ctrl+Enter",
+                            "Проверить исходный YAML или запустить Rhai-скрипт",
+                        );
+                        shortcut_row(ui, "Ctrl+Alt+M", "Найти триггер по выделенному тексту");
+                        shortcut_row(ui, "Ctrl+F", "Перейти к поиску правил");
+                        shortcut_row(ui, "Ctrl+D", "Дублировать правило");
+                        shortcut_row(ui, "Ctrl+Shift+D", "Удалить правило");
+                        shortcut_row(
+                            ui,
+                            "Ctrl+R",
+                            "Обновить активный YAML или Rhai-файл с диска",
+                        );
+                        shortcut_row(ui, "Ctrl+L", "Показать или скрыть диагностику");
+                        shortcut_row(ui, "Ctrl+Shift+Enter", "Скомпилировать Rhai-скрипт");
+                        shortcut_row(ui, "F1", "Открыть эту справку");
+                    });
+                ui.separator();
+                ui.label(
+                    egui::RichText::new(
+                        "Astra/X11: глобальные сочетания отслеживаются через XInput2 Raw Events без эксклюзивного XGrabKey.",
+                    )
+                    .weak(),
+                );
+            });
+        self.studio.show_shortcuts = open;
+    }
+
+    fn dialogs(&mut self, context: &egui::Context) {
+        // app_legacy also contains the old shortcuts window. Hide only that
+        // flag while it renders its other dialogs, then draw the current help
+        // window with build identity here.
+        let help_open = self.studio.show_shortcuts;
+        self.studio.show_shortcuts = false;
+        self.studio.dialogs(context);
+        self.studio.show_shortcuts = help_open;
+        self.help_dialog(context);
+    }
 }
 
 impl eframe::App for StudioShell {
@@ -358,7 +439,7 @@ impl eframe::App for StudioShell {
                 }
             },
         );
-        self.studio.dialogs(ui.ctx());
+        self.dialogs(ui.ctx());
     }
 }
 
