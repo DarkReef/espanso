@@ -33,6 +33,8 @@ typedef struct {
     void *rust_instance;
     EventCallback event_callback;
     unsigned int hotkey_modifier_mask;
+    unsigned int observed_modifier_state;
+    std::vector<std::pair<int, unsigned int>> modifier_keys;
     std::vector<std::pair<int, unsigned int>> hotkeys;
     std::vector<int> active_hotkey_keys;
 } DetectContext;
@@ -190,6 +192,23 @@ static bool release_active_hotkey_key(DetectContext *context, int key_code) {
     return false;
 }
 
+static void update_modifier_state(DetectContext *context, int key_code,
+                                  bool pressed) {
+    if (!context) {
+        return;
+    }
+    for (const auto &modifier : context->modifier_keys) {
+        if (modifier.first != key_code) {
+            continue;
+        }
+        if (pressed) {
+            context->observed_modifier_state |= modifier.second;
+        } else {
+            context->observed_modifier_state &= ~modifier.second;
+        }
+    }
+}
+
 int32_t detect_check_x11() {
     Display *display = XOpenDisplay(NULL);
     if (!display) {
@@ -208,6 +227,7 @@ void *detect_initialize(void *_rust_instance, int32_t *error_code) {
     context->rust_instance = _rust_instance;
     context->event_callback = nullptr;
     context->hotkey_modifier_mask = 0;
+    context->observed_modifier_state = 0;
 
     if (!context->display) {
         *error_code = -1;
@@ -231,6 +251,7 @@ void *detect_initialize(void *_rust_instance, int32_t *error_code) {
         return nullptr;
     }
 
+    context->observed_modifier_state = current_xkb_state(context->display) & 0xFFU;
     XKeysymToKeycode(context->display, XK_F1);
     fprintf(stderr,
             "rEspanso: using XInput2 raw-event detector (Astra X11 backend)\n");
@@ -241,11 +262,22 @@ void *detect_initialize(void *_rust_instance, int32_t *error_code) {
 ModifierIndexes detect_get_modifier_indexes(void *_context) {
     DetectContext *context = static_cast<DetectContext *>(_context);
     ModifierIndexes indexes = {};
+    context->modifier_keys.clear();
 
     XModifierKeymap *map = XGetModifierMapping(context->display);
     if (!map) {
         return indexes;
     }
+
+    auto remember_modifier = [context](int code, int index) {
+        const unsigned int mask = 1U << index;
+        for (const auto &entry : context->modifier_keys) {
+            if (entry.first == code && entry.second == mask) {
+                return;
+            }
+        }
+        context->modifier_keys.push_back(std::make_pair(code, mask));
+    };
 
     for (int i = 0; i < 8; i++) {
         for (int j = 0; j < map->max_keypermod; j++) {
@@ -256,12 +288,16 @@ ModifierIndexes detect_get_modifier_indexes(void *_context) {
             KeySym sym = XkbKeycodeToKeysym(context->display, code, 0, 0);
             if (sym == XK_Control_L || sym == XK_Control_R) {
                 indexes.ctrl = i;
+                remember_modifier(code, i);
             } else if (sym == XK_Super_L || sym == XK_Super_R) {
                 indexes.meta = i;
+                remember_modifier(code, i);
             } else if (sym == XK_Shift_L || sym == XK_Shift_R) {
                 indexes.shift = i;
+                remember_modifier(code, i);
             } else if (sym == XK_Alt_L || sym == XK_Alt_R) {
                 indexes.alt = i;
+                remember_modifier(code, i);
             }
         }
     }
@@ -339,33 +375,42 @@ static void process_event(DetectContext *context, XEvent *event) {
     const int evtype = event->xcookie.evtype;
     XIRawEvent *raw = static_cast<XIRawEvent *>(event->xcookie.data);
     if (raw) {
-        const unsigned int state = current_xkb_state(context->display);
+        const unsigned int text_state = current_xkb_state(context->display);
         switch (evtype) {
         case XI_RawKeyPress:
-            if (hotkey_matches(context, raw->detail, state)) {
+            // Track modifiers from the event stream itself. Querying only the
+            // current XKB state can miss a fast Alt+key sequence if several raw
+            // events are already queued when the loop wakes up.
+            update_modifier_state(context, raw->detail, true);
+            if (hotkey_matches(context, raw->detail,
+                               context->observed_modifier_state)) {
                 // Suppress auto-repeat while the hotkey key remains down. This
                 // matches the old grab path, where one physical activation was
                 // delivered as one Espanso hotkey event.
                 if (!hotkey_key_is_active(context, raw->detail)) {
                     context->active_hotkey_keys.push_back(raw->detail);
-                    emit_hotkey_event(context, raw->detail, state);
+                    emit_hotkey_event(context, raw->detail,
+                                      context->observed_modifier_state);
                 }
             } else {
-                emit_input_event(context, KeyPress, raw->detail, state);
+                emit_input_event(context, KeyPress, raw->detail, text_state);
             }
             break;
-        case XI_RawKeyRelease:
+        case XI_RawKeyRelease: {
             // A hotkey press is not exposed as an ordinary Keyboard event, so
             // suppress its matching release as well to keep matcher state sane.
-            if (!release_active_hotkey_key(context, raw->detail)) {
-                emit_input_event(context, KeyRelease, raw->detail, state);
+            const bool was_hotkey = release_active_hotkey_key(context, raw->detail);
+            if (!was_hotkey) {
+                emit_input_event(context, KeyRelease, raw->detail, text_state);
             }
+            update_modifier_state(context, raw->detail, false);
             break;
+        }
         case XI_RawButtonPress:
-            emit_input_event(context, ButtonPress, raw->detail, state);
+            emit_input_event(context, ButtonPress, raw->detail, text_state);
             break;
         case XI_RawButtonRelease:
-            emit_input_event(context, ButtonRelease, raw->detail, state);
+            emit_input_event(context, ButtonRelease, raw->detail, text_state);
             break;
         default:
             break;
