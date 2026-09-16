@@ -48,7 +48,7 @@ jobs:
           echo "RESPANSO_VERSION=$(awk -F'\"' '/^version =/ {print $2; exit}' espanso/Cargo.toml)" >> "$GITHUB_ENV"
           echo "RESPANSO_BUILD_SHA=${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
 
-      - name: Build full portable package in Debian 10
+      - name: Build and validate full portable package in Debian 10
         shell: bash
         run: |
           set -euxo pipefail
@@ -59,7 +59,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/work" \
             -w /work \
             debian:buster-slim \
-            bash scripts/build_pol_run_astra17.sh
+            bash -lc 'bash scripts/build_pol_run_astra17.sh && timeout 45s xvfb-run -a bash scripts/test_astra_expansion.sh target/release/espanso'
 
       - name: Verify full package
         shell: bash

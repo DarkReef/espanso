@@ -37,6 +37,7 @@ fn cc_config() {
 fn cc_config() {
     println!("cargo:rerun-if-changed=src/x11/native.cpp");
     println!("cargo:rerun-if-changed=src/x11/native_astra.cpp");
+    println!("cargo:rerun-if-changed=src/x11/runtime.cpp");
     println!("cargo:rerun-if-changed=src/x11/native.h");
     println!("cargo:rerun-if-changed=src/evdev/native.cpp");
     println!("cargo:rerun-if-changed=src/evdev/native.h");
@@ -50,6 +51,7 @@ fn cc_config() {
             .cpp(true)
             .include("src/x11")
             .file("src/x11/native_astra.cpp")
+            .file("src/x11/runtime.cpp")
             .compile("espansodetect");
 
         println!("cargo:rustc-link-lib=static=espansodetect");
