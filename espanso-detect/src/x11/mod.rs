@@ -523,12 +523,29 @@ mod tests {
     }
 
     #[test]
-    fn raw_to_input_invalid_buffer() {
+    fn raw_to_input_valid_buffer_without_nul_is_preserved() {
         let buffer: [u8; 24] = [123; 24];
 
         let mut raw = default_raw_input_event();
         raw.buffer = buffer;
         raw.buffer_len = 5;
+
+        let result: Option<InputEvent> =
+            convert_raw_input_event_to_input_event(raw, &HashMap::new(), 0);
+        assert_eq!(
+            result.unwrap().into_keyboard().unwrap().value,
+            Some("{{{{{".to_string())
+        );
+    }
+
+    #[test]
+    fn raw_to_input_invalid_utf8_buffer_has_no_value() {
+        let mut buffer: [u8; 24] = [0; 24];
+        buffer[..2].copy_from_slice(&[0xC3, 0x28]);
+
+        let mut raw = default_raw_input_event();
+        raw.buffer = buffer;
+        raw.buffer_len = 2;
 
         let result: Option<InputEvent> =
             convert_raw_input_event_to_input_event(raw, &HashMap::new(), 0);
