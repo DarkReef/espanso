@@ -352,7 +352,7 @@ impl StudioShell {
                 ui.separator();
                 ui.label(
                     egui::RichText::new(
-                        "Astra/X11: глобальные сочетания отслеживаются через XInput2 Raw Events без эксклюзивного XGrabKey.",
+                        "Astra/X11: клавиатура отслеживается через XQueryKeymap; занятые глобальные сочетания работают через polling-fallback.",
                     )
                     .weak(),
                 );

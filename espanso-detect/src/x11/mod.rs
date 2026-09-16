@@ -20,7 +20,7 @@
 use std::{
     collections::HashMap,
     convert::TryInto,
-    ffi::{c_void, CStr},
+    ffi::c_void,
 };
 
 use lazycell::LazyCell;
@@ -304,21 +304,17 @@ fn convert_raw_input_event_to_input_event(
         INPUT_EVENT_TYPE_KEYBOARD => {
             let (key, variant) = key_sym_to_key(raw.key_sym);
             let value = if raw.buffer_len > 0 {
-                let raw_string_result =
-                    CStr::from_bytes_with_nul(&raw.buffer[..((raw.buffer_len + 1) as usize)]);
-                match raw_string_result {
-                    Ok(c_string) => {
-                        let string_result = c_string.to_str();
-                        match string_result {
-                            Ok(value) => Some(value.to_string()),
-                            Err(err) => {
-                                warn!("char conversion error: {}", err);
-                                None
-                            }
-                        }
-                    }
+                let len = (raw.buffer_len as usize).min(raw.buffer.len());
+                let bytes = &raw.buffer[..len];
+                let bytes = match bytes.iter().position(|byte| *byte == 0) {
+                    Some(nul) => &bytes[..nul],
+                    None => bytes,
+                };
+                match std::str::from_utf8(bytes) {
+                    Ok(value) if !value.is_empty() => Some(value.to_string()),
+                    Ok(_) => None,
                     Err(err) => {
-                        warn!("Received malformed char: {}", err);
+                        warn!("char conversion error: {}", err);
                         None
                     }
                 }
