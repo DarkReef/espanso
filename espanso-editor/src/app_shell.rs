@@ -72,7 +72,10 @@ impl StudioShell {
                     ] {
                         if ui
                             .selectable_label(self.theme == theme, theme.label())
-                            .on_hover_text(format!("Переключить Match Studio: {} тема", theme.label().to_lowercase()))
+                            .on_hover_text(format!(
+                                "Переключить Match Studio: {} тема",
+                                theme.label().to_lowercase()
+                            ))
                             .clicked()
                         {
                             self.theme = theme;
@@ -206,10 +209,7 @@ impl StudioShell {
                             self.studio.reload_settings();
                         }
                         if self.studio.settings.dirty() {
-                            ui.colored_label(
-                                self.theme.warning(),
-                                "Настройки не сохранены",
-                            );
+                            ui.colored_label(self.theme.warning(), "Настройки не сохранены");
                         }
                     }
                     ShellTab::Rhai => {
@@ -235,10 +235,7 @@ impl StudioShell {
                             self.studio.rhai_lab.run_current();
                         }
                         if self.studio.rhai_lab.dirty() {
-                            ui.colored_label(
-                                self.theme.warning(),
-                                "Скрипт не сохранён",
-                            );
+                            ui.colored_label(self.theme.warning(), "Скрипт не сохранён");
                         }
                     }
                 }
@@ -318,7 +315,7 @@ impl eframe::App for StudioShell {
         self.status_bar(ui);
 
         match self.active_tab {
-            ShellTab::Clinical => self.clinical.ui(ui),
+            ShellTab::Clinical => self.clinical.ui_localized(ui),
             ShellTab::Ai => self.studio.ai.ui(ui),
             ShellTab::Rules => {
                 self.studio.rules_panel(ui);
