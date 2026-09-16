@@ -3,7 +3,9 @@
  *
  * Hardened Astra X servers may disable the X11 RECORD extension. This
  * implementation therefore listens for global keyboard/mouse input through
- * XInput2 raw events and keeps the existing XGrabKey path for Espanso hotkeys.
+ * XInput2 raw events. Espanso hotkeys are recognized from the same raw stream
+ * instead of using exclusive XGrabKey registrations, so KDE or another X11
+ * client cannot prevent rEspanso from observing a configured shortcut.
  * It requires no root privileges and no access to /dev/input.
  */
 
@@ -11,8 +13,8 @@
 
 #include <locale.h>
 #include <errno.h>
-#include <mutex>
 #include <vector>
+#include <utility>
 #include <memory>
 #include <stdio.h>
 #include <string.h>
@@ -20,7 +22,6 @@
 
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
-#include <X11/Xproto.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/XInput2.h>
 #include <X11/keysym.h>
@@ -31,28 +32,10 @@ typedef struct {
     int xi_opcode;
     void *rust_instance;
     EventCallback event_callback;
+    unsigned int hotkey_modifier_mask;
+    std::vector<std::pair<int, unsigned int>> hotkeys;
+    std::vector<int> active_hotkey_keys;
 } DetectContext;
-
-// Xlib's handler is process-wide. Intercept only the exact expected grab
-// failure on this thread/connection; preserve GTK's handler for other errors.
-struct GrabErrorTrap {
-    Display *display;
-    unsigned long serial;
-    bool denied;
-};
-static thread_local GrabErrorTrap *active_grab_trap = nullptr;
-static XErrorHandler previous_error_handler = nullptr;
-static std::once_flag error_handler_once;
-
-static int hotkey_error_handler(Display *display, XErrorEvent *error) {
-    if (active_grab_trap && active_grab_trap->display == display &&
-        active_grab_trap->serial == error->serial &&
-        error->request_code == X_GrabKey && error->error_code == BadAccess) {
-        active_grab_trap->denied = true;
-        return 0;
-    }
-    return previous_error_handler ? previous_error_handler(display, error) : 0;
-}
 
 static void emit_input_event(DetectContext *context, int event_type,
                              int key_code, unsigned int state) {
@@ -104,6 +87,20 @@ static void emit_input_event(DetectContext *context, int event_type,
     }
 }
 
+static void emit_hotkey_event(DetectContext *context, int key_code,
+                              unsigned int state) {
+    if (!context || !context->event_callback) {
+        return;
+    }
+
+    InputEvent event = {};
+    event.event_type = INPUT_EVENT_TYPE_HOTKEY;
+    event.key_code = key_code;
+    event.state = state;
+    event.status = INPUT_STATUS_PRESSED;
+    context->event_callback(context->rust_instance, event);
+}
+
 static unsigned int current_xkb_state(Display *display) {
     XkbStateRec xkb_state = {};
     if (XkbGetState(display, XkbUseCoreKbd, &xkb_state) != Success) {
@@ -153,6 +150,46 @@ static bool initialize_xinput2(DetectContext *context) {
     return true;
 }
 
+static bool hotkey_matches(DetectContext *context, int key_code,
+                           unsigned int state) {
+    if (!context) {
+        return false;
+    }
+    const unsigned int normalized = state & context->hotkey_modifier_mask;
+    for (const auto &hotkey : context->hotkeys) {
+        if (hotkey.first == key_code && hotkey.second == normalized) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool hotkey_key_is_active(DetectContext *context, int key_code) {
+    if (!context) {
+        return false;
+    }
+    for (int active : context->active_hotkey_keys) {
+        if (active == key_code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool release_active_hotkey_key(DetectContext *context, int key_code) {
+    if (!context) {
+        return false;
+    }
+    for (auto it = context->active_hotkey_keys.begin();
+         it != context->active_hotkey_keys.end(); ++it) {
+        if (*it == key_code) {
+            context->active_hotkey_keys.erase(it);
+            return true;
+        }
+    }
+    return false;
+}
+
 int32_t detect_check_x11() {
     Display *display = XOpenDisplay(NULL);
     if (!display) {
@@ -170,6 +207,7 @@ void *detect_initialize(void *_rust_instance, int32_t *error_code) {
     context->xi_opcode = 0;
     context->rust_instance = _rust_instance;
     context->event_callback = nullptr;
+    context->hotkey_modifier_mask = 0;
 
     if (!context->display) {
         *error_code = -1;
@@ -256,47 +294,27 @@ HotKeyResult detect_register_hotkey(void *_context, HotKeyRequest request,
 
     result.state = target_modifiers;
     result.key_code = key_code;
-    std::call_once(error_handler_once, [] {
-        previous_error_handler = XSetErrorHandler(hotkey_error_handler);
-    });
-    // Drain earlier requests before identifying each grab by its serial.
-    XSync(context->display, False);
-    std::vector<unsigned int> grabbed;
-    bool denied = false;
 
-    Window root = DefaultRootWindow(context->display);
-    for (uint32_t state = 0; state < 256; state++) {
-        if ((state == 0 || (state & ~valid_modifiers) != 0) &&
-            (state & valid_modifiers) == 0) {
-            const uint32_t final_modifiers = state | target_modifiers;
-            GrabErrorTrap trap = {context->display,
-                                  NextRequest(context->display), false};
-            active_grab_trap = &trap;
-            XGrabKey(context->display, key_code, final_modifiers, root, False,
-                     GrabModeAsync, GrabModeAsync);
-            XSync(context->display, False);
-            active_grab_trap = nullptr;
-            if (trap.denied) {
-                denied = true;
-                break;
-            }
-            grabbed.push_back(final_modifiers);
+    // XInput2 raw events are observer-only and do not require exclusive grabs.
+    // Keep a lightweight local registration so the Rust layer can retain its
+    // existing (key_code, state) -> hotkey ID mapping without XGrabKey.
+    context->hotkey_modifier_mask |= valid_modifiers;
+    bool already_registered = false;
+    for (const auto &hotkey : context->hotkeys) {
+        if (hotkey.first == result.key_code && hotkey.second == result.state) {
+            already_registered = true;
+            break;
         }
     }
-    if (denied) {
-        // A partially registered shortcut would behave differently with Caps /
-        // Num Lock. Release only grabs made by this registration attempt.
-        for (unsigned int modifiers : grabbed) {
-            XUngrabKey(context->display, key_code, modifiers, root);
-        }
-        fprintf(stderr, "rEspanso: hotkey keycode=%u modifiers=0x%x unavailable "
-                        "(XGrabKey BadAccess); shortcut disabled, input continues\n",
-                key_code, target_modifiers);
-    } else {
-        result.success = 1;
+    if (!already_registered) {
+        context->hotkeys.push_back(
+            std::make_pair(result.key_code, result.state));
     }
-    XSync(context->display, False);
+    result.success = 1;
 
+    fprintf(stderr,
+            "rEspanso: hotkey keycode=%u modifiers=0x%x uses XInput2 raw events\n",
+            key_code, target_modifiers);
     return result;
 }
 
@@ -305,18 +323,6 @@ static void process_event(DetectContext *context, XEvent *event) {
         XMappingEvent *mapping = reinterpret_cast<XMappingEvent *>(event);
         if (mapping->request == MappingKeyboard) {
             XRefreshKeyboardMapping(mapping);
-        }
-        return;
-    }
-
-    // Events generated by XGrabKey are used only for Espanso hotkeys.
-    if (event->type == KeyPress) {
-        InputEvent input_event = {};
-        input_event.event_type = INPUT_EVENT_TYPE_HOTKEY;
-        input_event.key_code = event->xkey.keycode;
-        input_event.state = event->xkey.state;
-        if (context->event_callback) {
-            context->event_callback(context->rust_instance, input_event);
         }
         return;
     }
@@ -336,10 +342,24 @@ static void process_event(DetectContext *context, XEvent *event) {
         const unsigned int state = current_xkb_state(context->display);
         switch (evtype) {
         case XI_RawKeyPress:
-            emit_input_event(context, KeyPress, raw->detail, state);
+            if (hotkey_matches(context, raw->detail, state)) {
+                // Suppress auto-repeat while the hotkey key remains down. This
+                // matches the old grab path, where one physical activation was
+                // delivered as one Espanso hotkey event.
+                if (!hotkey_key_is_active(context, raw->detail)) {
+                    context->active_hotkey_keys.push_back(raw->detail);
+                    emit_hotkey_event(context, raw->detail, state);
+                }
+            } else {
+                emit_input_event(context, KeyPress, raw->detail, state);
+            }
             break;
         case XI_RawKeyRelease:
-            emit_input_event(context, KeyRelease, raw->detail, state);
+            // A hotkey press is not exposed as an ordinary Keyboard event, so
+            // suppress its matching release as well to keep matcher state sane.
+            if (!release_active_hotkey_key(context, raw->detail)) {
+                emit_input_event(context, KeyRelease, raw->detail, state);
+            }
             break;
         case XI_RawButtonPress:
             emit_input_event(context, ButtonPress, raw->detail, state);
