@@ -79,7 +79,8 @@ impl StudioShell {
                             .clicked()
                         {
                             self.theme = theme;
-                            self.theme.apply(ui.ctx());
+                            self.theme.apply_to_ui(ui);
+                            ui.ctx().request_repaint();
                             self.studio.status = match self.theme.save(&self.studio.config_root) {
                                 Ok(()) => format!("Тема Match Studio: {}", self.theme.label()),
                                 Err(error) => error,
@@ -104,7 +105,7 @@ impl StudioShell {
                     ShellTab::Clinical,
                     "Клинический редактор",
                 );
-                ui.selectable_value(&mut self.active_tab, ShellTab::Ai, "ИИ / MCP");
+                ui.selectable_value(&mut self.active_tab, ShellTab::Ai, "Вспомогательная");
                 ui.separator();
 
                 if ui
@@ -292,7 +293,10 @@ impl StudioShell {
 
 impl eframe::App for StudioShell {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.theme.apply(ui.ctx());
+        // Apply the palette to the current root Ui, not only Context. This
+        // prevents a one-frame (and on some X11 drivers persistent) mixture of
+        // old panel colors with newly themed TextEdit/widget colors.
+        self.theme.apply_to_ui(ui);
         self.studio.runtime.update(ui.ctx());
         self.studio.handle_dropped_config_packages(ui.ctx());
 
@@ -312,26 +316,40 @@ impl eframe::App for StudioShell {
         }
 
         self.top_bar(ui);
+        // The theme may have changed inside the toolbar. Re-apply it to the
+        // root Ui before drawing status/body so the rest of this frame is
+        // internally consistent.
+        self.theme.apply_to_ui(ui);
         self.status_bar(ui);
+        self.theme.apply_to_ui(ui);
 
-        match self.active_tab {
-            ShellTab::Clinical => self.clinical.ui_localized(ui),
-            ShellTab::Ai => self.studio.ai.ui(ui),
-            ShellTab::Rules => {
-                self.studio.rules_panel(ui);
-                self.studio.diagnostics_panel(ui);
-                self.studio.central_editor(ui);
-            }
-            ShellTab::Settings => {
-                let config_root = self.studio.config_root.clone();
-                self.studio
-                    .settings
-                    .ui(ui, &config_root, &mut self.studio.status);
-            }
-            ShellTab::Rhai => {
-                self.studio.rhai_lab.ui(ui, &mut self.studio.status);
-            }
-        }
+        // Bound the page to the remaining native-window viewport. Long child
+        // forms (notably AI/MCP and clinical editors) then receive a finite
+        // available height and their ScrollAreas can actually scroll instead
+        // of extending below the X11 window.
+        let body_size = ui.available_size();
+        ui.allocate_ui_with_layout(
+            body_size,
+            egui::Layout::top_down(egui::Align::Min),
+            |body| match self.active_tab {
+                ShellTab::Clinical => self.clinical.ui_localized(body),
+                ShellTab::Ai => self.studio.ai.ui(body),
+                ShellTab::Rules => {
+                    self.studio.rules_panel(body);
+                    self.studio.diagnostics_panel(body);
+                    self.studio.central_editor(body);
+                }
+                ShellTab::Settings => {
+                    let config_root = self.studio.config_root.clone();
+                    self.studio
+                        .settings
+                        .ui(body, &config_root, &mut self.studio.status);
+                }
+                ShellTab::Rhai => {
+                    self.studio.rhai_lab.ui(body, &mut self.studio.status);
+                }
+            },
+        );
         self.studio.dialogs(ui.ctx());
     }
 }
@@ -341,7 +359,8 @@ pub fn run_shell(config_root: PathBuf) -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_title(APP_TITLE)
             .with_inner_size([1500.0, 900.0])
-            .with_min_inner_size([800.0, 560.0]),
+            .with_min_inner_size([800.0, 420.0])
+            .with_resizable(true),
         ..Default::default()
     };
     eframe::run_native(
