@@ -11,14 +11,17 @@ struct StudioShell {
     studio: MatchStudioApp,
     clinical: crate::clinical_extender::ClinicalExtender,
     active_tab: ShellTab,
+    theme: crate::theme::StudioTheme,
 }
 
 impl StudioShell {
     fn new(config_root: PathBuf) -> Self {
+        let theme = crate::theme::StudioTheme::load(&config_root);
         Self {
             studio: MatchStudioApp::new(config_root.clone()),
             clinical: crate::clinical_extender::ClinicalExtender::load_seeded(config_root),
             active_tab: ShellTab::Rules,
+            theme,
         }
     }
 
@@ -41,17 +44,14 @@ impl StudioShell {
 
                 let (runtime_color, runtime_text) = if self.studio.runtime.running() {
                     (
-                        egui::Color32::from_rgb(40, 160, 90),
+                        self.theme.success(),
                         format!(
                             "rEspanso запущен · {} проц.",
                             self.studio.runtime.process_ids().len()
                         ),
                     )
                 } else {
-                    (
-                        egui::Color32::from_rgb(190, 70, 70),
-                        "rEspanso не запущен".to_owned(),
-                    )
+                    (self.theme.error(), "rEspanso не запущен".to_owned())
                 };
                 ui.colored_label(runtime_color, runtime_text).on_hover_text(format!(
                     "Проверяется каждую секунду. Последнее изменение состояния: {} сек. назад. PID: {}",
@@ -64,6 +64,27 @@ impl StudioShell {
                         .collect::<Vec<_>>()
                         .join(", ")
                 ));
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    for theme in [
+                        crate::theme::StudioTheme::Dark,
+                        crate::theme::StudioTheme::Light,
+                    ] {
+                        if ui
+                            .selectable_label(self.theme == theme, theme.label())
+                            .on_hover_text(format!("Переключить Match Studio: {} тема", theme.label().to_lowercase()))
+                            .clicked()
+                        {
+                            self.theme = theme;
+                            self.theme.apply(ui.ctx());
+                            self.studio.status = match self.theme.save(&self.studio.config_root) {
+                                Ok(()) => format!("Тема Match Studio: {}", self.theme.label()),
+                                Err(error) => error,
+                            };
+                        }
+                    }
+                    ui.label("Тема:");
+                });
             });
 
             ui.separator();
@@ -78,7 +99,7 @@ impl StudioShell {
                 ui.selectable_value(
                     &mut self.active_tab,
                     ShellTab::Clinical,
-                    "Clinical Extender",
+                    "Клинический редактор",
                 );
                 ui.selectable_value(&mut self.active_tab, ShellTab::Ai, "ИИ / MCP");
                 ui.separator();
@@ -97,8 +118,8 @@ impl StudioShell {
                     ShellTab::Clinical => {
                         if self.clinical.dirty() {
                             ui.colored_label(
-                                egui::Color32::from_rgb(210, 135, 25),
-                                "Библиотека Clinical Extender не сохранена",
+                                self.theme.warning(),
+                                "Библиотека клинического редактора не сохранена",
                             );
                         } else {
                             ui.label(
@@ -163,7 +184,7 @@ impl StudioShell {
                             if dirty > 0 {
                                 ui.separator();
                                 ui.colored_label(
-                                    egui::Color32::from_rgb(210, 135, 25),
+                                    self.theme.warning(),
                                     format!("Не сохранено файлов: {dirty}"),
                                 );
                             }
@@ -186,7 +207,7 @@ impl StudioShell {
                         }
                         if self.studio.settings.dirty() {
                             ui.colored_label(
-                                egui::Color32::from_rgb(210, 135, 25),
+                                self.theme.warning(),
                                 "Настройки не сохранены",
                             );
                         }
@@ -215,7 +236,7 @@ impl StudioShell {
                         }
                         if self.studio.rhai_lab.dirty() {
                             ui.colored_label(
-                                egui::Color32::from_rgb(210, 135, 25),
+                                self.theme.warning(),
                                 "Скрипт не сохранён",
                             );
                         }
@@ -239,9 +260,9 @@ impl StudioShell {
             ui.horizontal(|ui| {
                 if self.active_tab == ShellTab::Clinical {
                     ui.label(if self.clinical.dirty() {
-                        "Clinical Extender: есть несохранённые изменения библиотеки"
+                        "Клинический редактор: есть несохранённые изменения библиотеки"
                     } else {
-                        "Clinical Extender: готов к работе"
+                        "Клинический редактор: готов к работе"
                     });
                 } else {
                     ui.label(self.studio.status.as_str());
@@ -274,6 +295,7 @@ impl StudioShell {
 
 impl eframe::App for StudioShell {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.theme.apply(ui.ctx());
         self.studio.runtime.update(ui.ctx());
         self.studio.handle_dropped_config_packages(ui.ctx());
 
@@ -328,6 +350,10 @@ pub fn run_shell(config_root: PathBuf) -> eframe::Result {
     eframe::run_native(
         APP_TITLE,
         options,
-        Box::new(move |_creation_context| Ok(Box::new(StudioShell::new(config_root)))),
+        Box::new(move |creation_context| {
+            let shell = StudioShell::new(config_root);
+            shell.theme.apply(&creation_context.egui_ctx);
+            Ok(Box::new(shell))
+        }),
     )
 }
