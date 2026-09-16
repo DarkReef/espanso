@@ -1,0 +1,52 @@
+name: Apply Clinical Split Store
+
+on:
+  push:
+    branches: [build/windows-latest]
+    paths:
+      - '.github/workflows/apply-clinical-split-store.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: build/windows-latest
+          fetch-depth: 0
+
+      - name: Apply implementation
+        run: python3 scripts/apply_clinical_split_store.py
+
+      - name: Verify source markers
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -F 'const STORE_META_FILE: &str = "catalog.yml";' espanso-editor/src/clinical_extender_core.rs
+          grep -F 'const STORE_BASE_FILE: &str = "base.yml";' espanso-editor/src/clinical_extender_core.rs
+          grep -F 'const STORE_NOSOLOGIES_DIR: &str = "nosologies";' espanso-editor/src/clinical_extender_core.rs
+          grep -F 'Наследуется из базового профиля' espanso-editor/src/clinical_extender_core.rs
+          grep -F 'Собственные исследования нозологии' espanso-editor/src/clinical_extender_core.rs
+          grep -F 'wxRESIZE_BORDER' espanso-modulo/src/sys/form/form.cpp
+          grep -F 'wxSize(610, 320)' espanso-modulo/src/sys/form/form.cpp
+          grep -F 'frameSizer->Add(panel, 1, wxEXPAND)' espanso-modulo/src/sys/form/form.cpp
+
+      - name: Format and test Clinical Editor
+        shell: bash
+        run: |
+          cargo fmt --all
+          cargo test --locked -p espanso-editor --lib -- --nocapture
+
+      - name: Commit implementation
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name 'rEspanso CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add espanso-editor/src/clinical_extender_core.rs espanso-modulo/src/sys/form/form.cpp scripts/apply_clinical_split_store.py
+          git commit -m 'feat(clinical): split nosology files and inherit base investigations'
+          git push origin HEAD:build/windows-latest
