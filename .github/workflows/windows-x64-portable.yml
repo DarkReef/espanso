@@ -44,7 +44,8 @@ jobs:
         run: |
           if (-not (Select-String -Path "espanso-editor/src/app_shell.rs" -Pattern 'RESPANSO_BUILD_SHA' -Quiet)) { throw "Build identity UI missing" }
           if (-not (Test-Path "espanso-editor/src/theme.rs")) { throw "Theme module missing" }
-          if (-not (Select-String -Path "espanso-editor/src/clinical_extender.rs" -Pattern 'NT-proBNP' -Quiet)) { throw "Clinical Editor latest rules missing" }
+          if (-not (Select-String -Path "espanso-editor/src/clinical_extender_core.rs" -Pattern 'NT-proBNP' -Quiet)) { throw "Clinical Editor heart-failure profile missing" }
+          if (-not (Select-String -Path "espanso-editor/src/clinical_extender_core.rs" -Pattern 'I50.9' -Quiet)) { throw "Clinical Editor I50.9 profile missing" }
           if (-not (Select-String -Path "espanso-editor/src/app_shell.rs" -Pattern 'Клинический редактор' -Quiet)) { throw "Clinical Editor tab missing" }
           if (-not (Select-String -Path "espanso-editor/src/app_shell.rs" -Pattern 'Вспомогательная' -Quiet)) { throw "AI/MCP tab missing" }
 
