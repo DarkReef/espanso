@@ -26,6 +26,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare build identity
+        shell: pwsh
+        run: |
+          $date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")
+          $versionMatch = Select-String -Path "espanso/Cargo.toml" -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
+          if (-not $versionMatch) { throw "Unable to resolve espanso version" }
+          $version = $versionMatch.Matches[0].Groups[1].Value
+          $shortSha = $env:GITHUB_SHA.Substring(0, 12)
+          "RESPANSO_BUILD_DATE=$date" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RESPANSO_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RESPANSO_BUILD_SHA=$shortSha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Building rEspanso $version ($shortSha), $date"
+
+      - name: Verify synced product sources
+        shell: pwsh
+        run: |
+          if (-not (Select-String -Path "espanso-editor/src/app_shell.rs" -Pattern 'RESPANSO_BUILD_SHA' -Quiet)) { throw "Build identity UI missing" }
+          if (-not (Test-Path "espanso-editor/src/theme.rs")) { throw "Theme module missing" }
+          if (-not (Select-String -Path "espanso-editor/src/clinical_extender.rs" -Pattern 'NT-proBNP' -Quiet)) { throw "Clinical Editor latest rules missing" }
+          if (-not (Select-String -Path "espanso-editor/src/app_shell.rs" -Pattern 'Клинический редактор' -Quiet)) { throw "Clinical Editor tab missing" }
+          if (-not (Select-String -Path "espanso-editor/src/app_shell.rs" -Pattern 'Вспомогательная' -Quiet)) { throw "AI/MCP tab missing" }
+
       - name: Set up MSVC x64
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -155,9 +177,10 @@ jobs:
           "EXEC_PATH=$env:EXEC_PATH" | Tee-Object -FilePath $log -Append
           "LAUNCHER_PATH=$env:LAUNCHER_PATH" | Tee-Object -FilePath $log -Append
           "EDITOR_PATH=$env:EDITOR_PATH" | Tee-Object -FilePath $log -Append
+          "BUILD_VERSION=$env:RESPANSO_VERSION" | Tee-Object -FilePath $log -Append
+          "BUILD_DATE=$env:RESPANSO_BUILD_DATE" | Tee-Object -FilePath $log -Append
+          "BUILD_SHA=$env:RESPANSO_BUILD_SHA" | Tee-Object -FilePath $log -Append
 
-          # A successful PowerShell script does not set LASTEXITCODE. The archive and
-          # its contents below are the authoritative success checks.
           & "./scripts/build_windows_native_portable_with_studio.ps1" *>&1 |
             Tee-Object -FilePath $log -Append
 
@@ -181,6 +204,11 @@ jobs:
             }
           }
 
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "$hash  rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip" |
+            Out-File -FilePath "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.sha256" -Encoding ascii
+          Write-Host "SHA256=$hash"
+
       - name: Upload diagnostic logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -196,7 +224,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rEspanso-Windows-x64-portable
-          path: target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+          path: |
+            target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+            target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.sha256
           if-no-files-found: error
           retention-days: 14
           compression-level: 0

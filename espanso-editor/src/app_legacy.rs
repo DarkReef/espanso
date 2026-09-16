@@ -2333,12 +2333,19 @@ impl MatchStudioApp {
         ui.label(
             "Изменяется только выбранный блок правила. Остальной YAML, комментарии и неизвестные поля сохраняются.",
         );
-        ui.add(
-            egui::TextEdit::multiline(&mut self.raw_rule)
-                .code_editor()
-                .desired_rows(24)
-                .desired_width(f32::INFINITY),
-        );
+        let yaml_height = (ui.available_height() - 56.0).max(180.0);
+        egui::ScrollArea::vertical()
+            .id_salt("raw_yaml_source_scroll")
+            .max_height(yaml_height)
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.raw_rule)
+                        .code_editor()
+                        .desired_rows(40)
+                        .desired_width(f32::INFINITY),
+                );
+            });
         if ui
             .button("Проверить и применить YAML")
             .on_hover_text("Ctrl+Enter")

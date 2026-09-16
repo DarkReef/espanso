@@ -99,9 +99,9 @@ pub fn init_and_spawn(
                             // Generate a monotonically increasing id for the current event
                             let source_id = sequencer_clone.next_id();
 
-                            sender
-                                .send((event, source_id))
-                                .expect("unable to send to the source channel");
+                            if sender.send((event, source_id)).is_err() {
+                                return;
+                            }
                         }))
                         .expect("detect eventloop crashed");
                 }

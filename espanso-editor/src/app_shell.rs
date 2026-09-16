@@ -7,18 +7,33 @@ enum ShellTab {
     Ai,
 }
 
+fn respanso_build_version() -> &'static str {
+    option_env!("RESPANSO_VERSION").unwrap_or("2.4.0")
+}
+
+fn respanso_build_date() -> &'static str {
+    option_env!("RESPANSO_BUILD_DATE").unwrap_or("локальная сборка")
+}
+
+fn respanso_build_sha() -> &'static str {
+    option_env!("RESPANSO_BUILD_SHA").unwrap_or("dev")
+}
+
 struct StudioShell {
     studio: MatchStudioApp,
     clinical: crate::clinical_extender::ClinicalExtender,
     active_tab: ShellTab,
+    theme: crate::theme::StudioTheme,
 }
 
 impl StudioShell {
     fn new(config_root: PathBuf) -> Self {
+        let theme = crate::theme::StudioTheme::load(&config_root);
         Self {
             studio: MatchStudioApp::new(config_root.clone()),
             clinical: crate::clinical_extender::ClinicalExtender::load_seeded(config_root),
             active_tab: ShellTab::Rules,
+            theme,
         }
     }
 
@@ -41,17 +56,14 @@ impl StudioShell {
 
                 let (runtime_color, runtime_text) = if self.studio.runtime.running() {
                     (
-                        egui::Color32::from_rgb(40, 160, 90),
+                        self.theme.success(),
                         format!(
                             "rEspanso запущен · {} проц.",
                             self.studio.runtime.process_ids().len()
                         ),
                     )
                 } else {
-                    (
-                        egui::Color32::from_rgb(190, 70, 70),
-                        "rEspanso не запущен".to_owned(),
-                    )
+                    (self.theme.error(), "rEspanso не запущен".to_owned())
                 };
                 ui.colored_label(runtime_color, runtime_text).on_hover_text(format!(
                     "Проверяется каждую секунду. Последнее изменение состояния: {} сек. назад. PID: {}",
@@ -64,6 +76,31 @@ impl StudioShell {
                         .collect::<Vec<_>>()
                         .join(", ")
                 ));
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    for theme in [
+                        crate::theme::StudioTheme::Dark,
+                        crate::theme::StudioTheme::Light,
+                    ] {
+                        if ui
+                            .selectable_label(self.theme == theme, theme.label())
+                            .on_hover_text(format!(
+                                "Переключить Match Studio: {} тема",
+                                theme.label().to_lowercase()
+                            ))
+                            .clicked()
+                        {
+                            self.theme = theme;
+                            self.theme.apply_to_ui(ui);
+                            ui.ctx().request_repaint();
+                            self.studio.status = match self.theme.save(&self.studio.config_root) {
+                                Ok(()) => format!("Тема Match Studio: {}", self.theme.label()),
+                                Err(error) => error,
+                            };
+                        }
+                    }
+                    ui.label("Тема:");
+                });
             });
 
             ui.separator();
@@ -78,9 +115,9 @@ impl StudioShell {
                 ui.selectable_value(
                     &mut self.active_tab,
                     ShellTab::Clinical,
-                    "Clinical Extender",
+                    "Клинический редактор",
                 );
-                ui.selectable_value(&mut self.active_tab, ShellTab::Ai, "ИИ / MCP");
+                ui.selectable_value(&mut self.active_tab, ShellTab::Ai, "Вспомогательная");
                 ui.separator();
 
                 if ui
@@ -97,8 +134,8 @@ impl StudioShell {
                     ShellTab::Clinical => {
                         if self.clinical.dirty() {
                             ui.colored_label(
-                                egui::Color32::from_rgb(210, 135, 25),
-                                "Библиотека Clinical Extender не сохранена",
+                                self.theme.warning(),
+                                "Библиотека клинического редактора не сохранена",
                             );
                         } else {
                             ui.label(
@@ -163,7 +200,7 @@ impl StudioShell {
                             if dirty > 0 {
                                 ui.separator();
                                 ui.colored_label(
-                                    egui::Color32::from_rgb(210, 135, 25),
+                                    self.theme.warning(),
                                     format!("Не сохранено файлов: {dirty}"),
                                 );
                             }
@@ -185,10 +222,7 @@ impl StudioShell {
                             self.studio.reload_settings();
                         }
                         if self.studio.settings.dirty() {
-                            ui.colored_label(
-                                egui::Color32::from_rgb(210, 135, 25),
-                                "Настройки не сохранены",
-                            );
+                            ui.colored_label(self.theme.warning(), "Настройки не сохранены");
                         }
                     }
                     ShellTab::Rhai => {
@@ -214,10 +248,7 @@ impl StudioShell {
                             self.studio.rhai_lab.run_current();
                         }
                         if self.studio.rhai_lab.dirty() {
-                            ui.colored_label(
-                                egui::Color32::from_rgb(210, 135, 25),
-                                "Скрипт не сохранён",
-                            );
+                            ui.colored_label(self.theme.warning(), "Скрипт не сохранён");
                         }
                     }
                 }
@@ -239,9 +270,9 @@ impl StudioShell {
             ui.horizontal(|ui| {
                 if self.active_tab == ShellTab::Clinical {
                     ui.label(if self.clinical.dirty() {
-                        "Clinical Extender: есть несохранённые изменения библиотеки"
+                        "Клинический редактор: есть несохранённые изменения библиотеки"
                     } else {
-                        "Clinical Extender: готов к работе"
+                        "Клинический редактор: готов к работе"
                     });
                 } else {
                     ui.label(self.studio.status.as_str());
@@ -270,10 +301,83 @@ impl StudioShell {
             });
         });
     }
+
+    fn help_dialog(&mut self, context: &egui::Context) {
+        if !self.studio.show_shortcuts {
+            return;
+        }
+
+        let mut open = self.studio.show_shortcuts;
+        egui::Window::new("Справка · горячие клавиши")
+            .open(&mut open)
+            .resizable(false)
+            .collapsible(false)
+            .show(context, |ui| {
+                ui.heading("rEspanso Match Studio");
+                ui.label(format!(
+                    "rEspanso {} · сборка {}",
+                    respanso_build_version(),
+                    respanso_build_date()
+                ));
+                let sha = respanso_build_sha();
+                if sha != "dev" {
+                    ui.label(egui::RichText::new(format!("Commit: {sha}")).weak());
+                }
+                ui.separator();
+                egui::Grid::new("shell_shortcut_grid")
+                    .num_columns(2)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        shortcut_row(ui, "Alt+L", "Обработать выделенный текст во «Вспомогательной»");
+                        shortcut_row(ui, "Ctrl+S", "Сохранить изменения активной вкладки");
+                        shortcut_row(ui, "Ctrl+N", "Создать правило или новый Rhai-скрипт");
+                        shortcut_row(
+                            ui,
+                            "Ctrl+Enter",
+                            "Проверить исходный YAML или запустить Rhai-скрипт",
+                        );
+                        shortcut_row(ui, "Ctrl+Alt+M", "Найти триггер по выделенному тексту");
+                        shortcut_row(ui, "Ctrl+F", "Перейти к поиску правил");
+                        shortcut_row(ui, "Ctrl+D", "Дублировать правило");
+                        shortcut_row(ui, "Ctrl+Shift+D", "Удалить правило");
+                        shortcut_row(
+                            ui,
+                            "Ctrl+R",
+                            "Обновить активный YAML или Rhai-файл с диска",
+                        );
+                        shortcut_row(ui, "Ctrl+L", "Показать или скрыть диагностику");
+                        shortcut_row(ui, "Ctrl+Shift+Enter", "Скомпилировать Rhai-скрипт");
+                        shortcut_row(ui, "F1", "Открыть эту справку");
+                    });
+                ui.separator();
+                ui.label(
+                    egui::RichText::new(
+                        "Astra/X11: клавиатура отслеживается через XQueryKeymap; занятые глобальные сочетания работают через polling-fallback.",
+                    )
+                    .weak(),
+                );
+            });
+        self.studio.show_shortcuts = open;
+    }
+
+    fn dialogs(&mut self, context: &egui::Context) {
+        // app_legacy also contains the old shortcuts window. Hide only that
+        // flag while it renders its other dialogs, then draw the current help
+        // window with build identity here.
+        let help_open = self.studio.show_shortcuts;
+        self.studio.show_shortcuts = false;
+        self.studio.dialogs(context);
+        self.studio.show_shortcuts = help_open;
+        self.help_dialog(context);
+    }
 }
 
 impl eframe::App for StudioShell {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // Apply the palette to the current root Ui, not only Context. This
+        // prevents a one-frame (and on some X11 drivers persistent) mixture of
+        // old panel colors with newly themed TextEdit/widget colors.
+        self.theme.apply_to_ui(ui);
         self.studio.runtime.update(ui.ctx());
         self.studio.handle_dropped_config_packages(ui.ctx());
 
@@ -293,27 +397,49 @@ impl eframe::App for StudioShell {
         }
 
         self.top_bar(ui);
+        // The theme may have changed inside the toolbar. Re-apply it to the
+        // root Ui before drawing status/body so the rest of this frame is
+        // internally consistent.
+        self.theme.apply_to_ui(ui);
         self.status_bar(ui);
+        self.theme.apply_to_ui(ui);
 
-        match self.active_tab {
-            ShellTab::Clinical => self.clinical.ui(ui),
-            ShellTab::Ai => self.studio.ai.ui(ui),
-            ShellTab::Rules => {
-                self.studio.rules_panel(ui);
-                self.studio.diagnostics_panel(ui);
-                self.studio.central_editor(ui);
-            }
-            ShellTab::Settings => {
-                let config_root = self.studio.config_root.clone();
-                self.studio
-                    .settings
-                    .ui(ui, &config_root, &mut self.studio.status);
-            }
-            ShellTab::Rhai => {
-                self.studio.rhai_lab.ui(ui, &mut self.studio.status);
-            }
-        }
-        self.studio.dialogs(ui.ctx());
+        // Bound the page to the remaining native-window viewport. Long child
+        // forms (notably AI/MCP and clinical editors) then receive a finite
+        // available height and their ScrollAreas can actually scroll instead
+        // of extending below the X11 window.
+        let body_size = ui.available_size();
+        // allocate_ui_with_layout does not paint a background. On X11 that made
+        // the native window clear color (black) visible through the central page,
+        // even while light-theme controls correctly remained white. Paint the
+        // entire remaining viewport explicitly from the active theme before any
+        // child content is added.
+        let body_rect = ui.available_rect_before_wrap();
+        ui.painter()
+            .rect_filled(body_rect, 0.0, ui.visuals().panel_fill);
+        ui.allocate_ui_with_layout(
+            body_size,
+            egui::Layout::top_down(egui::Align::Min),
+            |body| match self.active_tab {
+                ShellTab::Clinical => self.clinical.ui_localized(body),
+                ShellTab::Ai => self.studio.ai.ui(body),
+                ShellTab::Rules => {
+                    self.studio.rules_panel(body);
+                    self.studio.diagnostics_panel(body);
+                    self.studio.central_editor(body);
+                }
+                ShellTab::Settings => {
+                    let config_root = self.studio.config_root.clone();
+                    self.studio
+                        .settings
+                        .ui(body, &config_root, &mut self.studio.status);
+                }
+                ShellTab::Rhai => {
+                    self.studio.rhai_lab.ui(body, &mut self.studio.status);
+                }
+            },
+        );
+        self.dialogs(ui.ctx());
     }
 }
 
@@ -322,12 +448,17 @@ pub fn run_shell(config_root: PathBuf) -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_title(APP_TITLE)
             .with_inner_size([1500.0, 900.0])
-            .with_min_inner_size([800.0, 560.0]),
+            .with_min_inner_size([800.0, 420.0])
+            .with_resizable(true),
         ..Default::default()
     };
     eframe::run_native(
         APP_TITLE,
         options,
-        Box::new(move |_creation_context| Ok(Box::new(StudioShell::new(config_root)))),
+        Box::new(move |creation_context| {
+            let shell = StudioShell::new(config_root);
+            shell.theme.apply(&creation_context.egui_ctx);
+            Ok(Box::new(shell))
+        }),
     )
 }

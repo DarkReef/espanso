@@ -40,15 +40,39 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Build full portable package in Debian 10
+      - name: Prepare build identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "RESPANSO_BUILD_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_ENV"
+          echo "RESPANSO_VERSION=$(awk -F'\"' '/^version =/ {print $2; exit}' espanso/Cargo.toml)" >> "$GITHUB_ENV"
+          echo "RESPANSO_BUILD_SHA=${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
+
+      - name: Verify final Astra interaction sources
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -F 'Some("CTRL+ALT+SPACE".to_string())' espanso-config/src/config/resolve.rs
+          grep -F 'std::str::from_utf8(bytes)' espanso-detect/src/x11/mod.rs
+          grep -F 'raw_to_input_valid_buffer_without_nul_is_preserved' espanso-detect/src/x11/mod.rs
+          grep -F 'raw_to_input_invalid_utf8_buffer_has_no_value' espanso-detect/src/x11/mod.rs
+          grep -F 'sender.send((event, source_id)).is_err()' espanso/src/cli/worker/engine/funnel/mod.rs
+          grep -F 'X11 PRIMARY selection' espanso/src/cli/worker/engine/dispatch/executor/clipboard_injector.rs
+          grep -F 'wxScrolledWindow' espanso-modulo/src/sys/form/form.cpp
+          grep -F 'raw_yaml_source_scroll' espanso-editor/src/app_legacy.rs
+
+      - name: Build and validate full portable package in Debian 10
         shell: bash
         run: |
           set -euxo pipefail
           docker run --rm \
+            -e RESPANSO_BUILD_DATE \
+            -e RESPANSO_VERSION \
+            -e RESPANSO_BUILD_SHA \
             -v "$GITHUB_WORKSPACE:/work" \
             -w /work \
             debian:buster-slim \
-            bash scripts/build_pol_run_astra17.sh
+            bash -lc 'bash scripts/build_pol_run_astra17.sh && timeout 45s xvfb-run -a bash scripts/test_astra_expansion.sh target/release/espanso'
 
       - name: Verify full package
         shell: bash
@@ -68,6 +92,10 @@ jobs:
           test -f "$ROOT/config/default.yml"
           test -f "$ROOT/match/base.yml"
           test -f "$OUT/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz"
+
+          # Help must identify the exact build the user is running.
+          strings "$ROOT/rEspanso-Match-Studio" | grep -F "$RESPANSO_BUILD_DATE"
+          strings "$ROOT/rEspanso-Match-Studio" | grep -F "$RESPANSO_BUILD_SHA"
 
           echo '=== core GLIBC requirements ==='
           cat "$ROOT/core-glibc-required.txt"

@@ -26,10 +26,12 @@
 #include "../common/common.h"
 #include "../interop/interop.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <wx/scrolwin.h>
 
 // https://docs.wxwidgets.org/stable/classwx_frame.html
 const long DEFAULT_STYLE = wxSTAY_ON_TOP | wxCLOSE_BOX | wxCAPTION;
@@ -119,7 +121,7 @@ class FormFrame : public wxFrame {
   public:
     FormFrame(const wxString &title, const wxPoint &pos, const wxSize &size);
 
-    wxPanel *panel;
+    wxScrolledWindow *panel;
     std::vector<void *> fields;
     std::unordered_map<std::string, std::unique_ptr<FieldWrapper>> idMap;
     wxButton *submit;
@@ -145,6 +147,7 @@ class FormFrame : public wxFrame {
     void OnListBoxEvent(wxCommandEvent &event);
     void OnFieldChanged(wxCommandEvent &event);
     void UpdateHelpText();
+    void FitFormToContent();
     void UpdatePreview();
     bool RequestComputedPreview(int request);
     std::vector<ValuePair> CollectCurrentValues(
@@ -162,7 +165,6 @@ bool FormApp::OnInit() {
     FormFrame *frame =
         new FormFrame(wxString::FromUTF8(formMetadata->windowTitle),
                       wxPoint(50, 50), maxFormSize);
-    frame->SetMaxSize(maxFormSize);
     setFrameIcon(wxString::FromUTF8(formMetadata->iconPath), frame);
     frame->Show(true);
 
@@ -184,7 +186,8 @@ FormFrame::FormFrame(const wxString &title, const wxPoint &pos,
     lastPreviewStatus = 0;
     previewTimer.SetOwner(this, ID_PreviewTimer);
 
-    panel = new wxPanel(this, wxID_ANY);
+    panel = new wxScrolledWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL);
+    panel->SetScrollRate(0, 10);
     wxBoxSizer *vbox = new wxBoxSizer(wxVERTICAL);
     panel->SetSizer(vbox);
 
@@ -251,7 +254,7 @@ FormFrame::FormFrame(const wxString &title, const wxPoint &pos,
         }
     }
 
-    this->SetClientSize(panel->GetBestSize());
+    FitFormToContent();
     this->CentreOnScreen();
 }
 
@@ -522,6 +525,19 @@ void FormFrame::HandleMultilineFocus(wxFocusEvent &event) {
     event.Skip();
 }
 
+void FormFrame::FitFormToContent() {
+    const wxSize best = panel->GetBestSize();
+    const int maxWidth = std::max(320, formMetadata->maxWindowWidth);
+    const int maxHeight = std::max(180, formMetadata->maxWindowHeight);
+    const int width = std::min(std::max(best.GetWidth(), 320), maxWidth);
+    const int height = std::min(std::max(best.GetHeight(), 180), maxHeight);
+
+    panel->SetVirtualSize(best);
+    panel->FitInside();
+    this->SetClientSize(wxSize(width, height));
+    this->Layout();
+}
+
 void FormFrame::UpdateHelpText() {
     if (hasFocusedMultilineControl) {
         helpText->SetLabel(wxString::FromUTF8(
@@ -530,7 +546,8 @@ void FormFrame::UpdateHelpText() {
         helpText->SetLabel(wxString::FromUTF8(
             "Enter — вставить, Esc — отменить"));
     }
-    this->SetClientSize(panel->GetBestSize());
+    panel->FitInside();
+    this->Layout();
 }
 
 void FormFrame::OnSubmitBtn(wxCommandEvent &event) { Submit(); }
