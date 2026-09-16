@@ -1,0 +1,63 @@
+name: Apply Astra final interaction fixes
+
+on:
+  push:
+    branches: [build/x11-latest]
+    paths:
+      - scripts/apply_astra_final_fixes.py
+      - .github/workflows/apply-astra-final-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: build/x11-latest
+          fetch-depth: 0
+
+      - name: Apply deterministic source patch
+        run: |
+          python3 scripts/apply_astra_final_fixes.py
+          # Debian 10's default C++ mode is not guaranteed to provide std::clamp.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('espanso-modulo/src/sys/form/form.cpp')
+          t = p.read_text(encoding='utf-8')
+          t = t.replace('std::clamp(best.GetWidth(), 320, maxWidth)', 'std::min(std::max(best.GetWidth(), 320), maxWidth)')
+          t = t.replace('std::clamp(best.GetHeight(), 180, maxHeight)', 'std::min(std::max(best.GetHeight(), 180), maxHeight)')
+          if '#include <wx/scrolwin.h>' not in t:
+              t = t.replace('#include <vector>\n', '#include <vector>\n#include <wx/scrolwin.h>\n', 1)
+          p.write_text(t, encoding='utf-8')
+          PY
+
+      - name: Verify patch markers
+        run: |
+          grep -F 'Some("CTRL+ALT+SPACE".to_string())' espanso-config/src/config/resolve.rs
+          grep -F 'std::str::from_utf8(bytes)' espanso-detect/src/x11/mod.rs
+          grep -F 'sender.send((event, source_id)).is_err()' espanso/src/cli/worker/engine/funnel/mod.rs
+          grep -F 'X11 PRIMARY selection' espanso/src/cli/worker/engine/dispatch/executor/clipboard_injector.rs
+          grep -F 'wxScrolledWindow' espanso-modulo/src/sys/form/form.cpp
+          grep -F 'raw_yaml_source_scroll' espanso-editor/src/app_legacy.rs
+          ! grep -F 'std::clamp' espanso-modulo/src/sys/form/form.cpp
+
+      - name: Commit final source patch
+        run: |
+          git config user.name 'rEspanso CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add espanso-config/src/config/resolve.rs \
+                  espanso-detect/src/x11/mod.rs \
+                  espanso/src/cli/worker/engine/funnel/mod.rs \
+                  espanso/src/cli/worker/engine/dispatch/executor/clipboard_injector.rs \
+                  espanso-modulo/src/sys/form/form.cpp \
+                  espanso-editor/src/app_legacy.rs \
+                  espanso-editor/src/app_shell.rs
+          if git diff --cached --quiet; then
+            echo 'Patch already applied.'
+            exit 0
+          fi
+          git commit -m 'fix(astra): complete hotkeys forms selection and editor scrolling'
+          git push origin HEAD:build/x11-latest
