@@ -40,11 +40,22 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Prepare build identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "RESPANSO_BUILD_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_ENV"
+          echo "RESPANSO_VERSION=$(awk -F'\"' '/^version =/ {print $2; exit}' espanso/Cargo.toml)" >> "$GITHUB_ENV"
+          echo "RESPANSO_BUILD_SHA=${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
+
       - name: Build full portable package in Debian 10
         shell: bash
         run: |
           set -euxo pipefail
           docker run --rm \
+            -e RESPANSO_BUILD_DATE \
+            -e RESPANSO_VERSION \
+            -e RESPANSO_BUILD_SHA \
             -v "$GITHUB_WORKSPACE:/work" \
             -w /work \
             debian:buster-slim \
@@ -68,6 +79,10 @@ jobs:
           test -f "$ROOT/config/default.yml"
           test -f "$ROOT/match/base.yml"
           test -f "$OUT/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz"
+
+          # Help must identify the exact build the user is running.
+          strings "$ROOT/rEspanso-Match-Studio" | grep -F "$RESPANSO_BUILD_DATE"
+          strings "$ROOT/rEspanso-Match-Studio" | grep -F "$RESPANSO_BUILD_SHA"
 
           echo '=== core GLIBC requirements ==='
           cat "$ROOT/core-glibc-required.txt"
