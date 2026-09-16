@@ -143,7 +143,7 @@ old_recompose = '''    fn recompose(&mut self, force: bool) {
         self.unknown = unknown;
     }
 '''
-new_recompose = '''    fn recompose(&mut self, force: bool) {
+new_recompose = r'''    fn recompose(&mut self, force: bool) {
         let tokens = parse_diagnosis_input(&self.diagnosis_input);
         let (raw_document, matched, unknown) = compose(&self.db, &tokens);
         self.sync_dynamic_fields(&raw_document);

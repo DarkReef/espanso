@@ -85,6 +85,7 @@ impl ClinicalExtender {
                 }
                 ui.label(egui::RichText::new(&self.status).weak());
                 ui.separator();
+                self.dynamic_fields_ui(ui);
 
                 visit_section_ui(ui, "Жалобы", &mut self.visit.complaints, 3);
                 visit_section_ui(
