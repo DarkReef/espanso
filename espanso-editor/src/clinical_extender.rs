@@ -65,7 +65,7 @@ impl ClinicalExtender {
             }
             if !self.unknown.is_empty() {
                 ui.colored_label(
-                    self.warning_color(),
+                    egui::Color32::from_rgb(210, 135, 25),
                     format!("Нет шаблонов: {}", self.unknown.join(", ")),
                 );
             }
@@ -96,13 +96,5 @@ impl ClinicalExtender {
             visit_section_ui(ui, "Лечение", &mut self.visit.treatment, 4);
             visit_section_ui(ui, "Рекомендации", &mut self.visit.recommendations, 4);
         });
-    }
-
-    fn warning_color(&self) -> egui::Color32 {
-        if egui::Color32::BLACK == egui::Color32::BLACK {
-            egui::Color32::from_rgb(210, 135, 25)
-        } else {
-            egui::Color32::from_rgb(210, 135, 25)
-        }
     }
 }
