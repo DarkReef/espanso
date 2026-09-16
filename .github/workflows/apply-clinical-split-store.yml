@@ -19,6 +19,20 @@ jobs:
           ref: build/windows-latest
           fetch-depth: 0
 
+      - name: Repair helper iterator
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply_clinical_split_store.py')
+          text = p.read_text(encoding='utf-8')
+          old = 'for ch in code.trim() {'
+          new = 'for ch in code.trim().chars() {'
+          if old not in text:
+              raise SystemExit('split-store iterator anchor missing')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Apply implementation
         run: python3 scripts/apply_clinical_split_store.py
 
@@ -31,6 +45,7 @@ jobs:
           grep -F 'const STORE_NOSOLOGIES_DIR: &str = "nosologies";' espanso-editor/src/clinical_extender_core.rs
           grep -F 'Наследуется из базового профиля' espanso-editor/src/clinical_extender_core.rs
           grep -F 'Собственные исследования нозологии' espanso-editor/src/clinical_extender_core.rs
+          grep -F 'for ch in code.trim().chars()' espanso-editor/src/clinical_extender_core.rs
           grep -F 'wxRESIZE_BORDER' espanso-modulo/src/sys/form/form.cpp
           grep -F 'wxSize(610, 320)' espanso-modulo/src/sys/form/form.cpp
           grep -F 'frameSizer->Add(panel, 1, wxEXPAND)' espanso-modulo/src/sys/form/form.cpp
