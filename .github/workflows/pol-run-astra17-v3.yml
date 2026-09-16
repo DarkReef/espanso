@@ -48,6 +48,17 @@ jobs:
           echo "RESPANSO_VERSION=$(awk -F'\"' '/^version =/ {print $2; exit}' espanso/Cargo.toml)" >> "$GITHUB_ENV"
           echo "RESPANSO_BUILD_SHA=${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
 
+      - name: Verify final Astra interaction sources
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -F 'Some("CTRL+ALT+SPACE".to_string())' espanso-config/src/config/resolve.rs
+          grep -F 'std::str::from_utf8(bytes)' espanso-detect/src/x11/mod.rs
+          grep -F 'sender.send((event, source_id)).is_err()' espanso/src/cli/worker/engine/funnel/mod.rs
+          grep -F 'X11 PRIMARY selection' espanso/src/cli/worker/engine/dispatch/executor/clipboard_injector.rs
+          grep -F 'wxScrolledWindow' espanso-modulo/src/sys/form/form.cpp
+          grep -F 'raw_yaml_source_scroll' espanso-editor/src/app_legacy.rs
+
       - name: Build and validate full portable package in Debian 10
         shell: bash
         run: |
