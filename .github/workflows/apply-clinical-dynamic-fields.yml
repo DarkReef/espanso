@@ -1,0 +1,49 @@
+name: Apply Clinical Dynamic Fields
+
+on:
+  push:
+    branches: [build/windows-latest]
+    paths:
+      - '.github/workflows/apply-clinical-dynamic-fields.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: build/windows-latest
+          fetch-depth: 0
+
+      - name: Apply implementation
+        run: python3 scripts/apply_clinical_dynamic_fields.py
+
+      - name: Verify source markers
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -F 'pub enum ClinicalFieldKind' espanso-editor/src/clinical_extender_core.rs
+          grep -F 'field_values: BTreeMap<String, String>' espanso-editor/src/clinical_extender_core.rs
+          grep -F 'therapy_start + 2w' espanso-editor/src/clinical_extender_core.rs
+          grep -F 'checked_add_months' espanso-editor/src/clinical_extender_core.rs
+          grep -F 'self.dynamic_fields_ui(ui);' espanso-editor/src/clinical_extender.rs
+          grep -F 'chrono.workspace = true' espanso-editor/Cargo.toml
+
+      - name: Format and test Clinical Editor
+        run: |
+          cargo fmt --all
+          cargo test --locked -p espanso-editor --lib clinical_extender -- --nocapture
+
+      - name: Commit implementation
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name 'rEspanso CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add espanso-editor/Cargo.toml espanso-editor/src/clinical_extender_core.rs espanso-editor/src/clinical_extender.rs
+          git commit -m 'feat(clinical): add dynamic fields and date arithmetic'
+          git push origin HEAD:build/windows-latest
