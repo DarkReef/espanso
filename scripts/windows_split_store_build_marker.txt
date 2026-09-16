@@ -1,0 +1,2 @@
+Validate split nosology storage, BASE investigation inheritance, and compact resizable wx forms.
+Source feature commit: 96a9412f1d2f21e8d264c6e5ec511602730ec3b5
