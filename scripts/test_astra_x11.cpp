@@ -38,24 +38,28 @@ int main() {
     const auto indexes = detect_get_modifier_indexes(context);
     const unsigned int alt = 1U << indexes.alt;
     const KeyCode key = XKeysymToKeycode(owner, XK_l);
-    // Conflict on a later lock variant exercises rollback of earlier grabs.
+
+    // Another X11 client may already own Alt+L (or a lock-key variant). The
+    // Astra backend must still register and observe the shortcut because it
+    // now recognizes hotkeys from XInput2 raw events instead of XGrabKey.
+    XGrabKey(owner, key, alt, DefaultRootWindow(owner), False,
+             GrabModeAsync, GrabModeAsync);
     XGrabKey(owner, key, alt | LockMask, DefaultRootWindow(owner), False,
              GrabModeAsync, GrabModeAsync);
     XSync(owner, False);
     assert(forwarded_errors == 0);
+
     HotKeyRequest request = {};
     request.key_sym = XK_l;
     request.alt = 1;
-    assert(detect_register_hotkey(context, request, indexes).success == 0);
-    assert(forwarded_errors == 0); // expected BadAccess never reaches GTK
-    // Rollback released the plain Alt+L variant for another X11 client.
-    XGrabKey(owner, key, alt, DefaultRootWindow(owner), False,
-             GrabModeAsync, GrabModeAsync);
-    XSync(owner, False);
+    const HotKeyResult registration = detect_register_hotkey(context, request, indexes);
+    assert(registration.success == 1);
+    assert(registration.key_code == key);
+    assert(registration.state == alt);
     assert(forwarded_errors == 0);
-    XUngrabKey(owner, key, AnyModifier, DefaultRootWindow(owner));
-    XSync(owner, False);
-    assert(detect_register_hotkey(context, request, indexes).success == 1);
+
+    // The raw XI2 stream must deliver exactly one hotkey even while the normal
+    // X11 grab belongs to another client.
     const KeyCode alt_key = XKeysymToKeycode(owner, XK_Alt_L);
     XTestFakeKeyEvent(owner, alt_key, True, 0);
     XTestFakeKeyEvent(owner, key, True, 0);
@@ -64,16 +68,24 @@ int main() {
     XSync(owner, False);
     pump(context);
     assert(hotkeys == 1);
+
+    // Ordinary raw input must remain available after hotkey recognition.
     const KeyCode letter = XKeysymToKeycode(owner, XK_a);
     XTestFakeKeyEvent(owner, letter, True, 0);
     XTestFakeKeyEvent(owner, letter, False, 0);
     XSync(owner, False);
     pump(context);
-    assert(letters == 1); // raw input still arrives after a grab conflict
-    XDestroyWindow(owner, 0); // unrelated errors retain the original handler
+    assert(letters == 1);
+
+    XUngrabKey(owner, key, AnyModifier, DefaultRootWindow(owner));
+    XSync(owner, False);
+
+    // The detector no longer replaces the process-wide X error handler.
+    XDestroyWindow(owner, 0);
     XSync(owner, False);
     assert(forwarded_errors == 1);
+
     detect_destroy(context);
     XCloseDisplay(owner);
-    puts("Astra X11: conflict, rollback, hotkey, raw input, error forwarding PASS");
+    puts("Astra X11: raw hotkey survives XGrabKey conflict; input continues PASS");
 }
