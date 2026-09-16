@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end Astra/X11 regression: detector -> matcher -> deletion -> injector.
+# End-to-end Astra/X11 regression: polling detector -> matcher -> deletion -> injector.
 set -Eeuo pipefail
 
 CORE="$(realpath "$1")"
@@ -140,8 +140,24 @@ if ! grep -q 'X11XDOToolInjector init success' "$TEST_ROOT/worker.log" 2>/dev/nu
   exit 1
 fi
 
-# The target set itself as the X11 input focus. Typing without --window uses
-# XTEST, so the same XI2 raw-event path used on Astra sees the keystrokes.
+# The Astra build must explicitly use the same keyboard backend proven by the
+# real workstation logs. A green XI2-only Xvfb test is not sufficient because
+# some Astra/KDE sessions advertise XI2 RawKey support without delivering it.
+for _ in $(seq 1 80); do
+  if grep -q 'keyboard=xquerykeymap-poll' "$CONFIG/runtime/x11-native.log" 2>/dev/null; then
+    break
+  fi
+  sleep 0.05
+done
+if ! grep -q 'keyboard=xquerykeymap-poll' "$CONFIG/runtime/x11-native.log" 2>/dev/null; then
+  cat "$TEST_ROOT/worker.log" >&2 || true
+  cat "$CONFIG/runtime/x11-native.log" >&2 2>/dev/null || true
+  echo 'Astra keyboard backend is not XQueryKeymap polling' >&2
+  exit 1
+fi
+
+# The target set itself as the X11 input focus. XTEST-generated keystrokes are
+# visible to XQueryKeymap just like physical key state changes.
 xdotool type --delay 55 ':x11test'
 sleep 1
 xdotool key Return
@@ -163,4 +179,5 @@ if [[ "$ACTUAL" != 'RESPANSO_EXPANSION_OK' ]]; then
 fi
 
 grep -q 'XInitThreads=ok' "$CONFIG/runtime/x11-native.log"
-echo 'Astra X11: detector -> matcher -> erase -> xdotool injector expansion PASS'
+grep -q 'keyboard=xquerykeymap-poll' "$CONFIG/runtime/x11-native.log"
+echo 'Astra X11: XQueryKeymap detector -> matcher -> erase -> xdotool injector expansion PASS'
