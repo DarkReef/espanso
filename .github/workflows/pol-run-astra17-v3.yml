@@ -54,6 +54,8 @@ jobs:
           set -euxo pipefail
           grep -F 'Some("CTRL+ALT+SPACE".to_string())' espanso-config/src/config/resolve.rs
           grep -F 'std::str::from_utf8(bytes)' espanso-detect/src/x11/mod.rs
+          grep -F 'raw_to_input_valid_buffer_without_nul_is_preserved' espanso-detect/src/x11/mod.rs
+          grep -F 'raw_to_input_invalid_utf8_buffer_has_no_value' espanso-detect/src/x11/mod.rs
           grep -F 'sender.send((event, source_id)).is_err()' espanso/src/cli/worker/engine/funnel/mod.rs
           grep -F 'X11 PRIMARY selection' espanso/src/cli/worker/engine/dispatch/executor/clipboard_injector.rs
           grep -F 'wxScrolledWindow' espanso-modulo/src/sys/form/form.cpp
