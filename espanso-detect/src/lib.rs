@@ -84,6 +84,7 @@ pub struct SourceCreationOptions {
     pub win32_keyboard_layout_cache_interval: i64,
 }
 
+#[derive(Clone)]
 pub struct KeyboardConfig {
     pub rules: Option<String>,
     pub model: Option<String>,
