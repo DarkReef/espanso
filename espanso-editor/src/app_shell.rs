@@ -328,6 +328,14 @@ impl eframe::App for StudioShell {
         // available height and their ScrollAreas can actually scroll instead
         // of extending below the X11 window.
         let body_size = ui.available_size();
+        // allocate_ui_with_layout does not paint a background. On X11 that made
+        // the native window clear color (black) visible through the central page,
+        // even while light-theme controls correctly remained white. Paint the
+        // entire remaining viewport explicitly from the active theme before any
+        // child content is added.
+        let body_rect = ui.available_rect_before_wrap();
+        ui.painter()
+            .rect_filled(body_rect, 0.0, ui.visuals().panel_fill);
         ui.allocate_ui_with_layout(
             body_size,
             egui::Layout::top_down(egui::Align::Min),
