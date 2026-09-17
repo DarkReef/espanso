@@ -23,6 +23,8 @@ use crate::event::{
     ui::ShowTextEvent,
     Event, EventType,
 };
+use log::{info, warn};
+use std::time::Instant;
 
 pub trait SelectedTextProvider {
     fn get_selected_text(&self) -> Option<String>;
@@ -56,13 +58,32 @@ impl Middleware for SelectionMatchMiddleware<'_> {
 
     fn next(&self, event: Event, dispatch: &mut dyn FnMut(Event)) -> Event {
         if matches!(&event.etype, EventType::SelectionMatchRequested) {
-            let selection = self
-                .selected_text_provider
-                .get_selected_text()
+            let started_at = Instant::now();
+            info!(
+                "[rESP-SEL] SelectionMatchRequested begin source_id={}",
+                event.source_id
+            );
+
+            let raw_selection = self.selected_text_provider.get_selected_text();
+            let raw_len = raw_selection.as_ref().map(|text| text.len()).unwrap_or(0);
+            info!(
+                "[rESP-SEL] selected-text provider completed source_id={} present={} bytes={} elapsed_ms={}",
+                event.source_id,
+                raw_selection.is_some(),
+                raw_len,
+                started_at.elapsed().as_millis()
+            );
+
+            let selection = raw_selection
                 .map(|text| text.trim().to_owned())
                 .filter(|text| !text.is_empty());
 
             let Some(selection) = selection else {
+                warn!(
+                    "[rESP-SEL] selection unavailable source_id={} elapsed_ms={}",
+                    event.source_id,
+                    started_at.elapsed().as_millis()
+                );
                 return Event::caused_by(
                     event.source_id,
                     EventType::ShowText(ShowTextEvent {
@@ -72,8 +93,25 @@ impl Middleware for SelectionMatchMiddleware<'_> {
                 );
             };
 
+            info!(
+                "[rESP-SEL] resolving selection source_id={} trimmed_bytes={}",
+                event.source_id,
+                selection.len()
+            );
             let matches = self.match_resolver.find_matches_from_selection(&selection);
+            info!(
+                "[rESP-SEL] resolver completed source_id={} matches={} elapsed_ms={}",
+                event.source_id,
+                matches.len(),
+                started_at.elapsed().as_millis()
+            );
+
             if matches.is_empty() {
+                warn!(
+                    "[rESP-SEL] no match found source_id={} selection_bytes={}",
+                    event.source_id,
+                    selection.len()
+                );
                 return Event::caused_by(
                     event.source_id,
                     EventType::ShowText(ShowTextEvent {
@@ -91,6 +129,11 @@ impl Middleware for SelectionMatchMiddleware<'_> {
                 }),
             ));
 
+            info!(
+                "[rESP-SEL] SelectionMatchRequested dispatched source_id={} elapsed_ms={}",
+                event.source_id,
+                started_at.elapsed().as_millis()
+            );
             return Event::caused_by(event.source_id, EventType::NOOP);
         }
 
