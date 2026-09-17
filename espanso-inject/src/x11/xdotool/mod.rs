@@ -189,11 +189,24 @@ impl X11XDOToolInjector {
 
 impl Injector for X11XDOToolInjector {
     fn send_string(&self, string: &str, options: crate::InjectionOptions) -> anyhow::Result<()> {
-        if options.disable_fast_inject {
+        let mode = if options.disable_fast_inject { "xtest" } else { "fast" };
+        debug!(
+            "[rESP-INJECT] xdotool send_string begin mode={} bytes={} delay_ms={}",
+            mode,
+            string.len(),
+            options.delay.max(0)
+        );
+        let result = if options.disable_fast_inject {
             self.xfake_send_string(string, options)
         } else {
             self.fast_send_string(string, options)
+        };
+        if let Err(ref error) = result {
+            log::error!("[rESP-INJECT] xdotool send_string failed: {:?}", error);
+        } else {
+            debug!("[rESP-INJECT] xdotool send_string complete mode={}", mode);
         }
+        result
     }
 
     fn send_keys(
@@ -201,6 +214,13 @@ impl Injector for X11XDOToolInjector {
         keys: &[crate::keys::Key],
         options: crate::InjectionOptions,
     ) -> anyhow::Result<()> {
+        let mode = if options.disable_fast_inject { "xtest" } else { "fast" };
+        debug!(
+            "[rESP-INJECT] xdotool send_keys begin mode={} count={} delay_ms={}",
+            mode,
+            keys.len(),
+            options.delay.max(0)
+        );
         let key_syms: Vec<String> = keys
             .iter()
             .filter_map(|key| unsafe { convert_key_to_keysym((*self.xdo).xdpy, key) })
@@ -242,11 +262,18 @@ impl Injector for X11XDOToolInjector {
         keys: &[crate::keys::Key],
         options: crate::InjectionOptions,
     ) -> anyhow::Result<()> {
+        let mode = if options.disable_fast_inject { "xtest" } else { "fast" };
         let key_syms: Vec<String> = keys
             .iter()
             .filter_map(|key| unsafe { convert_key_to_keysym((*self.xdo).xdpy, key) })
             .collect();
         let key_combination = key_syms.join("+");
+        debug!(
+            "[rESP-INJECT] xdotool send_key_combination begin mode={} keys={} delay_ms={}",
+            mode,
+            key_combination,
+            options.delay.max(0)
+        );
 
         let delay = checked_delay_micros(&options)?;
 
@@ -377,8 +404,12 @@ fn convert_key_to_keysym(display: *mut Display, key: &crate::keys::Key) -> Optio
         crate::keys::Key::Raw(key_code) => unsafe {
             let key_sym = XKeycodeToKeysym(display, (*key_code).try_into().unwrap(), 0);
             let string = XKeysymToString(key_sym);
-            let c_str = CStr::from_ptr(string);
-            Some(c_str.to_string_lossy().to_string())
+            if string.is_null() {
+                None
+            } else {
+                let c_str = CStr::from_ptr(string);
+                Some(c_str.to_string_lossy().to_string())
+            }
         },
     }
 }
