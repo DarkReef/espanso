@@ -7,6 +7,7 @@ on:
       - '.github/workflows/pol-run-astra17-v3.yml'
       - 'scripts/build_pol_run_astra17.sh'
       - 'scripts/pol_run_tray.cpp'
+      - 'scripts/export_logs.sh'
       - 'espanso-ai/**'
       - 'espanso-engine/**'
       - 'espanso-editor/**'
@@ -57,10 +58,14 @@ jobs:
           grep -F 'raw_to_input_valid_buffer_without_nul_is_preserved' espanso-detect/src/x11/mod.rs
           grep -F 'raw_to_input_invalid_utf8_buffer_has_no_value' espanso-detect/src/x11/mod.rs
           grep -F 'sender.send((event, source_id)).is_err()' espanso/src/cli/worker/engine/funnel/mod.rs
-          grep -F 'vec![Key::Control, Key::C]' espanso/src/cli/worker/engine/dispatch/executor/clipboard_injector.rs
-          grep -F 'cleared stale target=' espanso-inject/src/x11/mod.rs
+          grep -F '[rESP-HOTKEY] detected' espanso-engine/src/process/middleware/hotkey.rs
+          grep -F '[rESP-SEL] SelectionMatchRequested begin' espanso-engine/src/process/middleware/selection_match.rs
+          grep -F '[rESP-SEL-CLIP] capture=' espanso/src/cli/worker/engine/dispatch/executor/clipboard_injector.rs
+          grep -F '[rESP-SEL-X11] Ctrl+C prepare' espanso-inject/src/x11/mod.rs
           grep -F 'wxScrolledWindow' espanso-modulo/src/sys/form/form.cpp
           grep -F 'raw_yaml_source_scroll' espanso-editor/src/app_legacy.rs
+          grep -F 'configuration inventory (contents intentionally excluded)' scripts/export_logs.sh
+          bash -n scripts/export_logs.sh
 
       - name: Build and validate full portable package in Debian 10
         shell: bash
@@ -80,7 +85,25 @@ jobs:
         run: |
           set -euxo pipefail
           OUT=target/pol-run-astra-full
-          ROOT="$OUT/rEspanso-pol_run-Astra17-X11-Full-x86_64"
+          PACKAGE=rEspanso-pol_run-Astra17-X11-Full-x86_64
+          ROOT="$OUT/$PACKAGE"
+
+          # Diagnostics exporter is maintained as a normal source file so it can
+          # evolve independently from the compatibility build script. Inject it
+          # into the finished portable tree and regenerate the distributable.
+          install -m 0755 scripts/export_logs.sh "$ROOT/export-logs.sh"
+          cat >>"$ROOT/README-FIRST.txt" <<'DIAG_README'
+
+DIAGNOSTICS
+  ./export-logs.sh    create a privacy-aware .tar.gz bundle in diagnostics/
+  or use tray menu:   "Собрать архив диагностики"
+
+The diagnostics bundle intentionally excludes configuration/match contents and
+never intentionally logs selected-text/clipboard contents.
+DIAG_README
+          bash -n "$ROOT/export-logs.sh"
+          tar -C "$OUT" -czf "$OUT/$PACKAGE.tar.gz" "$PACKAGE"
+          sha256sum "$OUT/$PACKAGE.tar.gz" >"$OUT/$PACKAGE.sha256"
 
           test -x "$ROOT/rEspanso-core"
           test -x "$ROOT/rEspanso-Match-Studio"
@@ -90,9 +113,12 @@ jobs:
           test -x "$ROOT/run.sh"
           test -x "$ROOT/start-tray.sh"
           test -x "$ROOT/diagnose.sh"
+          test -x "$ROOT/export-logs.sh"
           test -f "$ROOT/config/default.yml"
           test -f "$ROOT/match/base.yml"
-          test -f "$OUT/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz"
+          test -f "$OUT/$PACKAGE.tar.gz"
+          grep -F 'rEspanso-diagnostics-' "$ROOT/export-logs.sh"
+          grep -F 'Selected text and clipboard contents are NOT intentionally logged.' "$ROOT/export-logs.sh"
 
           # Help must identify the exact build the user is running.
           strings "$ROOT/rEspanso-Match-Studio" | grep -F "$RESPANSO_BUILD_DATE"
@@ -111,7 +137,7 @@ jobs:
           echo '=== tray packaged ldd ==='
           cat "$ROOT/tray-packaged-ldd.txt"
           echo '=== archive ==='
-          tar -tzf "$OUT/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz" | head -n 160
+          tar -tzf "$OUT/$PACKAGE.tar.gz" | head -n 180
 
       - name: Upload full Astra portable artifact
         uses: actions/upload-artifact@v4
