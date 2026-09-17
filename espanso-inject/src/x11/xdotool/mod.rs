@@ -23,7 +23,7 @@ use std::{
 };
 
 use crate::Injector;
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use log::debug;
 
 mod ffi;
@@ -33,6 +33,26 @@ use super::ffi::{
     Display, Window, XGetInputFocus, XKeycodeToKeysym, XKeysymToString, XQueryKeymap,
     XTestFakeKeyEvent,
 };
+
+const XDO_SUCCESS: libc::c_int = 0;
+
+fn checked_delay_micros(options: &crate::InjectionOptions) -> Result<libc::c_uint> {
+    let delay_ms = i64::from(options.delay.max(0));
+    let delay_micros = delay_ms
+        .checked_mul(1_000)
+        .context("X11 injection delay overflow")?;
+    delay_micros
+        .try_into()
+        .context("X11 injection delay does not fit useconds_t")
+}
+
+fn check_xdo_status(operation: &str, status: libc::c_int) -> Result<()> {
+    ensure!(
+        status == XDO_SUCCESS,
+        "{operation} failed with libxdo status {status}"
+    );
+    Ok(())
+}
 
 pub struct X11XDOToolInjector {
     xdo: *const xdo_t,
@@ -94,16 +114,17 @@ impl X11XDOToolInjector {
         self.xfake_release_all_keys();
 
         let c_string = CString::new(string).context("unable to create CString")?;
-        let delay = options.delay * 1000;
+        let delay = checked_delay_micros(&options)?;
 
-        unsafe {
+        let status = unsafe {
             ffi::xdo_enter_text_window(
                 self.xdo,
                 CURRENTWINDOW,
                 c_string.as_ptr(),
-                delay.try_into().unwrap(),
-            );
-        }
+                delay,
+            )
+        };
+        check_xdo_status("xdo_enter_text_window", status)?;
 
         Ok(())
     }
@@ -150,16 +171,17 @@ impl X11XDOToolInjector {
         self.fast_release_all_keys();
 
         let c_string = CString::new(string).context("unable to create CString")?;
-        let delay = options.delay * 1000;
+        let delay = checked_delay_micros(&options)?;
 
-        unsafe {
+        let status = unsafe {
             ffi::fast_enter_text_window(
                 self.xdo,
                 self.get_focused_window(),
                 c_string.as_ptr(),
-                delay.try_into().unwrap(),
-            );
-        }
+                delay,
+            )
+        };
+        check_xdo_status("fast_enter_text_window", status)?;
 
         Ok(())
     }
@@ -184,29 +206,31 @@ impl Injector for X11XDOToolInjector {
             .filter_map(|key| unsafe { convert_key_to_keysym((*self.xdo).xdpy, key) })
             .collect();
 
-        let delay = options.delay * 1000;
+        let delay = checked_delay_micros(&options)?;
 
         for key in key_syms {
             let c_str = CString::new(key).context("unable to generate CString")?;
 
             if options.disable_fast_inject {
-                unsafe {
+                let status = unsafe {
                     xdo_send_keysequence_window(
                         self.xdo,
                         CURRENTWINDOW,
                         c_str.as_ptr(),
-                        delay.try_into().unwrap(),
-                    );
-                }
+                        delay,
+                    )
+                };
+                check_xdo_status("xdo_send_keysequence_window", status)?;
             } else {
-                unsafe {
+                let status = unsafe {
                     fast_send_keysequence_window(
                         self.xdo,
                         self.get_focused_window(),
                         c_str.as_ptr(),
-                        delay.try_into().unwrap(),
-                    );
-                }
+                        delay,
+                    )
+                };
+                check_xdo_status("fast_send_keysequence_window", status)?;
             }
         }
 
@@ -224,29 +248,31 @@ impl Injector for X11XDOToolInjector {
             .collect();
         let key_combination = key_syms.join("+");
 
-        let delay = options.delay * 1000;
+        let delay = checked_delay_micros(&options)?;
 
         let c_key_combination =
             CString::new(key_combination).context("unable to generate CString")?;
 
         if options.disable_fast_inject {
-            unsafe {
+            let status = unsafe {
                 xdo_send_keysequence_window(
                     self.xdo,
                     CURRENTWINDOW,
                     c_key_combination.as_ptr(),
-                    delay.try_into().unwrap(),
-                );
-            }
+                    delay,
+                )
+            };
+            check_xdo_status("xdo_send_keysequence_window", status)?;
         } else {
-            unsafe {
+            let status = unsafe {
                 fast_send_keysequence_window(
                     self.xdo,
                     self.get_focused_window(),
                     c_key_combination.as_ptr(),
-                    delay.try_into().unwrap(),
-                );
-            }
+                    delay,
+                )
+            };
+            check_xdo_status("fast_send_keysequence_window", status)?;
         }
 
         Ok(())
