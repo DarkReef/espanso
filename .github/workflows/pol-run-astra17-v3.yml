@@ -133,7 +133,8 @@ jobs:
           echo '=== tray packaged ldd ==='
           cat "$ROOT/tray-packaged-ldd.txt"
           echo '=== archive ==='
-          tar -tzf "$OUT/$PACKAGE.tar.gz" | head -n 180
+          tar -tzf "$OUT/$PACKAGE.tar.gz" > "$RUNNER_TEMP/package-files.txt"
+          head -n 180 "$RUNNER_TEMP/package-files.txt"
 
       - name: Upload full Astra portable artifact
         uses: actions/upload-artifact@v4
