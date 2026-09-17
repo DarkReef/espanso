@@ -39,6 +39,21 @@ static PINNED_TARGET_WINDOW: AtomicU64 = AtomicU64::new(0);
 const REVERT_TO_PARENT: i32 = 2;
 const CURRENT_TIME: ffi::Time = 0;
 
+fn current_focus_window() -> Option<ffi::Window> {
+    unsafe {
+        let display = ffi::XOpenDisplay(ptr::null());
+        if display.is_null() {
+            return None;
+        }
+
+        let mut window: ffi::Window = 0;
+        let mut revert_to = 0;
+        ffi::XGetInputFocus(display, &mut window, &mut revert_to);
+        ffi::XCloseDisplay(display);
+        if window <= 1 { None } else { Some(window) }
+    }
+}
+
 pub(crate) fn pin_target_window() -> Option<ffi::Window> {
     unsafe {
         let display = ffi::XOpenDisplay(ptr::null());
@@ -204,6 +219,16 @@ impl X11ProxyInjector {
 
         unreachable!()
     }
+
+    fn active_injector_label(&self, options: &crate::InjectionOptions) -> &'static str {
+        if options.x11_use_xdotool_fallback && self.xdotool_injector.is_some() {
+            "xdotool"
+        } else if self.default_injector.is_some() {
+            "default"
+        } else {
+            "xdotool"
+        }
+    }
 }
 
 impl Injector for X11ProxyInjector {
@@ -222,24 +247,44 @@ impl Injector for X11ProxyInjector {
         keys: &[crate::keys::Key],
         options: crate::InjectionOptions,
     ) -> Result<()> {
+        let is_selection_copy = matches!(keys, [crate::keys::Key::Control, crate::keys::Key::C]);
+
         // Ctrl+C is used by the selected-text provider to copy the selection
         // from the application that is focused *now*. It must never consume a
         // renderer focus pin left by a previous form/expansion, otherwise the
         // copy is sent to the wrong window and Ctrl+Alt+M/Alt+L cannot obtain
         // the selected text. Clear a stale pin and keep the current X11 focus.
-        if matches!(keys, [crate::keys::Key::Control, crate::keys::Key::C]) {
+        if is_selection_copy {
+            let focus_before = current_focus_window();
             let stale_target = PINNED_TARGET_WINDOW.swap(0, Ordering::SeqCst);
-            if stale_target > 1 {
-                debug!(
-                    "[rESP-FOCUS] cleared stale target={} before selection Ctrl+C",
-                    stale_target
-                );
-            }
+            info!(
+                "[rESP-SEL-X11] Ctrl+C prepare focus={:?} stale_pin={} injector={} delay={} disable_fast={} force_xdotool={}",
+                focus_before,
+                stale_target,
+                self.active_injector_label(&options),
+                options.delay,
+                options.disable_fast_inject,
+                options.x11_use_xdotool_fallback
+            );
         } else {
             restore_pinned_target_window();
         }
 
-        self.get_active_injector(&options)?
-            .send_key_combination(keys, options)
+        let result = self
+            .get_active_injector(&options)?
+            .send_key_combination(keys, options);
+
+        if is_selection_copy {
+            info!(
+                "[rESP-SEL-X11] Ctrl+C injected success={} focus_after={:?}",
+                result.is_ok(),
+                current_focus_window()
+            );
+            if let Err(ref err) = result {
+                error!("[rESP-SEL-X11] Ctrl+C injector error: {err:?}");
+            }
+        }
+
+        result
     }
 }
