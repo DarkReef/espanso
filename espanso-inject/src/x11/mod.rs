@@ -222,7 +222,23 @@ impl Injector for X11ProxyInjector {
         keys: &[crate::keys::Key],
         options: crate::InjectionOptions,
     ) -> Result<()> {
-        restore_pinned_target_window();
+        // Ctrl+C is used by the selected-text provider to copy the selection
+        // from the application that is focused *now*. It must never consume a
+        // renderer focus pin left by a previous form/expansion, otherwise the
+        // copy is sent to the wrong window and Ctrl+Alt+M/Alt+L cannot obtain
+        // the selected text. Clear a stale pin and keep the current X11 focus.
+        if matches!(keys, [crate::keys::Key::Control, crate::keys::Key::C]) {
+            let stale_target = PINNED_TARGET_WINDOW.swap(0, Ordering::SeqCst);
+            if stale_target > 1 {
+                debug!(
+                    "[rESP-FOCUS] cleared stale target={} before selection Ctrl+C",
+                    stale_target
+                );
+            }
+        } else {
+            restore_pinned_target_window();
+        }
+
         self.get_active_injector(&options)?
             .send_key_combination(keys, options)
     }
