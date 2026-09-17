@@ -233,13 +233,43 @@ impl X11ProxyInjector {
 
 impl Injector for X11ProxyInjector {
     fn send_string(&self, string: &str, options: crate::InjectionOptions) -> Result<()> {
+        let backend = self.active_injector_label(&options);
+        info!(
+            "[rESP-INJECT] send_string begin backend={} bytes={} delay_ms={} fast={} fallback={}",
+            backend,
+            string.len(),
+            options.delay.max(0),
+            !options.disable_fast_inject,
+            options.x11_use_xdotool_fallback
+        );
         restore_pinned_target_window();
-        self.get_active_injector(&options)?.send_string(string, options)
+        let result = self.get_active_injector(&options)?.send_string(string, options);
+        if let Err(ref error) = result {
+            error!("[rESP-INJECT] send_string failed backend={}: {:?}", backend, error);
+        } else {
+            debug!("[rESP-INJECT] send_string complete backend={}", backend);
+        }
+        result
     }
 
     fn send_keys(&self, keys: &[crate::keys::Key], options: crate::InjectionOptions) -> Result<()> {
+        let backend = self.active_injector_label(&options);
+        info!(
+            "[rESP-INJECT] send_keys begin backend={} count={} delay_ms={} fast={} fallback={}",
+            backend,
+            keys.len(),
+            options.delay.max(0),
+            !options.disable_fast_inject,
+            options.x11_use_xdotool_fallback
+        );
         restore_pinned_target_window();
-        self.get_active_injector(&options)?.send_keys(keys, options)
+        let result = self.get_active_injector(&options)?.send_keys(keys, options);
+        if let Err(ref error) = result {
+            error!("[rESP-INJECT] send_keys failed backend={}: {:?}", backend, error);
+        } else {
+            debug!("[rESP-INJECT] send_keys complete backend={}", backend);
+        }
+        result
     }
 
     fn send_key_combination(
@@ -270,6 +300,15 @@ impl Injector for X11ProxyInjector {
             restore_pinned_target_window();
         }
 
+        let backend = self.active_injector_label(&options);
+        info!(
+            "[rESP-INJECT] send_key_combination begin backend={} count={} delay_ms={} fast={} fallback={}",
+            backend,
+            keys.len(),
+            options.delay.max(0),
+            !options.disable_fast_inject,
+            options.x11_use_xdotool_fallback
+        );
         let result = self
             .get_active_injector(&options)?
             .send_key_combination(keys, options);
