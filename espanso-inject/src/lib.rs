@@ -38,6 +38,19 @@ mod linux;
 #[cfg(target_os = "macos")]
 mod mac;
 
+// Capture the X11 text target immediately before rendering. Render extensions
+// such as forms can temporarily take focus; the X11 proxy injector restores
+// this one-shot target before the rendered text/paste is sent.
+#[cfg(all(target_os = "linux", not(feature = "wayland")))]
+pub fn pin_x11_target_window() -> Option<u64> {
+    x11::pin_target_window()
+}
+
+#[cfg(not(all(target_os = "linux", not(feature = "wayland"))))]
+pub fn pin_x11_target_window() -> Option<u64> {
+    None
+}
+
 pub trait Injector {
     fn send_string(&self, string: &str, options: InjectionOptions) -> Result<()>;
     fn send_keys(&self, keys: &[keys::Key], options: InjectionOptions) -> Result<()>;
