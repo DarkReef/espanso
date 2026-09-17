@@ -19,6 +19,7 @@ namespace {
 
 enum {
     ID_OPEN_STUDIO = wxID_HIGHEST + 101,
+    ID_EXPORT_LOGS,
     ID_STOP_RESPANSO,
 };
 
@@ -37,7 +38,7 @@ void spawn_script(const wxString &root, const char *name) {
     if (pid == 0) {
         // Detach GUI/menu actions from the tray process. The child inherits the
         // current DISPLAY and portable LD_LIBRARY_PATH, which is exactly what
-        // studio.sh/stop.sh need.
+        // studio.sh/stop.sh/export-logs.sh need.
         setsid();
         execl(path.c_str(), path.c_str(), static_cast<char *>(nullptr));
         _exit(127);
@@ -78,6 +79,7 @@ public:
     explicit RespansoTrayIcon(const wxString &root) : root_(root) {
         Bind(wxEVT_TASKBAR_LEFT_UP, &RespansoTrayIcon::on_left_click, this);
         Bind(wxEVT_MENU, &RespansoTrayIcon::on_open_studio, this, ID_OPEN_STUDIO);
+        Bind(wxEVT_MENU, &RespansoTrayIcon::on_export_logs, this, ID_EXPORT_LOGS);
         Bind(wxEVT_MENU, &RespansoTrayIcon::on_stop, this, ID_STOP_RESPANSO);
     }
 
@@ -89,6 +91,8 @@ protected:
     wxMenu *CreatePopupMenu() override {
         wxMenu *menu = new wxMenu();
         menu->Append(ID_OPEN_STUDIO, wxString::FromUTF8("Открыть Match Studio"));
+        menu->Append(ID_EXPORT_LOGS,
+                     wxString::FromUTF8("Собрать архив диагностики"));
         menu->AppendSeparator();
         menu->Append(ID_STOP_RESPANSO, wxString::FromUTF8("Остановить rEspanso"));
         return menu;
@@ -101,6 +105,17 @@ private:
 
     void on_open_studio(wxCommandEvent &) {
         spawn_script(root_, "studio.sh");
+    }
+
+    void on_export_logs(wxCommandEvent &) {
+        spawn_script(root_, "export-logs.sh");
+        wxMessageBox(
+            wxString::FromUTF8(
+                "Сбор диагностического архива запущен.\n\n"
+                "Готовый .tar.gz появится в папке diagnostics внутри rEspanso.\n"
+                "Содержимое выделенного текста и файлов шаблонов в архив намеренно не записывается."),
+            wxString::FromUTF8("rEspanso — диагностика"),
+            wxOK | wxICON_INFORMATION);
     }
 
     void on_stop(wxCommandEvent &) {
