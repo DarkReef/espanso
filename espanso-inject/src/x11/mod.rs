@@ -20,11 +20,100 @@
 use crate::Injector;
 
 use anyhow::{bail, ensure, Result};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
+use std::{
+    ptr,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 mod default;
 mod ffi;
 mod xdotool;
+
+// The renderer can temporarily move X11 focus to a form/modulo window. Keep the
+// window that owned the trigger immediately before rendering and consume it on
+// the first post-render injection. This makes focus pinning one-shot, so an old
+// expansion can never redirect a later trigger typed in another application.
+static PINNED_TARGET_WINDOW: AtomicU64 = AtomicU64::new(0);
+
+const REVERT_TO_PARENT: i32 = 2;
+const CURRENT_TIME: ffi::Time = 0;
+
+pub(crate) fn pin_target_window() -> Option<ffi::Window> {
+    unsafe {
+        let display = ffi::XOpenDisplay(ptr::null());
+        if display.is_null() {
+            warn!("[rESP-FOCUS] unable to pin target: XOpenDisplay failed");
+            PINNED_TARGET_WINDOW.store(0, Ordering::SeqCst);
+            return None;
+        }
+
+        let mut window: ffi::Window = 0;
+        let mut revert_to = 0;
+        ffi::XGetInputFocus(display, &mut window, &mut revert_to);
+        ffi::XCloseDisplay(display);
+
+        // 0=None and 1=PointerRoot are X11 sentinel values, not useful text
+        // targets. Clear an older pin rather than accidentally reusing it.
+        if window <= 1 {
+            PINNED_TARGET_WINDOW.store(0, Ordering::SeqCst);
+            warn!("[rESP-FOCUS] unable to pin usable target: window={}", window);
+            None
+        } else {
+            PINNED_TARGET_WINDOW.store(window, Ordering::SeqCst);
+            info!("[rESP-FOCUS] pinned target window={}", window);
+            Some(window)
+        }
+    }
+}
+
+fn restore_pinned_target_window() {
+    // One-shot by design: trigger compensation happens before renderer pinning,
+    // while the first actual text/paste operation after rendering consumes it.
+    let target = PINNED_TARGET_WINDOW.swap(0, Ordering::SeqCst);
+    if target <= 1 {
+        return;
+    }
+
+    unsafe {
+        let display = ffi::XOpenDisplay(ptr::null());
+        if display.is_null() {
+            warn!(
+                "[rESP-FOCUS] unable to restore target window={}: XOpenDisplay failed",
+                target
+            );
+            return;
+        }
+
+        let mut current: ffi::Window = 0;
+        let mut revert_to = 0;
+        ffi::XGetInputFocus(display, &mut current, &mut revert_to);
+
+        if current != target {
+            info!(
+                "[rESP-FOCUS] restoring focus current={} target={}",
+                current, target
+            );
+            ffi::XSetInputFocus(display, target, REVERT_TO_PARENT, CURRENT_TIME);
+            ffi::XSync(display, 0);
+
+            let mut restored: ffi::Window = 0;
+            ffi::XGetInputFocus(display, &mut restored, &mut revert_to);
+            if restored != target {
+                warn!(
+                    "[rESP-FOCUS] focus restore verification failed: target={} actual={}",
+                    target, restored
+                );
+            } else {
+                info!("[rESP-FOCUS] focus restored target={}", target);
+            }
+        } else {
+            debug!("[rESP-FOCUS] target already focused window={}", target);
+        }
+
+        ffi::XCloseDisplay(display);
+    }
+}
 
 pub struct X11ProxyInjector {
     default_injector: Option<default::X11DefaultInjector>,
@@ -119,10 +208,12 @@ impl X11ProxyInjector {
 
 impl Injector for X11ProxyInjector {
     fn send_string(&self, string: &str, options: crate::InjectionOptions) -> Result<()> {
+        restore_pinned_target_window();
         self.get_active_injector(&options)?.send_string(string, options)
     }
 
     fn send_keys(&self, keys: &[crate::keys::Key], options: crate::InjectionOptions) -> Result<()> {
+        restore_pinned_target_window();
         self.get_active_injector(&options)?.send_keys(keys, options)
     }
 
@@ -131,6 +222,7 @@ impl Injector for X11ProxyInjector {
         keys: &[crate::keys::Key],
         options: crate::InjectionOptions,
     ) -> Result<()> {
+        restore_pinned_target_window();
         self.get_active_injector(&options)?
             .send_key_combination(keys, options)
     }
