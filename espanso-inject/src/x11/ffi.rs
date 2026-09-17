@@ -78,6 +78,12 @@ extern "C" {
         window_out: *mut Window,
         revert_to: *mut c_int,
     ) -> c_int;
+    pub fn XSetInputFocus(
+        display: *mut Display,
+        focus: Window,
+        revert_to: c_int,
+        time: Time,
+    ) -> c_int;
     pub fn XFlush(display: *mut Display) -> c_int;
     pub fn XSendEvent(
         display: *mut Display,
