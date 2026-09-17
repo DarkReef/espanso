@@ -207,24 +207,6 @@ impl<'a> ClipboardInjectorAdapter<'a> {
 
 impl SelectedTextProvider for ClipboardInjectorAdapter<'_> {
     fn get_selected_text(&self) -> Option<String> {
-        #[cfg(all(target_os = "linux", not(feature = "wayland")))]
-        {
-            if let Ok(output) = std::process::Command::new("xclip")
-                .args(["-o", "-selection", "primary"])
-                .output()
-            {
-                if output.status.success() {
-                    if let Ok(text) = String::from_utf8(output.stdout) {
-                        if !text.trim().is_empty() {
-                            debug!("selected text obtained from X11 PRIMARY selection");
-                            return Some(text);
-                        }
-                    }
-                }
-            }
-            debug!("X11 PRIMARY selection unavailable; falling back to Ctrl+C capture");
-        }
-
         let params = self.params_provider.get();
         let options = self.get_operation_options();
         let previous_text = self.clipboard.get_text(&options);
