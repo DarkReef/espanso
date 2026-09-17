@@ -88,19 +88,16 @@ jobs:
           PACKAGE=rEspanso-pol_run-Astra17-X11-Full-x86_64
           ROOT="$OUT/$PACKAGE"
 
-          # Diagnostics exporter is maintained as a normal source file so it can
-          # evolve independently from the compatibility build script. Inject it
-          # into the finished portable tree and regenerate the distributable.
           install -m 0755 scripts/export_logs.sh "$ROOT/export-logs.sh"
-          cat >>"$ROOT/README-FIRST.txt" <<'DIAG_README'
-
-DIAGNOSTICS
-  ./export-logs.sh    create a privacy-aware .tar.gz bundle in diagnostics/
-  or use tray menu:   "Собрать архив диагностики"
-
-The diagnostics bundle intentionally excludes configuration/match contents and
-never intentionally logs selected-text/clipboard contents.
-DIAG_README
+          printf '%s\n' \
+            '' \
+            'DIAGNOSTICS' \
+            '  ./export-logs.sh    create a privacy-aware .tar.gz bundle in diagnostics/' \
+            '  tray menu:          Собрать архив диагностики' \
+            '' \
+            'The diagnostics bundle intentionally excludes configuration/match contents and' \
+            'never intentionally logs selected-text/clipboard contents.' \
+            >> "$ROOT/README-FIRST.txt"
           bash -n "$ROOT/export-logs.sh"
           tar -C "$OUT" -czf "$OUT/$PACKAGE.tar.gz" "$PACKAGE"
           sha256sum "$OUT/$PACKAGE.tar.gz" >"$OUT/$PACKAGE.sha256"
@@ -120,7 +117,6 @@ DIAG_README
           grep -F 'rEspanso-diagnostics-' "$ROOT/export-logs.sh"
           grep -F 'Selected text and clipboard contents are NOT intentionally logged.' "$ROOT/export-logs.sh"
 
-          # Help must identify the exact build the user is running.
           strings "$ROOT/rEspanso-Match-Studio" | grep -F "$RESPANSO_BUILD_DATE"
           strings "$ROOT/rEspanso-Match-Studio" | grep -F "$RESPANSO_BUILD_SHA"
 
