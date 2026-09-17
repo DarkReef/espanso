@@ -38,24 +38,24 @@ extern "C" {
         window: Window,
         string: *const c_char,
         delay: useconds_t,
-    );
+    ) -> libc::c_int;
     pub fn xdo_send_keysequence_window(
         xdo: *const xdo_t,
         window: Window,
         keysequence: *const c_char,
         delay: useconds_t,
-    );
+    ) -> libc::c_int;
     pub fn fast_send_event(xdo: *const xdo_t, window: Window, keycode: c_int, pressed: c_int);
     pub fn fast_enter_text_window(
         xdo: *const xdo_t,
         window: Window,
         string: *const c_char,
         delay: useconds_t,
-    );
+    ) -> libc::c_int;
     pub fn fast_send_keysequence_window(
         xdo: *const xdo_t,
         window: Window,
         keysequence: *const c_char,
         delay: useconds_t,
-    );
+    ) -> libc::c_int;
 }
