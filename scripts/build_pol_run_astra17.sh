@@ -75,6 +75,9 @@ echo "Build host: $(ldd --version | head -n1)"
 rustc --version
 cargo --version
 
+echo '=== static Rust checks (before build) ==='
+cargo check --locked -p espanso-inject -p espanso-detect --no-default-features
+
 # X11 core: no Wayland feature. vendored-tls avoids target OpenSSL coupling.
 cargo build --locked --release \
   -p espanso --bin espanso \
