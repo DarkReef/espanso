@@ -100,6 +100,47 @@ int main() {
     assert(hotkeys == 1);
     assert(context->hotkeys_polled == 1);
 
+    // The two UI shortcuts must work through successful XGrabKey registration,
+    // including Caps Lock. Holding the chord briefly must not emit duplicates.
+    const KeyCode ctrl_key = XKeysymToKeycode(owner, XK_Control_L);
+    const KeySym ui_shortcuts[] = {XK_space, XK_m};
+    for (KeySym symbol : ui_shortcuts) {
+        HotKeyRequest ui_request = {};
+        ui_request.key_sym = symbol;
+        ui_request.ctrl = 1;
+        ui_request.alt = 1;
+        const HotKeyResult ui_registration =
+            detect_register_hotkey(context, ui_request, indexes);
+        assert(ui_registration.success == 1);
+        bool grabbed_without_fallback = false;
+        for (const auto &hotkey : context->hotkeys) {
+            if (hotkey.key_code == ui_registration.key_code &&
+                hotkey.state == ui_registration.state && !hotkey.poll_fallback) {
+                grabbed_without_fallback = true;
+            }
+        }
+        assert(grabbed_without_fallback);
+        for (unsigned int lock : {0U, static_cast<unsigned int>(LockMask)}) {
+            XkbLockModifiers(owner, XkbUseCoreKbd, LockMask, lock);
+            XSync(owner, False);
+            const int before = hotkeys;
+            key_state(owner, context, ctrl_key, true);
+            key_state(owner, context, alt_key, true);
+            key_state(owner, context, ui_registration.key_code, true);
+            pump(context, 10);
+            assert(hotkeys == before + 1);
+            key_state(owner, context, ui_registration.key_code, false);
+            key_state(owner, context, alt_key, false);
+            key_state(owner, context, ctrl_key, false);
+            assert(hotkeys == before + 1);
+        }
+    }
+    XkbLockModifiers(owner, XkbUseCoreKbd, LockMask, 0);
+    XSync(owner, False);
+    assert(hotkeys == 5);
+    assert(context->hotkeys_polled == 1);
+    puts("Astra X11: Ctrl+Alt+Space / Ctrl+Alt+M with Caps Lock and no duplicate PASS");
+
     // Ordinary keyboard input must also be observed by polling and translated
     // into the same InputEvent shape consumed by the Rust matcher.
     const KeyCode letter = XKeysymToKeycode(owner, XK_a);
