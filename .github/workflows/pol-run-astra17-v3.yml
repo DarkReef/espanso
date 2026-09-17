@@ -88,6 +88,9 @@ jobs:
           PACKAGE=rEspanso-pol_run-Astra17-X11-Full-x86_64
           ROOT="$OUT/$PACKAGE"
 
+          # Debian container creates the package as root; verification runs as runner.
+          sudo chown -R "$(id -u):$(id -g)" "$OUT"
+
           install -m 0755 scripts/export_logs.sh "$ROOT/export-logs.sh"
           printf '%s\n' \
             '' \
