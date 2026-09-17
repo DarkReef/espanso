@@ -64,6 +64,10 @@ jobs:
           grep -F '[rESP-SEL-X11] Ctrl+C prepare' espanso-inject/src/x11/mod.rs
           grep -F 'wxScrolledWindow' espanso-modulo/src/sys/form/form.cpp
           grep -F 'raw_yaml_source_scroll' espanso-editor/src/app_legacy.rs
+          grep -F 'ScrollArea::vertical' espanso-editor/src/clinical_extender.rs
+          grep -F '.with_resizable(true)' espanso-editor/src/app_shell.rs
+          grep -F 'checked_delay_micros' espanso-inject/src/x11/xdotool/mod.rs
+          grep -F 'XDO_SUCCESS' espanso-inject/src/x11/xdotool/mod.rs
           grep -F 'configuration inventory (contents intentionally excluded)' scripts/export_logs.sh
           bash -n scripts/export_logs.sh
 
