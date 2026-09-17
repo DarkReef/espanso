@@ -117,8 +117,9 @@ jobs:
           grep -F 'rEspanso-diagnostics-' "$ROOT/export-logs.sh"
           grep -F 'Selected text and clipboard contents are NOT intentionally logged.' "$ROOT/export-logs.sh"
 
-          strings "$ROOT/rEspanso-Match-Studio" | grep -F "$RESPANSO_BUILD_DATE"
-          strings "$ROOT/rEspanso-Match-Studio" | grep -F "$RESPANSO_BUILD_SHA"
+          strings "$ROOT/rEspanso-Match-Studio" > "$RUNNER_TEMP/match-studio-strings.txt"
+          grep -F "$RESPANSO_BUILD_DATE" "$RUNNER_TEMP/match-studio-strings.txt"
+          grep -F "$RESPANSO_BUILD_SHA" "$RUNNER_TEMP/match-studio-strings.txt"
 
           echo '=== core GLIBC requirements ==='
           cat "$ROOT/core-glibc-required.txt"
