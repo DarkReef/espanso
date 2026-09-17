@@ -240,6 +240,12 @@ impl<'a> Renderer<'a> for RendererAdapter<'a> {
                 template
             };
 
+            // On X11, a form/modulo renderer may temporarily become the focused
+            // window. Capture the original application here, after trigger
+            // compensation but before any renderer UI can steal focus. The
+            // injector consumes this pin on the first post-render injection.
+            espanso_inject::pin_x11_target_window();
+
             match self.renderer.render(template, context, &options) {
                 espanso_render::RenderResult::Success(body) => Ok(body),
                 espanso_render::RenderResult::Aborted => Err(RendererError::Aborted.into()),
