@@ -31,10 +31,15 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <wx/display.h>
 #include <wx/scrolwin.h>
 
 // https://docs.wxwidgets.org/stable/classwx_frame.html
-const long DEFAULT_STYLE = wxSTAY_ON_TOP | wxCLOSE_BOX | wxCAPTION;
+const long DEFAULT_STYLE =
+    wxSTAY_ON_TOP | wxCLOSE_BOX | wxCAPTION | wxRESIZE_BORDER | wxMAXIMIZE_BOX;
+
+// Initial outer height only: users may resize beyond this after opening.
+const int INITIAL_MAX_HEIGHT = 600;
 
 const int PADDING = 5;
 const int MULTILINE_MIN_HEIGHT = 100;
@@ -188,6 +193,11 @@ FormFrame::FormFrame(const wxString &title, const wxPoint &pos,
 
     panel = new wxScrolledWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL);
     panel->SetScrollRate(0, 10);
+    // Do not let the full content height become the frame's minimum height.
+    panel->SetMinSize(wxSize(1, 1));
+    wxBoxSizer *frameSizer = new wxBoxSizer(wxVERTICAL);
+    frameSizer->Add(panel, 1, wxEXPAND);
+    SetSizer(frameSizer);
     wxBoxSizer *vbox = new wxBoxSizer(wxVERTICAL);
     panel->SetSizer(vbox);
 
@@ -526,16 +536,38 @@ void FormFrame::HandleMultilineFocus(wxFocusEvent &event) {
 }
 
 void FormFrame::FitFormToContent() {
-    const wxSize best = panel->GetBestSize();
-    const int maxWidth = std::max(320, formMetadata->maxWindowWidth);
-    const int maxHeight = std::max(180, formMetadata->maxWindowHeight);
-    const int width = std::min(std::max(best.GetWidth(), 320), maxWidth);
+    // Measure the content sizer, not the scrolled viewport.
+    const wxSize best = panel->GetSizer()->GetMinSize();
+    int displayIndex = wxDisplay::GetFromWindow(this);
+    if (displayIndex == wxNOT_FOUND) displayIndex = 0;
+    const wxRect workArea =
+        wxDisplay(static_cast<unsigned int>(displayIndex)).GetClientArea();
+    const wxSize decorations = GetSize() - GetClientSize();
+    const int availableWidth =
+        std::max(1, workArea.GetWidth() - decorations.GetWidth());
+    const int availableHeight =
+        std::max(1, workArea.GetHeight() - decorations.GetHeight());
+    const int maxWidth = std::min(
+        availableWidth, std::max(320, formMetadata->maxWindowWidth));
+    const int configuredHeight = formMetadata->maxWindowHeight > 0
+        ? formMetadata->maxWindowHeight : INITIAL_MAX_HEIGHT;
+    const int maxHeight = std::min(
+        availableHeight,
+        std::max(1, std::min(INITIAL_MAX_HEIGHT, configuredHeight)
+                        - decorations.GetHeight()));
+    // Reserve room for the vertical scrollbar without clipping row controls.
+    const int scrollbarWidth =
+        wxSystemSettings::GetMetric(wxSYS_VSCROLL_X, panel);
+    const int width = std::min(
+        std::max(best.GetWidth() + std::max(0, scrollbarWidth), 320), maxWidth);
     const int height = std::min(std::max(best.GetHeight(), 180), maxHeight);
 
-    panel->SetVirtualSize(best);
+    SetClientSize(wxSize(width, height));
+    // Only a minimum is set. In particular, 600 is NOT a maximum size hint.
+    SetMinSize(ClientToWindowSize(wxSize(
+        std::min(width, 320), std::min(height, 180))));
+    Layout();
     panel->FitInside();
-    this->SetClientSize(wxSize(width, height));
-    this->Layout();
 }
 
 void FormFrame::UpdateHelpText() {
