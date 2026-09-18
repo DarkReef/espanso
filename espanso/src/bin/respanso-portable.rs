@@ -41,6 +41,17 @@ fn run() -> Result<i32, String> {
         .map_err(|error| format!("unable to prepare portable directories: {error}"))?;
 
     let user_args = env::args_os().skip(1).collect::<Vec<OsString>>();
+
+    #[cfg(target_os = "windows")]
+    if user_args.is_empty() {
+        if let Err(error) = cleanup_previous_portable_processes(root) {
+            let log_path = paths.runtime.join("rEspanso-bootstrap.log");
+            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open(&log_path) {
+                let _ = writeln!(log, "[startup-cleanup] {error}");
+            }
+        }
+    }
+
     let mut command = Command::new(core);
     command
         .current_dir(root)
@@ -65,6 +76,130 @@ fn run() -> Result<i32, String> {
         return Err(format!("rEspanso core stopped with exit code {code}"));
     }
     Ok(code)
+}
+
+#[cfg(target_os = "windows")]
+fn cleanup_previous_portable_processes(root: &Path) -> Result<usize, String> {
+    use std::{ffi::c_void, mem::size_of, os::windows::ffi::OsStringExt};
+
+    type Handle = *mut c_void;
+
+    #[repr(C)]
+    struct ProcessEntry32W {
+        dw_size: u32,
+        cnt_usage: u32,
+        process_id: u32,
+        default_heap_id: usize,
+        module_id: u32,
+        thread_count: u32,
+        parent_process_id: u32,
+        priority_class_base: i32,
+        flags: u32,
+        exe_file: [u16; 260],
+    }
+
+    const TH32CS_SNAPPROCESS: u32 = 0x0000_0002;
+    const PROCESS_TERMINATE: u32 = 0x0001;
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const SYNCHRONIZE: u32 = 0x0010_0000;
+    const WAIT_TIMEOUT_MS: u32 = 2_000;
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn CreateToolhelp32Snapshot(flags: u32, process_id: u32) -> Handle;
+        fn Process32FirstW(snapshot: Handle, entry: *mut ProcessEntry32W) -> i32;
+        fn Process32NextW(snapshot: Handle, entry: *mut ProcessEntry32W) -> i32;
+        fn OpenProcess(desired_access: u32, inherit_handle: i32, process_id: u32) -> Handle;
+        fn QueryFullProcessImageNameW(
+            process: Handle,
+            flags: u32,
+            exe_name: *mut u16,
+            size: *mut u32,
+        ) -> i32;
+        fn TerminateProcess(process: Handle, exit_code: u32) -> i32;
+        fn WaitForSingleObject(handle: Handle, milliseconds: u32) -> u32;
+        fn CloseHandle(handle: Handle) -> i32;
+        fn GetCurrentProcessId() -> u32;
+    }
+
+    fn normalized(path: &Path) -> String {
+        path.to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_ascii_lowercase()
+    }
+
+    fn utf16_z(value: &[u16]) -> OsString {
+        let len = value.iter().position(|value| *value == 0).unwrap_or(value.len());
+        OsString::from_wide(&value[..len])
+    }
+
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    let invalid_handle = (-1_isize) as Handle;
+    if snapshot.is_null() || snapshot == invalid_handle {
+        return Err(format!(
+            "unable to enumerate stale rEspanso processes: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+
+    let current_pid = unsafe { GetCurrentProcessId() };
+    let root = normalized(root);
+    let mut entry: ProcessEntry32W = unsafe { std::mem::zeroed() };
+    entry.dw_size = size_of::<ProcessEntry32W>() as u32;
+    let mut killed = 0_usize;
+
+    let mut has_entry = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
+    while has_entry {
+        if entry.process_id != current_pid {
+            let name = utf16_z(&entry.exe_file).to_string_lossy().to_ascii_lowercase();
+            let is_respanso = matches!(
+                name.as_str(),
+                "respanso.exe" | "respanso-core.exe" | "espanso.exe"
+            );
+
+            if is_respanso {
+                let access = PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE;
+                let process = unsafe { OpenProcess(access, 0, entry.process_id) };
+                if !process.is_null() {
+                    let mut image = vec![0_u16; 32_768];
+                    let mut image_len = image.len() as u32;
+                    let queried = unsafe {
+                        QueryFullProcessImageNameW(
+                            process,
+                            0,
+                            image.as_mut_ptr(),
+                            &mut image_len,
+                        )
+                    } != 0;
+
+                    if queried {
+                        let process_path = PathBuf::from(OsString::from_wide(
+                            &image[..image_len as usize],
+                        ));
+                        let same_root = process_path
+                            .parent()
+                            .is_some_and(|parent| normalized(parent) == root);
+                        if same_root && unsafe { TerminateProcess(process, 0) } != 0 {
+                            let _ = unsafe { WaitForSingleObject(process, WAIT_TIMEOUT_MS) };
+                            killed += 1;
+                        }
+                    }
+                    unsafe {
+                        CloseHandle(process);
+                    }
+                }
+            }
+        }
+
+        entry.dw_size = size_of::<ProcessEntry32W>() as u32;
+        has_entry = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
+    }
+
+    unsafe {
+        CloseHandle(snapshot);
+    }
+    Ok(killed)
 }
 
 fn report_fatal_error(error: &str) {
