@@ -395,7 +395,7 @@ impl ClinicalExtender {
     pub fn load(root: PathBuf) -> Self {
         let path = database_path(&root);
         let (mut db, status, storage_error) = match load_database(&path) {
-            Ok(Some(db)) => (db, format!("Библиотека загружена: {}", path.display()), false),
+            Ok(Some(db)) => (db, format!("Библиотека загружена: {}", root.join(STORE_DIR).display()), false),
             Ok(None) => (
                 ClinicalDatabase::default(),
                 "Создана стартовая локальная библиотека нозологий".to_owned(),
@@ -862,10 +862,6 @@ impl ClinicalExtender {
         }
         for name in &names {
             self.field_values.entry(name.clone()).or_default();
-            if matches!(name.as_str(), "today" | "visit_date") {
-                continue;
-            }
-
         }
         self.active_fields = names;
     }
@@ -1165,7 +1161,7 @@ impl ClinicalExtender {
                 self.draft_dirty = false;
                 self.status = format!(
                     "Библиотека сохранена: {}",
-                    database_path(&self.root).display()
+                    self.root.join(STORE_DIR).display()
                 );
             }
             Err(error) => self.status = format!("Не удалось сохранить библиотеку: {error}"),

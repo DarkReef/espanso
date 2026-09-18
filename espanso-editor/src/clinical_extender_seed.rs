@@ -3,9 +3,9 @@ impl ClinicalExtender {
     /// missing from it. Existing templates and investigation labels are never
     /// overwritten by this seed migration.
     pub fn load_seeded(root: PathBuf) -> Self {
-        let existing = root.join(STORE_DIR).join("base.yml").exists();
+        let base_path = root.join(STORE_DIR).join("base.yml");
         let mut editor = Self::load(root);
-        if existing || editor.storage_error {
+        if base_path.exists() || editor.storage_error {
             return editor;
         }
         let added = ensure_common_clinical_seed(&mut editor.db);

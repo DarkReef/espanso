@@ -66,6 +66,24 @@ fn load_database(path: &Path) -> Result<Option<ClinicalDatabase>, String> {
             return Err("Неподдерживаемая версия библиотеки".to_owned());
         }
         ensure_base_template(&mut db);
+        // Older versions collected every encountered field in a global list.
+        // Move used definitions to their templates to avoid leaking diagnosis-
+        // specific fields into all visits after migration.
+        let legacy_fields = std::mem::take(&mut db.fields);
+        for field in legacy_fields {
+            let mut assigned = false;
+            for template in &mut db.templates {
+                if section_field_names(&template.sections).contains(&field.name) {
+                    if !template.fields.iter().any(|f| f.name == field.name) {
+                        template.fields.push(field.clone());
+                    }
+                    assigned = true;
+                }
+            }
+            if !assigned {
+                db.fields.push(field);
+            }
+        }
         validate_clinical_database(&db)?;
         return Ok(Some(db));
     }
@@ -185,6 +203,24 @@ fn save_database(path: &Path, db: &ClinicalDatabase) -> Result<(), String> {
 #[cfg(test)]
 mod storage_tests {
     use super::*;
+
+    #[test]
+    fn legacy_field_definitions_follow_their_nosology() {
+        let dir = tempdir::TempDir::new("clinical-fields").unwrap();
+        let path = database_path(dir.path());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut db = ClinicalDatabase::default();
+        db.templates[1].sections.complaints = "{{local_field}}".into();
+        db.fields.push(ClinicalFieldDefinition {
+            name: "local_field".into(), kind: ClinicalFieldKind::Integer, choices: vec![],
+        });
+        fs::write(&path, serialize_database(&db).unwrap()).unwrap();
+        let loaded = load_database(&path).unwrap().unwrap();
+        assert!(effective_fields(&loaded, &[]).is_empty());
+        assert_eq!(effective_fields(&loaded, &["I11.9".into()])[0].kind, ClinicalFieldKind::Integer);
+        save_database(&path, &loaded).unwrap();
+        assert_eq!(load_database(&path).unwrap().unwrap(), loaded);
+    }
 
     #[test]
     fn migrates_legacy_without_changing_original_and_roundtrips_scoped_data() {
