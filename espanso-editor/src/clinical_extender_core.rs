@@ -8,7 +8,7 @@ use std::{
 
 const STORE_DIR: &str = "clinical_extender";
 const STORE_FILE: &str = "nosologies.yml";
-const DATABASE_VERSION: u32 = 2;
+const DATABASE_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClinicalTab {
@@ -104,6 +104,8 @@ pub struct NosologyTemplate {
     pub aliases: Vec<String>,
     pub sections: ClinicalSections,
     pub investigation_ids: Vec<String>,
+    pub catalog: Vec<Investigation>,
+    pub fields: Vec<ClinicalFieldDefinition>,
 }
 
 impl Default for NosologyTemplate {
@@ -115,6 +117,8 @@ impl Default for NosologyTemplate {
             aliases: Vec::new(),
             sections: ClinicalSections::default(),
             investigation_ids: Vec::new(),
+            catalog: Vec::new(),
+            fields: Vec::new(),
         }
     }
 }
@@ -197,6 +201,65 @@ fn investigation(id: &str, label: &str) -> Investigation {
         id: id.to_owned(),
         label: label.to_owned(),
     }
+}
+
+fn merge_fields(target: &mut Vec<ClinicalFieldDefinition>, additions: &[ClinicalFieldDefinition]) {
+    for field in additions {
+        if let Some(existing) = target.iter_mut().find(|item| item.name == field.name) {
+            *existing = field.clone();
+        } else {
+            target.push(field.clone());
+        }
+    }
+}
+
+fn merge_investigations(target: &mut Vec<Investigation>, additions: &[Investigation]) {
+    for item in additions {
+        if let Some(existing) = target.iter_mut().find(|entry| entry.id == item.id) {
+            *existing = item.clone();
+        } else {
+            target.push(item.clone());
+        }
+    }
+}
+
+fn active_template_indices(db: &ClinicalDatabase, tokens: &[String]) -> Vec<usize> {
+    let mut selected: Vec<(usize, usize)> = db.templates.iter().enumerate()
+        .filter(|(_, t)| t.is_base).map(|(i, _)| (0, i)).collect();
+    for token in tokens {
+        let mut matches: Vec<_> = db.templates.iter().enumerate()
+            .filter(|(_, t)| !t.is_base)
+            .filter_map(|(i, t)| match_score(t, token).map(|score| (score, i))).collect();
+        matches.sort_by_key(|&(score, _)| score);
+        for entry in matches {
+            if !selected.iter().any(|&(_, i)| i == entry.1) {
+                selected.push(entry);
+            }
+        }
+    }
+    selected.sort_by_key(|&(score, _)| score);
+    selected.into_iter().map(|(_, i)| i).collect()
+}
+
+fn effective_fields(db: &ClinicalDatabase, tokens: &[String]) -> Vec<ClinicalFieldDefinition> {
+    let mut fields = db.fields.clone();
+    for index in active_template_indices(db, tokens) {
+        merge_fields(&mut fields, &db.templates[index].fields);
+    }
+    fields
+}
+
+fn section_field_names(sections: &ClinicalSections) -> Vec<String> {
+    collect_dynamic_field_names(&VisitDocument {
+        complaints: sections.complaints.clone(),
+        disease_history: sections.disease_history.clone(),
+        life_history: sections.life_history.clone(),
+        past_diseases: sections.past_diseases.clone(),
+        objective_status: sections.objective_status.clone(),
+        examination_plan: sections.examination_plan.clone(),
+        treatment: sections.treatment.clone(),
+        recommendations: sections.recommendations.clone(),
+    })
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -321,23 +384,27 @@ pub struct ClinicalExtender {
     draft_is_new: bool,
     draft_dirty: bool,
     new_investigation: String,
+    new_field: String,
     field_values: BTreeMap<String, String>,
     active_fields: Vec<String>,
     status: String,
+    storage_error: bool,
 }
 
 impl ClinicalExtender {
     pub fn load(root: PathBuf) -> Self {
         let path = database_path(&root);
-        let (mut db, status) = match load_database(&path) {
-            Ok(Some(db)) => (db, format!("Библиотека загружена: {}", path.display())),
+        let (mut db, status, storage_error) = match load_database(&path) {
+            Ok(Some(db)) => (db, format!("Библиотека загружена: {}", path.display()), false),
             Ok(None) => (
                 ClinicalDatabase::default(),
                 "Создана стартовая локальная библиотека нозологий".to_owned(),
+                false,
             ),
             Err(error) => (
                 ClinicalDatabase::default(),
                 format!("Не удалось прочитать библиотеку; загружены стартовые шаблоны: {error}"),
+                true,
             ),
         };
         ensure_base_template(&mut db);
@@ -361,9 +428,11 @@ impl ClinicalExtender {
             draft_is_new: false,
             draft_dirty: false,
             new_investigation: String::new(),
+            new_field: String::new(),
             field_values,
             active_fields: Vec::new(),
             status,
+            storage_error,
         };
         result.select_template(0);
         result.recompose(false);
@@ -599,13 +668,24 @@ impl ClinicalExtender {
 
         ui.group(|ui| {
             ui.label(egui::RichText::new("Структурированный план обследования").strong());
-            let catalog = self.db.catalog.clone();
+            let mut catalog = self.db.catalog.clone();
+            for template in self.db.templates.iter().filter(|t| t.is_base) {
+                merge_investigations(&mut catalog, &template.catalog);
+            }
+            merge_investigations(&mut catalog, &self.draft.catalog);
+            let inherited: HashSet<String> = self.db.templates.iter()
+                .filter(|t| t.is_base && !self.draft.is_base)
+                .flat_map(|t| t.investigation_ids.iter().cloned()).collect();
             for investigation in catalog {
                 let mut checked = self
                     .draft
                     .investigation_ids
                     .iter()
                     .any(|id| id == &investigation.id);
+                if inherited.contains(&investigation.id) {
+                    ui.add_enabled(false, egui::Checkbox::new(&mut true, format!("{} · из базы", investigation.label)));
+                    continue;
+                }
                 if ui.checkbox(&mut checked, &investigation.label).changed() {
                     if checked {
                         self.draft.investigation_ids.push(investigation.id);
@@ -650,6 +730,7 @@ impl ClinicalExtender {
             3,
         );
 
+        self.template_fields_ui(ui);
         ui.separator();
         ui.horizontal_wrapped(|ui| {
             if ui.button("Применить шаблон").clicked() {
@@ -663,7 +744,9 @@ impl ClinicalExtender {
                 if self.draft_dirty {
                     self.apply_draft();
                 }
-                self.save_database();
+                if !self.draft_dirty {
+                    self.save_database();
+                }
             }
             if !self.draft.is_base
                 && !self.draft_is_new
@@ -681,11 +764,84 @@ impl ClinicalExtender {
         ui.label(egui::RichText::new(&self.status).weak());
     }
 
+    fn template_fields_ui(&mut self, ui: &mut egui::Ui) {
+        ui.separator();
+        ui.label(egui::RichText::new("Поля этого шаблона").strong());
+        ui.small("Добавьте {{имя_поля}} латиницей в текст выше. Здесь задаются тип и варианты; значения пациента не сохраняются.");
+        ui.horizontal(|ui| {
+            ui.add(egui::TextEdit::singleline(&mut self.new_field).hint_text("Имя поля, например therapy_start"));
+            if ui.button("Добавить поле").clicked() {
+                let name = self.new_field.trim();
+                let valid = !name.is_empty() && name.bytes().enumerate().all(|(i, b)|
+                    b == b'_' || b.is_ascii_alphabetic() || (i > 0 && b.is_ascii_digit()));
+                if valid && !matches!(name, "today" | "visit_date")
+                    && !self.draft.fields.iter().any(|f| f.name == name) {
+                    self.draft.fields.push(ClinicalFieldDefinition {
+                        name: name.to_owned(), kind: infer_field_kind(name), choices: Vec::new(),
+                    });
+                    self.new_field.clear();
+                    self.draft_dirty = true;
+                } else {
+                    self.status = "Имя поля должно быть уникальным: латиница, цифры, подчёркивание; первая буква или подчёркивание. today и visit_date зарезервированы.".to_owned();
+                }
+            }
+        });
+        let inherited = effective_fields(&self.db, &[]);
+        let mut names = section_field_names(&self.draft.sections);
+        for field in &self.draft.fields {
+            if !names.contains(&field.name) {
+                names.push(field.name.clone());
+            }
+        }
+        for name in names {
+            if matches!(name.as_str(), "today" | "visit_date") {
+                continue;
+            }
+            let local = self.draft.fields.iter().find(|f| f.name == name).cloned();
+            let mut field = local.clone().or_else(|| inherited.iter().find(|f| f.name == name).cloned())
+                .unwrap_or_else(|| ClinicalFieldDefinition {
+                    name: name.clone(), kind: infer_field_kind(&name), choices: Vec::new(),
+                });
+            let original = field.clone();
+            let mut reset = false;
+            ui.push_id(("template_field", &name), |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.monospace(&name);
+                    egui::ComboBox::from_id_salt("kind").selected_text(field.kind.label()).show_ui(ui, |ui| {
+                        for kind in ClinicalFieldKind::all() {
+                            ui.selectable_value(&mut field.kind, kind, kind.label());
+                        }
+                    });
+                    if local.is_some() {
+                        reset = ui.small_button("Сбросить определение").clicked();
+                    } else {
+                        ui.weak("из базы / автоматически");
+                    }
+                });
+                if field.kind == ClinicalFieldKind::Choice {
+                    let mut choices = field.choices.join(", ");
+                    if ui.text_edit_singleline(&mut choices).changed() {
+                        field.choices = choices.split([',', ';']).map(str::trim)
+                            .filter(|s| !s.is_empty()).map(ToOwned::to_owned).collect();
+                    }
+                }
+            });
+            if reset {
+                self.draft.fields.retain(|f| f.name != name);
+                self.draft_dirty = true;
+            } else if field != original {
+                merge_fields(&mut self.draft.fields, &[field]);
+                self.draft_dirty = true;
+            }
+        }
+    }
+
     fn recompose(&mut self, force: bool) {
         let tokens = parse_diagnosis_input(&self.diagnosis_input);
         let (raw_document, matched, unknown) = compose(&self.db, &tokens);
         self.sync_dynamic_fields(&raw_document);
-        let document = render_dynamic_document(raw_document, &self.field_values, &self.db.fields);
+        let definitions = effective_fields(&self.db, &tokens);
+        let document = render_dynamic_document(raw_document, &self.field_values, &definitions);
         self.visit.refresh(document, force);
         self.matched = matched;
         self.unknown = unknown;
@@ -698,19 +854,18 @@ impl ClinicalExtender {
             .entry("visit_date".to_owned())
             .or_insert_with(today_local_string);
 
-        let names = collect_dynamic_field_names(document);
+        let mut names = collect_dynamic_field_names(document);
+        for field in effective_fields(&self.db, &parse_diagnosis_input(&self.diagnosis_input)) {
+            if !names.contains(&field.name) {
+                names.push(field.name);
+            }
+        }
         for name in &names {
             self.field_values.entry(name.clone()).or_default();
             if matches!(name.as_str(), "today" | "visit_date") {
                 continue;
             }
-            if self.db.fields.iter().all(|field| field.name != *name) {
-                self.db.fields.push(ClinicalFieldDefinition {
-                    name: name.clone(),
-                    kind: infer_field_kind(name),
-                    choices: Vec::new(),
-                });
-            }
+
         }
         self.active_fields = names;
     }
@@ -746,8 +901,7 @@ impl ClinicalExtender {
                         choices: Vec::new(),
                     }
                 } else {
-                    self.db
-                        .fields
+                    effective_fields(&self.db, &parse_diagnosis_input(&self.diagnosis_input))
                         .iter()
                         .find(|field| field.name == name)
                         .cloned()
@@ -854,10 +1008,18 @@ impl ClinicalExtender {
                     changed = true;
                 }
                 if name != "visit_date" && definition != original_definition {
-                    if let Some(slot) = self.db.fields.iter_mut().find(|field| field.name == name) {
-                        *slot = definition;
+                    // Store an edited definition in its most specific active owner.
+                    let tokens = parse_diagnosis_input(&self.diagnosis_input);
+                    let owner = active_template_indices(&self.db, &tokens).into_iter().rev()
+                        .find(|&i| self.db.templates[i].fields.iter().any(|f| f.name == name)
+                            || section_field_names(&self.db.templates[i].sections).contains(&name));
+                    if let Some(index) = owner {
+                        merge_fields(&mut self.db.templates[index].fields, &[definition]);
+                        if self.selected_template == Some(index) && !self.draft_dirty {
+                            self.draft = self.db.templates[index].clone();
+                        }
                     } else {
-                        self.db.fields.push(definition);
+                        merge_fields(&mut self.db.fields, &[definition]);
                     }
                     changed = true;
                 }
@@ -909,6 +1071,12 @@ impl ClinicalExtender {
             return;
         }
 
+        if self.db.templates.iter().enumerate().any(|(index, template)|
+            (self.draft_is_new || Some(index) != self.selected_template)
+                && template.code_pattern.eq_ignore_ascii_case(&self.draft.code_pattern)) {
+            self.status = "Шаблон с таким кодом уже существует".to_owned();
+            return;
+        }
         if self.draft_is_new {
             self.db.templates.push(self.draft.clone());
             let index = self.db.templates.len().saturating_sub(1);
@@ -951,12 +1119,16 @@ impl ClinicalExtender {
         if label.is_empty() {
             return;
         }
-        if let Some(existing) = self
-            .db
-            .catalog
-            .iter()
+        let mut catalog = self.db.catalog.clone();
+        for template in &self.db.templates {
+            merge_investigations(&mut catalog, &template.catalog);
+        }
+        merge_investigations(&mut catalog, &self.draft.catalog);
+        if let Some(existing) = catalog.iter()
             .find(|item| item.label.eq_ignore_ascii_case(label))
         {
+            merge_investigations(&mut self.draft.catalog, std::slice::from_ref(existing));
+            self.draft_dirty = true;
             if !self.draft.investigation_ids.contains(&existing.id) {
                 self.draft.investigation_ids.push(existing.id.clone());
                 self.draft_dirty = true;
@@ -964,15 +1136,15 @@ impl ClinicalExtender {
             self.new_investigation.clear();
             return;
         }
-        let mut counter = self.db.catalog.len() + 1;
+        let mut counter = catalog.len() + 1;
         let id = loop {
             let candidate = format!("custom_{counter}");
-            if self.db.catalog.iter().all(|item| item.id != candidate) {
+            if catalog.iter().all(|item| item.id != candidate) {
                 break candidate;
             }
             counter += 1;
         };
-        self.db.catalog.push(Investigation {
+        self.draft.catalog.push(Investigation {
             id: id.clone(),
             label: label.to_owned(),
         });
@@ -982,6 +1154,10 @@ impl ClinicalExtender {
     }
 
     fn save_database(&mut self) {
+        if self.storage_error {
+            self.status = "Сохранение заблокировано: исправьте ошибку файла библиотеки и перезапустите редактор. Исходные данные не изменены.".to_owned();
+            return;
+        }
         ensure_base_template(&mut self.db);
         match save_database(&database_path(&self.root), &self.db) {
             Ok(()) => {
@@ -1044,31 +1220,7 @@ fn database_path(root: &Path) -> PathBuf {
     root.join(STORE_DIR).join(STORE_FILE)
 }
 
-fn load_database(path: &Path) -> Result<Option<ClinicalDatabase>, String> {
-    if !path.exists() {
-        return Ok(None);
-    }
-    let content = fs::read_to_string(path)
-        .map_err(|error| format!("{}: {error}", path.display()))?;
-    serde_norway::from_str(&content)
-        .map(Some)
-        .map_err(|error| format!("{}: {error}", path.display()))
-}
-
-fn serialize_database(db: &ClinicalDatabase) -> Result<String, String> {
-    serde_norway::to_string(db).map_err(|error| error.to_string())
-}
-
-fn save_database(path: &Path, db: &ClinicalDatabase) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "Некорректный путь библиотеки".to_owned())?;
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    let content = serialize_database(db)?;
-    let temp = path.with_extension("yml.tmp");
-    fs::write(&temp, content).map_err(|error| error.to_string())?;
-    fs::rename(&temp, path).map_err(|error| error.to_string())
-}
+include!("clinical_extender_storage.rs");
 
 fn ensure_base_template(db: &mut ClinicalDatabase) {
     db.version = DATABASE_VERSION;
@@ -1181,14 +1333,17 @@ fn compose(db: &ClinicalDatabase, tokens: &[String]) -> (VisitDocument, Vec<Stri
             .map(|template| &template.sections.recommendations),
     );
 
+    let mut shared_catalog = db.catalog.clone();
+    for template in db.templates.iter().filter(|t| t.is_base) {
+        merge_investigations(&mut shared_catalog, &template.catalog);
+    }
     let mut seen_investigations = HashSet::new();
     let mut investigation_labels = Vec::new();
     for template in &templates {
         for id in &template.investigation_ids {
             if seen_investigations.insert(id.clone()) {
                 investigation_labels.push(
-                    db.catalog
-                        .iter()
+                    template.catalog.iter().chain(shared_catalog.iter())
                         .find(|item| &item.id == id)
                         .map(|item| item.label.clone())
                         .unwrap_or_else(|| id.clone()),

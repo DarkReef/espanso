@@ -1,0 +1,35 @@
+name: Clinical library checks
+on:
+  push:
+    branches: [fix/adaptive-form-height]
+    paths:
+      - 'espanso-editor/src/clinical_extender*'
+      - '.github/workflows/clinical-library-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-portable
+          cache-on-failure: true
+      - name: Parse changed Rust sources
+        shell: pwsh
+        run: |
+          rustfmt --edition 2021 --emit stdout espanso-editor/src/clinical_extender.rs > $null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustfmt --edition 2021 --emit stdout espanso-editor/src/clinical_extender_storage.rs > $null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check editor including UI
+        run: cargo check --locked -p espanso-editor --all-targets
+      - name: Test editor and clinical file migration
+        run: cargo test --locked -p espanso-editor --lib

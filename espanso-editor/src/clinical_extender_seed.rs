@@ -3,7 +3,11 @@ impl ClinicalExtender {
     /// missing from it. Existing templates and investigation labels are never
     /// overwritten by this seed migration.
     pub fn load_seeded(root: PathBuf) -> Self {
+        let existing = root.join(STORE_DIR).join("base.yml").exists();
         let mut editor = Self::load(root);
+        if existing || editor.storage_error {
+            return editor;
+        }
         let added = ensure_common_clinical_seed(&mut editor.db);
         if added > 0 {
             editor.status = format!(
@@ -200,6 +204,7 @@ fn seed_template(
             .iter()
             .map(|value| (*value).to_owned())
             .collect(),
+        ..Default::default()
     }
 }
 
