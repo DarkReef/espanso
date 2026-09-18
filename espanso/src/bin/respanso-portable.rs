@@ -44,11 +44,20 @@ fn run() -> Result<i32, String> {
 
     #[cfg(target_os = "windows")]
     if user_args.is_empty() {
-        if let Err(error) = cleanup_previous_portable_processes(root) {
-            let log_path = paths.runtime.join("rEspanso-bootstrap.log");
-            if let Ok(mut log) = OpenOptions::new().create(true).append(true).open(&log_path) {
-                let _ = writeln!(log, "[startup-cleanup] {error}");
+        let cleanup_result = cleanup_previous_portable_processes(root);
+        let log_path = paths.runtime.join("rEspanso-bootstrap.log");
+        match cleanup_result {
+            Ok(killed) if killed > 0 => {
+                if let Ok(mut log) = OpenOptions::new().create(true).append(true).open(&log_path) {
+                    let _ = writeln!(log, "[startup-cleanup] terminated {killed} stale process(es)");
+                }
             }
+            Err(error) => {
+                if let Ok(mut log) = OpenOptions::new().create(true).append(true).open(&log_path) {
+                    let _ = writeln!(log, "[startup-cleanup] warning: {error}");
+                }
+            }
+            _ => {}
         }
     }
 
