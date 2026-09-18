@@ -59,6 +59,9 @@ jobs:
           grep -F 'raw_to_input_invalid_utf8_buffer_has_no_value' espanso-detect/src/x11/mod.rs
           grep -F 'sender.send((event, source_id)).is_err()' espanso/src/cli/worker/engine/funnel/mod.rs
           grep -F '[rESP-HOTKEY] detected' espanso-engine/src/process/middleware/hotkey.rs
+          grep -F 'DEFAULT_SELECTION_MATCH_SHORTCUT: &str = "CTRL+ALT+M"' espanso/src/cli/worker/builtin/selection.rs
+          grep -F 'FALLBACK_SELECTION_MATCH_SHORTCUT: &str = "CTRL+ALT+SHIFT+M"' espanso/src/cli/worker/builtin/selection.rs
+          grep -F 'create_match_execute_selection_fallback()' espanso/src/cli/worker/builtin/mod.rs
           grep -F '[rESP-SEL] SelectionMatchRequested begin' espanso-engine/src/process/middleware/selection_match.rs
           grep -F '[rESP-SEL-CLIP] capture=' espanso/src/cli/worker/engine/dispatch/executor/clipboard_injector.rs
           grep -F '[rESP-SEL-X11] Ctrl+C prepare' espanso-inject/src/x11/mod.rs
