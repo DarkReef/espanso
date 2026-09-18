@@ -24,6 +24,7 @@ use crate::cli::worker::builtin::generate_next_builtin_id;
 use super::BuiltInMatch;
 
 pub const DEFAULT_SELECTION_MATCH_SHORTCUT: &str = "CTRL+ALT+M";
+pub const FALLBACK_SELECTION_MATCH_SHORTCUT: &str = "CTRL+ALT+SHIFT+M";
 
 pub fn create_match_execute_selection() -> BuiltInMatch {
     BuiltInMatch {
@@ -31,6 +32,16 @@ pub fn create_match_execute_selection() -> BuiltInMatch {
         label: "Execute match from selected text",
         triggers: Vec::new(),
         hotkey: Some(DEFAULT_SELECTION_MATCH_SHORTCUT.to_owned()),
+        action: |_| EventType::SelectionMatchRequested,
+    }
+}
+
+pub fn create_match_execute_selection_fallback() -> BuiltInMatch {
+    BuiltInMatch {
+        id: generate_next_builtin_id(),
+        label: "Execute match from selected text (fallback)",
+        triggers: Vec::new(),
+        hotkey: Some(FALLBACK_SELECTION_MATCH_SHORTCUT.to_owned()),
         action: |_| EventType::SelectionMatchRequested,
     }
 }
