@@ -164,7 +164,17 @@ impl Source for Win32Source {
             let raw = convert_hotkey_to_raw(hk);
             if let Some(raw_hk) = raw {
                 if unsafe { detect_register_hotkey(handle, raw_hk) } == 0 {
-                    error!("unable to register hotkey: {}", hk);
+                    // Read the thread-local Win32 error before logging can overwrite it.
+                    let err = std::io::Error::last_os_error();
+                    if err.raw_os_error() == Some(1409) {
+                        error!(
+                            "unable to register hotkey: {}: already registered (Win32 error 1409). \
+                             Close other Espanso/rEspanso instances or change this shortcut.",
+                            hk
+                        );
+                    } else {
+                        error!("unable to register hotkey: {}: {}", hk, err);
+                    }
                 } else {
                     debug!("registered hotkey: {}", hk);
                 }
