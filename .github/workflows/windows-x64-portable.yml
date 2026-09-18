@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - build/windows-latest
+      - build/windows-4f8e369
 
 permissions:
   contents: read
@@ -69,6 +70,9 @@ jobs:
       - name: Check formatting (advisory)
         continue-on-error: true
         run: cargo fmt --all -- --check
+
+      - name: Check Windows components
+        run: cargo check --locked -p espanso -p espanso-inject -p espanso-detect -p espanso-editor --all-targets
 
       - name: Test Match Studio
         run: cargo test --locked -p espanso-editor --lib
