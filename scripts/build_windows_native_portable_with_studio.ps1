@@ -96,8 +96,12 @@ rEspanso Portable + Match Studio
 Почта: imaganate.dark@gmail.com
 
 Запуск: rEspanso.exe
-Студия: меню rEspanso в трее -> «Открыть студию rEspanso»
+Студия: двойной щелчок ЛКМ по значку rEspanso в трее
+Меню: щелчок ПКМ по значку rEspanso в трее
 Также студию можно открыть напрямую: rEspanso Match Studio.exe
+
+При обычном запуске launcher завершает зависшие rEspanso.exe/rEspanso-core.exe
+только из этой portable-папки. Открытая Match Studio не завершается.
 
 Структура папки rEspanso:
   config\default.yml
