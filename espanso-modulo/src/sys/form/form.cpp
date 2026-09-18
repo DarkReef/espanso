@@ -282,7 +282,7 @@ void FormFrame::AddComponent(wxPanel *parent, wxBoxSizer *sizer,
     case FieldType::LABEL: {
         const LabelMetadata *labelMeta =
             static_cast<const LabelMetadata *>(meta.specific);
-        const long style = wxST_NO_AUTORESIZE;
+        const long style = 0;
         const wxString originalText = wxString::FromUTF8(labelMeta->text);
         auto label = new wxStaticText(parent, wxID_ANY, originalText,
                                       wxDefaultPosition, wxDefaultSize, style);
@@ -605,6 +605,7 @@ void FormFrame::RelayoutAdaptiveContent() {
         // before every pass so widening the window can unwrap it again.
         label->SetLabel(entry.second);
         label->Wrap(wrapWidth);
+        label->InvalidateBestSize();
     }
 
     panel->Layout();
@@ -614,6 +615,7 @@ void FormFrame::RelayoutAdaptiveContent() {
 
 void FormFrame::OnResize(wxSizeEvent &event) {
     event.Skip();
+    Layout();
     RelayoutAdaptiveContent();
 }
 
