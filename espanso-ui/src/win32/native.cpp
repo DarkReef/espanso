@@ -499,13 +499,21 @@ LRESULT CALLBACK ui_window_procedure(HWND window, unsigned int msg, WPARAM wp,
     }
     case APPWM_ICON_CLICK: {
         switch (lp) {
-        case WM_LBUTTONUP:
         case WM_RBUTTONUP:
             event.event_type = UI_EVENT_TYPE_ICON_CLICK;
             if (variables && variables->event_callback &&
                 variables->rust_instance) {
                 variables->event_callback(variables->rust_instance, event);
             }
+            break;
+        case WM_LBUTTONDBLCLK:
+            event.event_type = UI_EVENT_TYPE_ICON_DOUBLE_CLICK;
+            if (variables && variables->event_callback &&
+                variables->rust_instance) {
+                variables->event_callback(variables->rust_instance, event);
+            }
+            break;
+        default:
             break;
         }
         break;
