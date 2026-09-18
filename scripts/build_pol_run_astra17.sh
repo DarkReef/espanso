@@ -392,6 +392,11 @@ The working configuration stays inside this directory:
   packages/ local packages
   runtime/  daemon/tray state and logs
 
+Hotkeys:
+  Ctrl+Alt+M          execute match from selected text (primary)
+  Ctrl+Alt+Shift+M    execute match from selected text (fallback)
+  Alt+L               AI rewrite selected text
+
 Useful commands:
   ./studio.sh        open only Match Studio
   ./start-engine.sh  start engine + tray icon
