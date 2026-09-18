@@ -30,6 +30,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 #include <wx/display.h>
 #include <wx/scrolwin.h>
@@ -128,6 +129,7 @@ class FormFrame : public wxFrame {
 
     wxScrolledWindow *panel;
     std::vector<void *> fields;
+    std::vector<std::pair<wxStaticText *, wxString>> wrappingLabels;
     std::unordered_map<std::string, std::unique_ptr<FieldWrapper>> idMap;
     wxButton *submit;
     wxButton *previewButton;
@@ -151,8 +153,10 @@ class FormFrame : public wxFrame {
     void OnCharHook(wxKeyEvent &event);
     void OnListBoxEvent(wxCommandEvent &event);
     void OnFieldChanged(wxCommandEvent &event);
+    void OnResize(wxSizeEvent &event);
     void UpdateHelpText();
     void FitFormToContent();
+    void RelayoutAdaptiveContent();
     void UpdatePreview();
     bool RequestComputedPreview(int request);
     std::vector<ValuePair> CollectCurrentValues(
@@ -248,6 +252,7 @@ FormFrame::FormFrame(const wxString &title, const wxPoint &pos,
     Bind(wxEVT_BUTTON, &FormFrame::OnPreviewBtn, this, ID_Preview);
     Bind(wxEVT_TIMER, &FormFrame::OnPreviewTimer, this, ID_PreviewTimer);
     Bind(wxEVT_CHAR_HOOK, &FormFrame::OnCharHook, this, wxID_ANY);
+    Bind(wxEVT_SIZE, &FormFrame::OnResize, this);
 
     if (previewEnabled) {
         if (!computedPreviewEnabled || previewMode == PREVIEW_MODE_LAYOUT) {
@@ -265,6 +270,7 @@ FormFrame::FormFrame(const wxString &title, const wxPoint &pos,
     }
 
     FitFormToContent();
+    RelayoutAdaptiveContent();
     this->CentreOnScreen();
 }
 
@@ -276,12 +282,12 @@ void FormFrame::AddComponent(wxPanel *parent, wxBoxSizer *sizer,
     case FieldType::LABEL: {
         const LabelMetadata *labelMeta =
             static_cast<const LabelMetadata *>(meta.specific);
-        const long style = wxST_ELLIPSIZE_END;
-        auto label = new wxStaticText(parent, wxID_ANY,
-                                      wxString::FromUTF8(labelMeta->text),
+        const long style = wxST_NO_AUTORESIZE;
+        const wxString originalText = wxString::FromUTF8(labelMeta->text);
+        auto label = new wxStaticText(parent, wxID_ANY, originalText,
                                       wxDefaultPosition, wxDefaultSize, style);
 
-        label->Wrap(this->GetClientSize().GetWidth());
+        wrappingLabels.emplace_back(label, originalText);
         control = label;
         fields.push_back(label);
         break;
@@ -388,10 +394,12 @@ void FormFrame::AddComponent(wxPanel *parent, wxBoxSizer *sizer,
         const RowMetadata *rowMeta =
             static_cast<const RowMetadata *>(meta.specific);
 
-        auto innerPanel = new wxPanel(panel, wxID_ANY);
+        auto innerPanel = new wxPanel(parent, wxID_ANY);
         wxBoxSizer *hbox = new wxBoxSizer(wxHORIZONTAL);
         innerPanel->SetSizer(hbox);
-        sizer->Add(innerPanel, 0, wxEXPAND | wxALL, 0);
+        const int rowProportion =
+            sizer->GetOrientation() == wxHORIZONTAL ? 1 : 0;
+        sizer->Add(innerPanel, rowProportion, wxEXPAND | wxALL, 0);
         fields.push_back(innerPanel);
 
         for (int field = 0; field < rowMeta->fieldSize; field++) {
@@ -407,7 +415,9 @@ void FormFrame::AddComponent(wxPanel *parent, wxBoxSizer *sizer,
     }
 
     if (control) {
-        sizer->Add((wxWindow *)control, 0, wxEXPAND | wxALL, PADDING);
+        const int proportion =
+            sizer->GetOrientation() == wxHORIZONTAL ? 1 : 0;
+        sizer->Add((wxWindow *)control, proportion, wxEXPAND | wxALL, PADDING);
     }
 }
 
@@ -568,6 +578,43 @@ void FormFrame::FitFormToContent() {
         std::min(width, 320), std::min(height, 180))));
     Layout();
     panel->FitInside();
+}
+
+void FormFrame::RelayoutAdaptiveContent() {
+    if (panel == nullptr || panel->GetSizer() == nullptr) return;
+
+    const int scrollbarWidth =
+        std::max(0, wxSystemSettings::GetMetric(wxSYS_VSCROLL_X, panel));
+    const int viewportWidth = std::max(
+        120, panel->GetClientSize().GetWidth() - scrollbarWidth - 2 * PADDING);
+
+    for (auto &entry : wrappingLabels) {
+        wxStaticText *label = entry.first;
+        if (label == nullptr) continue;
+
+        int wrapWidth = viewportWidth;
+        wxWindow *parent = label->GetParent();
+        if (parent != nullptr && parent != panel) {
+            const int parentWidth = parent->GetClientSize().GetWidth();
+            if (parentWidth > 2 * PADDING) {
+                wrapWidth = std::max(80, parentWidth - 2 * PADDING);
+            }
+        }
+
+        // wxStaticText::Wrap() inserts line breaks. Restore the original text
+        // before every pass so widening the window can unwrap it again.
+        label->SetLabel(entry.second);
+        label->Wrap(wrapWidth);
+    }
+
+    panel->Layout();
+    panel->FitInside();
+    Layout();
+}
+
+void FormFrame::OnResize(wxSizeEvent &event) {
+    event.Skip();
+    RelayoutAdaptiveContent();
 }
 
 void FormFrame::UpdateHelpText() {
