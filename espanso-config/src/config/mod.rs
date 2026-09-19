@@ -342,6 +342,27 @@ pub enum X11InjectorProfile {
     Legacy,
 }
 
+impl X11InjectorProfile {
+    pub fn from_name(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "safe" => Some(Self::Safe),
+            "balanced" => Some(Self::Balanced),
+            "fast" => Some(Self::Fast),
+            "legacy" => Some(Self::Legacy),
+            _ => None,
+        }
+    }
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Safe => "safe",
+            Self::Balanced => "balanced",
+            Self::Fast => "fast",
+            Self::Legacy => "legacy",
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct X11SafeInjectorConfig {
     pub profile: X11InjectorProfile,
@@ -355,6 +376,69 @@ pub struct X11SafeInjectorConfig {
     pub reinitialize_on_failure: bool,
     pub clipboard_threshold: usize,
     pub legacy_release_all_keys: bool,
+}
+
+impl X11SafeInjectorConfig {
+    /// Built-in safety policy for a named X11 profile.
+    ///
+    /// User overrides are applied later by the config resolver. Keeping preset
+    /// values here gives the runtime and Match Studio a single source of truth.
+    pub const fn for_profile(profile: X11InjectorProfile) -> Self {
+        match profile {
+            X11InjectorProfile::Safe => Self {
+                profile,
+                wait_for_modifiers: true,
+                modifier_release_timeout_ms: 150,
+                focus_guard: true,
+                focus_retry_count: 3,
+                focus_retry_delay_ms: 15,
+                circuit_breaker: true,
+                fast_failure_threshold: 1,
+                reinitialize_on_failure: true,
+                clipboard_threshold: 48,
+                legacy_release_all_keys: false,
+            },
+            X11InjectorProfile::Balanced => Self {
+                profile,
+                wait_for_modifiers: true,
+                modifier_release_timeout_ms: 100,
+                focus_guard: true,
+                focus_retry_count: 2,
+                focus_retry_delay_ms: 10,
+                circuit_breaker: true,
+                fast_failure_threshold: 2,
+                reinitialize_on_failure: true,
+                clipboard_threshold: 100,
+                legacy_release_all_keys: false,
+            },
+            X11InjectorProfile::Fast => Self {
+                profile,
+                wait_for_modifiers: true,
+                modifier_release_timeout_ms: 40,
+                focus_guard: false,
+                focus_retry_count: 0,
+                focus_retry_delay_ms: 0,
+                circuit_breaker: false,
+                fast_failure_threshold: 3,
+                reinitialize_on_failure: false,
+                clipboard_threshold: usize::MAX,
+                legacy_release_all_keys: false,
+            },
+            X11InjectorProfile::Legacy => Self {
+                profile,
+                wait_for_modifiers: false,
+                modifier_release_timeout_ms: 0,
+                focus_guard: false,
+                focus_retry_count: 0,
+                focus_retry_delay_ms: 0,
+                circuit_breaker: false,
+                fast_failure_threshold: 3,
+                reinitialize_on_failure: false,
+                clipboard_threshold: usize::MAX,
+                legacy_release_all_keys: true,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
