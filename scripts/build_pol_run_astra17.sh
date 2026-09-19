@@ -58,10 +58,19 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   xdotool \
   xvfb
 
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-  | sh -s -- -y --profile minimal --default-toolchain stable
-# shellcheck disable=SC1091
-. "$HOME/.cargo/env"
+RUST_TOOLCHAIN="${RESPANSO_RUST_TOOLCHAIN:-1.98.1}"
+
+# CI mounts $HOME/.cargo and $HOME/.rustup from an Actions cache. A cold build
+# installs the pinned toolchain; warm builds reuse it without contacting rustup.
+if [[ ! -x "$HOME/.cargo/bin/rustup" ]]; then
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --profile minimal --default-toolchain "$RUST_TOOLCHAIN"
+fi
+export PATH="$HOME/.cargo/bin:$PATH"
+if ! rustup toolchain list | grep -q "^$RUST_TOOLCHAIN-"; then
+  rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+fi
+rustup default "$RUST_TOOLCHAIN" >/dev/null
 
 bash -n \
   scripts/build_pol_run_astra17.sh \
@@ -373,6 +382,10 @@ export LD_LIBRARY_PATH="$ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$ROOT/rEspanso-Match-Studio" --mcp --config-dir "$ROOT"
 MCP_RUN
 
+# Diagnostics is part of the package itself. Keeping package assembly in this
+# script means CI only verifies the archive instead of mutating and rebuilding it.
+install -m 0755 scripts/export_logs.sh "$ROOT/export-logs.sh"
+
 cat >"$ROOT/README-FIRST.txt" <<'README'
 rEspanso pol_run — full portable build for Astra Linux 1.7 / KDE / X11 / x86_64
 
@@ -406,7 +419,11 @@ Useful commands:
   ./start-tray.sh    restore only the tray icon
   ./stop.sh          stop engine + tray icon
   ./diagnose.sh      ABI/library/display/tray diagnostics
+  ./export-logs.sh    create a privacy-aware diagnostics archive in diagnostics/
   ./mcp.sh           MCP stdio server (agent credentials come from environment)
+
+Diagnostics archives intentionally exclude configuration and match contents.
+Selected-text and clipboard contents are not intentionally logged.
 
 MCP agent connection:
   export RESPANSO_MCP_AGENT_ID='<id from Studio>'
@@ -429,6 +446,7 @@ chmod +x \
   "$ROOT/start-tray.sh" \
   "$ROOT/stop.sh" \
   "$ROOT/diagnose.sh" \
+  "$ROOT/export-logs.sh" \
   "$ROOT/mcp.sh" \
   "$ROOT/bin/xdotool"
 
@@ -441,6 +459,7 @@ bash -n \
   "$ROOT/start-tray.sh" \
   "$ROOT/stop.sh" \
   "$ROOT/diagnose.sh" \
+  "$ROOT/export-logs.sh" \
   "$ROOT/mcp.sh"
 
 # Record and enforce the maximum glibc symbol version required by all binaries.
