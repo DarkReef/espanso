@@ -8,6 +8,7 @@ edition = "2021"
 
 [dependencies]
 espanso-ai = { path = "../espanso-ai" }
+espanso-config = { path = "../espanso-config" }
 dirs.workspace = true
 eframe = { version = "0.35.0", default-features = false, features = ["default_fonts", "glow", "x11"] }
 chrono.workspace = true
