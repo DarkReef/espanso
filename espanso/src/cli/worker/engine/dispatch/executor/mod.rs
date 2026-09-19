@@ -29,19 +29,58 @@ pub trait InjectParamsProvider {
     fn get(&self) -> InjectParams;
 }
 
+/// X11-specific runtime policy shared by event, key and clipboard injection.
+///
+/// Keeping this policy in one value avoids subtle drift where one injection path
+/// receives a safety flag while another path silently keeps the old behaviour.
+#[derive(Clone, Copy)]
+pub struct X11InjectParams {
+    pub disable_fast_inject: bool,
+    pub use_xdotool_backend: bool,
+    pub wait_for_modifiers: bool,
+    pub modifier_release_timeout_ms: u32,
+    pub focus_guard: bool,
+    pub focus_retry_count: u32,
+    pub focus_retry_delay_ms: u32,
+    pub circuit_breaker: bool,
+    pub fast_failure_threshold: u32,
+    pub reinitialize_on_failure: bool,
+    pub legacy_release_all_keys: bool,
+}
+
+impl X11InjectParams {
+    pub fn apply_to(self, options: &mut espanso_inject::InjectionOptions) {
+        options.disable_fast_inject = self.disable_fast_inject;
+        options.x11_use_xdotool_fallback = self.use_xdotool_backend;
+        options.x11_wait_for_modifiers = self.wait_for_modifiers;
+        options.x11_modifier_release_timeout_ms = self.modifier_release_timeout_ms;
+        options.x11_focus_guard = self.focus_guard;
+        options.x11_focus_retry_count = self.focus_retry_count;
+        options.x11_focus_retry_delay_ms = self.focus_retry_delay_ms;
+        options.x11_circuit_breaker = self.circuit_breaker;
+        options.x11_fast_failure_threshold = self.fast_failure_threshold;
+        options.x11_reinitialize_on_failure = self.reinitialize_on_failure;
+        options.x11_legacy_release_all_keys = self.legacy_release_all_keys;
+    }
+}
+
 pub struct InjectParams {
     pub inject_delay: Option<usize>,
     pub key_delay: Option<usize>,
-    pub disable_x11_fast_inject: bool,
     pub evdev_modifier_delay: Option<usize>,
-    pub x11_use_xdotool_backend: bool,
-    pub x11_wait_for_modifiers: bool,
-    pub x11_modifier_release_timeout_ms: u32,
-    pub x11_focus_guard: bool,
-    pub x11_focus_retry_count: u32,
-    pub x11_focus_retry_delay_ms: u32,
-    pub x11_circuit_breaker: bool,
-    pub x11_fast_failure_threshold: u32,
-    pub x11_reinitialize_on_failure: bool,
-    pub x11_legacy_release_all_keys: bool,
+    pub x11: X11InjectParams,
+}
+
+impl InjectParams {
+    pub fn options(&self, configured_delay: Option<usize>) -> espanso_inject::InjectionOptions {
+        let mut options = espanso_inject::InjectionOptions::default();
+        if let Some(delay) = configured_delay {
+            options.delay = i32::try_from(delay).unwrap_or(i32::MAX);
+        }
+        if let Some(delay) = self.evdev_modifier_delay {
+            options.evdev_modifier_delay = u32::try_from(delay).unwrap_or(u32::MAX);
+        }
+        self.x11.apply_to(&mut options);
+        options
+    }
 }
