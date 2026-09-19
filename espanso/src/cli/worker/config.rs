@@ -121,8 +121,14 @@ impl espanso_engine::dispatch::ModeProvider for ConfigManager<'_> {
         match config.backend() {
             espanso_config::config::Backend::Inject => espanso_engine::dispatch::Mode::Event,
             espanso_config::config::Backend::Clipboard => espanso_engine::dispatch::Mode::Clipboard,
-            espanso_config::config::Backend::Auto => espanso_engine::dispatch::Mode::Auto {
-                clipboard_threshold: config.clipboard_threshold(),
+            espanso_config::config::Backend::Auto => {
+                let x11_safe = config.x11_safe_injector();
+                let clipboard_threshold = if cfg!(target_os = "linux") && !cfg!(feature = "wayland") {
+                    config.clipboard_threshold().min(x11_safe.clipboard_threshold)
+                } else {
+                    config.clipboard_threshold()
+                };
+                espanso_engine::dispatch::Mode::Auto { clipboard_threshold }
             },
         }
     }
@@ -133,15 +139,26 @@ impl super::engine::dispatch::executor::clipboard_injector::ClipboardParamsProvi
 {
     fn get(&self) -> super::engine::dispatch::executor::clipboard_injector::ClipboardParams {
         let active = self.active();
+        let x11_safe = active.x11_safe_injector();
         super::engine::dispatch::executor::clipboard_injector::ClipboardParams {
             pre_paste_delay: active.pre_paste_delay(),
             paste_shortcut_event_delay: active.paste_shortcut_event_delay(),
             paste_shortcut: active.paste_shortcut(),
-            disable_x11_fast_inject: active.disable_x11_fast_inject(),
+            disable_x11_fast_inject: active.disable_x11_fast_inject()
+                || matches!(x11_safe.profile, espanso_config::config::X11InjectorProfile::Safe),
             restore_clipboard: active.preserve_clipboard(),
             restore_clipboard_delay: active.restore_clipboard_delay(),
             x11_use_xclip_backend: active.x11_use_xclip_backend(),
             x11_use_xdotool_backend: active.x11_use_xdotool_backend(),
+            x11_wait_for_modifiers: x11_safe.wait_for_modifiers,
+            x11_modifier_release_timeout_ms: x11_safe.modifier_release_timeout_ms.min(u32::MAX as usize) as u32,
+            x11_focus_guard: x11_safe.focus_guard,
+            x11_focus_retry_count: x11_safe.focus_retry_count.min(u32::MAX as usize) as u32,
+            x11_focus_retry_delay_ms: x11_safe.focus_retry_delay_ms.min(u32::MAX as usize) as u32,
+            x11_circuit_breaker: x11_safe.circuit_breaker,
+            x11_fast_failure_threshold: x11_safe.fast_failure_threshold.min(u32::MAX as usize) as u32,
+            x11_reinitialize_on_failure: x11_safe.reinitialize_on_failure,
+            x11_legacy_release_all_keys: x11_safe.legacy_release_all_keys,
         }
     }
 }
@@ -158,12 +175,23 @@ impl ClipboardOperationOptionsProvider for ConfigManager<'_> {
 impl super::engine::dispatch::executor::InjectParamsProvider for ConfigManager<'_> {
     fn get(&self) -> super::engine::dispatch::executor::InjectParams {
         let active = self.active();
+        let x11_safe = active.x11_safe_injector();
         super::engine::dispatch::executor::InjectParams {
-            disable_x11_fast_inject: active.disable_x11_fast_inject(),
+            disable_x11_fast_inject: active.disable_x11_fast_inject()
+                || matches!(x11_safe.profile, espanso_config::config::X11InjectorProfile::Safe),
             inject_delay: active.inject_delay(),
             key_delay: active.key_delay(),
             evdev_modifier_delay: active.evdev_modifier_delay(),
             x11_use_xdotool_backend: active.x11_use_xdotool_backend(),
+            x11_wait_for_modifiers: x11_safe.wait_for_modifiers,
+            x11_modifier_release_timeout_ms: x11_safe.modifier_release_timeout_ms.min(u32::MAX as usize) as u32,
+            x11_focus_guard: x11_safe.focus_guard,
+            x11_focus_retry_count: x11_safe.focus_retry_count.min(u32::MAX as usize) as u32,
+            x11_focus_retry_delay_ms: x11_safe.focus_retry_delay_ms.min(u32::MAX as usize) as u32,
+            x11_circuit_breaker: x11_safe.circuit_breaker,
+            x11_fast_failure_threshold: x11_safe.fast_failure_threshold.min(u32::MAX as usize) as u32,
+            x11_reinitialize_on_failure: x11_safe.reinitialize_on_failure,
+            x11_legacy_release_all_keys: x11_safe.legacy_release_all_keys,
         }
     }
 }
