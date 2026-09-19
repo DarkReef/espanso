@@ -50,3 +50,8 @@
 # max_regex_buffer_size: 30
 
 # For a list of all the available options, visit the official docs at: https://espanso.org/docs/
+
+# --- Astra / Linux X11 safety profile
+# Safe is conservative: XTest for control keys, focus verification,
+# modifier-release waiting, circuit breaker and self-healing libxdo.
+x11_injector_profile: safe
