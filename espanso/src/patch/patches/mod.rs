@@ -17,7 +17,7 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use espanso_config::config::{Backend, RMLVOConfig, ToggleKey};
+use espanso_config::config::{Backend, RMLVOConfig, ToggleKey, X11SafeInjectorConfig};
 
 #[cfg(target_os = "windows")]
 pub mod win;
@@ -57,6 +57,7 @@ generate_patchable_config!(
   win32_keyboard_layout_cache_interval -> i64,
   x11_use_xclip_backend -> bool,
   x11_use_xdotool_backend -> bool,
+  x11_safe_injector -> X11SafeInjectorConfig,
   max_regex_buffer_size -> usize,
   keyboard_layout -> Option<RMLVOConfig>
 );
