@@ -17,9 +17,7 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::convert::TryInto;
-
-use espanso_inject::{InjectionOptions, Injector};
+use espanso_inject::Injector;
 
 use espanso_engine::dispatch::TextInjector;
 
@@ -50,34 +48,7 @@ impl TextInjector for EventInjectorAdapter<'_> {
         // Handle CRLF or LF line endings correctly
         let split_sequence = if text.contains("\r\n") { "\r\n" } else { "\n" };
 
-        let injection_options = InjectionOptions {
-            delay: params
-                .inject_delay
-                .unwrap_or_else(|| InjectionOptions::default().delay.try_into().unwrap())
-                .try_into()
-                .unwrap(),
-            disable_fast_inject: params.disable_x11_fast_inject,
-            evdev_modifier_delay: params
-                .evdev_modifier_delay
-                .unwrap_or_else(|| {
-                    InjectionOptions::default()
-                        .evdev_modifier_delay
-                        .try_into()
-                        .unwrap()
-                })
-                .try_into()
-                .unwrap(),
-            x11_use_xdotool_fallback: params.x11_use_xdotool_backend,
-            x11_wait_for_modifiers: params.x11_wait_for_modifiers,
-            x11_modifier_release_timeout_ms: params.x11_modifier_release_timeout_ms,
-            x11_focus_guard: params.x11_focus_guard,
-            x11_focus_retry_count: params.x11_focus_retry_count,
-            x11_focus_retry_delay_ms: params.x11_focus_retry_delay_ms,
-            x11_circuit_breaker: params.x11_circuit_breaker,
-            x11_fast_failure_threshold: params.x11_fast_failure_threshold,
-            x11_reinitialize_on_failure: params.x11_reinitialize_on_failure,
-            x11_legacy_release_all_keys: params.x11_legacy_release_all_keys,
-        };
+        let injection_options = params.options(params.inject_delay);
 
         // We don't use the lines() method because it skips emtpy lines, which is not what we want.
         for (i, line) in text.split(split_sequence).enumerate() {
