@@ -418,6 +418,16 @@ mod tests {
                 win32_keyboard_layout_cache_interval: Some(300),
                 x11_use_xclip_backend: Some(true),
                 x11_use_xdotool_backend: Some(true),
+                x11_injector_profile: None,
+                x11_wait_for_modifiers: None,
+                x11_modifier_release_timeout: None,
+                x11_focus_guard: None,
+                x11_focus_retry_count: None,
+                x11_focus_retry_delay: None,
+                x11_circuit_breaker: None,
+                x11_fast_failure_threshold: None,
+                x11_reinitialize_on_failure: None,
+                x11_safe_clipboard_threshold: None,
 
                 pre_paste_delay: Some(300),
                 evdev_modifier_delay: Some(40),
@@ -437,5 +447,31 @@ mod tests {
                 filter_title: Some("test8".to_string()),
             }
         );
+    }
+
+    #[test]
+    fn parses_astra_safe_injector_options() {
+        let parsed: ParsedConfig = YAMLConfig::parse_from_str(
+            r#"
+            x11_injector_profile: safe
+            x11_wait_for_modifiers: true
+            x11_modifier_release_timeout: 175
+            x11_focus_guard: true
+            x11_focus_retry_count: 4
+            x11_focus_retry_delay: 20
+            x11_circuit_breaker: true
+            x11_fast_failure_threshold: 2
+            x11_reinitialize_on_failure: true
+            x11_safe_clipboard_threshold: 64
+            "#,
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(parsed.x11_injector_profile.as_deref(), Some("safe"));
+        assert_eq!(parsed.x11_modifier_release_timeout, Some(175));
+        assert_eq!(parsed.x11_focus_retry_count, Some(4));
+        assert_eq!(parsed.x11_safe_clipboard_threshold, Some(64));
     }
 }
