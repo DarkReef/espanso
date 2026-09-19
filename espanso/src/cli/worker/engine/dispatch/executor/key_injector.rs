@@ -60,6 +60,15 @@ impl KeyInjector for KeyInjectorAdapter<'_> {
                 .try_into()
                 .unwrap(),
             x11_use_xdotool_fallback: params.x11_use_xdotool_backend,
+            x11_wait_for_modifiers: params.x11_wait_for_modifiers,
+            x11_modifier_release_timeout_ms: params.x11_modifier_release_timeout_ms,
+            x11_focus_guard: params.x11_focus_guard,
+            x11_focus_retry_count: params.x11_focus_retry_count,
+            x11_focus_retry_delay_ms: params.x11_focus_retry_delay_ms,
+            x11_circuit_breaker: params.x11_circuit_breaker,
+            x11_fast_failure_threshold: params.x11_fast_failure_threshold,
+            x11_reinitialize_on_failure: params.x11_reinitialize_on_failure,
+            x11_legacy_release_all_keys: params.x11_legacy_release_all_keys,
         };
 
         let converted_keys: Vec<_> = keys.iter().map(convert_to_inject_key).collect();
