@@ -18,6 +18,8 @@ trap cleanup EXIT
 mkdir -p "$CONFIG/config" "$CONFIG/match" "$CONFIG/packages" "$CONFIG/runtime"
 cat >"$CONFIG/config/default.yml" <<'YAML'
 show_icon: false
+x11_injector_profile: safe
+x11_use_xdotool_backend: true
 YAML
 cat >"$CONFIG/match/base.yml" <<'YAML'
 matches:
