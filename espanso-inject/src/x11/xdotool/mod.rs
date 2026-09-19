@@ -367,7 +367,7 @@ impl Injector for X11XDOToolInjector {
         let display = self.display();
         let key_syms: Vec<String> = keys
             .iter()
-            .filter_map(|key| unsafe { convert_key_to_keysym(display, key) })
+            .filter_map(|key| convert_key_to_keysym(display, key))
             .collect();
         let delay = checked_delay_micros(&options)?;
         let mut result = Ok(());
@@ -407,7 +407,7 @@ impl Injector for X11XDOToolInjector {
         let display = self.display();
         let key_syms: Vec<String> = keys
             .iter()
-            .filter_map(|key| unsafe { convert_key_to_keysym(display, key) })
+            .filter_map(|key| convert_key_to_keysym(display, key))
             .collect();
         let key_combination = key_syms.join("+");
         debug!(
