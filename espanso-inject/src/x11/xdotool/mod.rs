@@ -39,6 +39,8 @@ use super::ffi::{
 
 const XDO_SUCCESS: libc::c_int = 0;
 const KEY_POLL_INTERVAL: Duration = Duration::from_millis(2);
+// Physical modifiers are the only keys Safe/Balanced wait for. Ordinary
+// character keys are never synthetically released outside Legacy mode.
 const MODIFIER_KEYSYMS: &[u64] = &[
     0xFFE1, // Shift_L
     0xFFE2, // Shift_R
@@ -51,6 +53,25 @@ const MODIFIER_KEYSYMS: &[u64] = &[
     0xFFEB, // Super_L
     0xFFEC, // Super_R
 ];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InjectionMode {
+    Fast,
+    XTest,
+}
+
+impl InjectionMode {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Fast => "fast",
+            Self::XTest => "xtest",
+        }
+    }
+
+    const fn is_fast(self) -> bool {
+        matches!(self, Self::Fast)
+    }
+}
 
 fn checked_delay_micros(options: &crate::InjectionOptions) -> Result<libc::c_uint> {
     let delay_ms = i64::from(options.delay.max(0));
@@ -113,26 +134,31 @@ impl X11XDOToolInjector {
         Ok(())
     }
 
-    fn effective_disable_fast(&self, options: &crate::InjectionOptions) -> bool {
-        options.disable_fast_inject
+    fn injection_mode(&self, options: &crate::InjectionOptions) -> InjectionMode {
+        if options.disable_fast_inject
             || (options.x11_circuit_breaker && self.fast_disabled.load(Ordering::SeqCst))
+        {
+            InjectionMode::XTest
+        } else {
+            InjectionMode::Fast
+        }
     }
 
     fn finish_backend_result(
         &self,
-        mode: &str,
+        mode: InjectionMode,
         result: Result<()>,
         options: crate::InjectionOptions,
     ) -> Result<()> {
         match result {
             Ok(()) => {
-                if mode == "fast" {
+                if mode.is_fast() {
                     self.fast_failures.store(0, Ordering::SeqCst);
                 }
                 Ok(())
             }
             Err(error) => {
-                if mode == "fast" && options.x11_circuit_breaker {
+                if mode.is_fast() && options.x11_circuit_breaker {
                     let failures = self.fast_failures.fetch_add(1, Ordering::SeqCst) + 1;
                     if failures >= options.x11_fast_failure_threshold.max(1) {
                         self.fast_disabled.store(true, Ordering::SeqCst);
@@ -195,11 +221,13 @@ impl X11XDOToolInjector {
     fn prepare_keyboard_state(
         &self,
         options: &crate::InjectionOptions,
-        disable_fast: bool,
+        mode: InjectionMode,
     ) -> Result<()> {
         if options.x11_legacy_release_all_keys {
-            if disable_fast {
-                self.xfake_release_all_keys();
+            // Legacy reproduces the old Espanso behaviour exactly: release every
+            // currently pressed key before injection. Safe/Balanced never do this.
+            if mode == InjectionMode::XTest {
+                self.xtest_release_all_keys();
             } else {
                 self.fast_release_all_keys();
             }
@@ -212,7 +240,7 @@ impl X11XDOToolInjector {
         Ok(())
     }
 
-    fn xfake_release_all_keys(&self) {
+    fn xtest_release_all_keys(&self) {
         let mut keys: [u8; 32] = [0; 32];
         unsafe {
             XQueryKeymap((*self.xdo()).xdpy, keys.as_mut_ptr());
@@ -243,16 +271,11 @@ impl X11XDOToolInjector {
         focused_window
     }
 
-    fn xfake_send_string(
+    fn xtest_send_string(
         &self,
         string: &str,
         options: crate::InjectionOptions,
     ) -> anyhow::Result<()> {
-        // It may happen that when an expansion is triggered, some keys are still pressed.
-        // This causes a problem if the expanded match contains that character, as the injection
-        // will not be able to register that keypress (as it is already pressed).
-        // To solve the problem, before an expansion we get which keys are currently pressed
-        // and inject a key_release event so that they can be further registered.
         let c_string = CString::new(string).context("unable to create CString")?;
         let delay = checked_delay_micros(&options)?;
 
@@ -303,11 +326,6 @@ impl X11XDOToolInjector {
         string: &str,
         options: crate::InjectionOptions,
     ) -> anyhow::Result<()> {
-        // It may happen that when an expansion is triggered, some keys are still pressed.
-        // This causes a problem if the expanded match contains that character, as the injection
-        // will not be able to register that keypress (as it is already pressed).
-        // To solve the problem, before an expansion we get which keys are currently pressed
-        // and inject a key_release event so that they can be further registered.
         let c_string = CString::new(string).context("unable to create CString")?;
         let delay = checked_delay_micros(&options)?;
 
@@ -327,17 +345,16 @@ impl X11XDOToolInjector {
 
 impl Injector for X11XDOToolInjector {
     fn send_string(&self, string: &str, options: crate::InjectionOptions) -> anyhow::Result<()> {
-        let disable_fast = self.effective_disable_fast(&options);
-        let mode = if disable_fast { "xtest" } else { "fast" };
-        self.prepare_keyboard_state(&options, disable_fast)?;
+        let mode = self.injection_mode(&options);
+        self.prepare_keyboard_state(&options, mode)?;
         debug!(
             "[rESP-INJECT] xdotool send_string begin mode={} bytes={} delay_ms={}",
-            mode,
+            mode.label(),
             string.len(),
             options.delay.max(0)
         );
-        let result = if disable_fast {
-            self.xfake_send_string(string, options)
+        let result = if mode == InjectionMode::XTest {
+            self.xtest_send_string(string, options)
         } else {
             self.fast_send_string(string, options)
         };
@@ -345,7 +362,7 @@ impl Injector for X11XDOToolInjector {
         if let Err(ref error) = result {
             log::error!("[rESP-INJECT] xdotool send_string failed: {:?}", error);
         } else {
-            debug!("[rESP-INJECT] xdotool send_string complete mode={}", mode);
+            debug!("[rESP-INJECT] xdotool send_string complete mode={}", mode.label());
         }
         result
     }
@@ -355,12 +372,11 @@ impl Injector for X11XDOToolInjector {
         keys: &[crate::keys::Key],
         options: crate::InjectionOptions,
     ) -> anyhow::Result<()> {
-        let disable_fast = self.effective_disable_fast(&options);
-        let mode = if disable_fast { "xtest" } else { "fast" };
-        self.prepare_keyboard_state(&options, disable_fast)?;
+        let mode = self.injection_mode(&options);
+        self.prepare_keyboard_state(&options, mode)?;
         debug!(
             "[rESP-INJECT] xdotool send_keys begin mode={} count={} delay_ms={}",
-            mode,
+            mode.label(),
             keys.len(),
             options.delay.max(0)
         );
@@ -374,7 +390,7 @@ impl Injector for X11XDOToolInjector {
         for key in key_syms {
             let c_str = CString::new(key).context("unable to generate CString")?;
             let status = unsafe {
-                if disable_fast {
+                if mode == InjectionMode::XTest {
                     xdo_send_keysequence_window(self.xdo(), CURRENTWINDOW, c_str.as_ptr(), delay)
                 } else {
                     fast_send_keysequence_window(
@@ -386,7 +402,11 @@ impl Injector for X11XDOToolInjector {
                 }
             };
             if let Err(error) = check_xdo_status(
-                if disable_fast { "xdo_send_keysequence_window" } else { "fast_send_keysequence_window" },
+                if mode == InjectionMode::XTest {
+                    "xdo_send_keysequence_window"
+                } else {
+                    "fast_send_keysequence_window"
+                },
                 status,
             ) {
                 result = Err(error);
@@ -401,9 +421,8 @@ impl Injector for X11XDOToolInjector {
         keys: &[crate::keys::Key],
         options: crate::InjectionOptions,
     ) -> anyhow::Result<()> {
-        let disable_fast = self.effective_disable_fast(&options);
-        let mode = if disable_fast { "xtest" } else { "fast" };
-        self.prepare_keyboard_state(&options, disable_fast)?;
+        let mode = self.injection_mode(&options);
+        self.prepare_keyboard_state(&options, mode)?;
         let display = self.display();
         let key_syms: Vec<String> = keys
             .iter()
@@ -412,7 +431,7 @@ impl Injector for X11XDOToolInjector {
         let key_combination = key_syms.join("+");
         debug!(
             "[rESP-INJECT] xdotool send_key_combination begin mode={} keys={} delay_ms={}",
-            mode,
+            mode.label(),
             key_combination,
             options.delay.max(0)
         );
@@ -420,7 +439,7 @@ impl Injector for X11XDOToolInjector {
         let c_key_combination =
             CString::new(key_combination).context("unable to generate CString")?;
         let status = unsafe {
-            if disable_fast {
+            if mode == InjectionMode::XTest {
                 xdo_send_keysequence_window(
                     self.xdo(),
                     CURRENTWINDOW,
@@ -437,7 +456,11 @@ impl Injector for X11XDOToolInjector {
             }
         };
         let result = check_xdo_status(
-            if disable_fast { "xdo_send_keysequence_window" } else { "fast_send_keysequence_window" },
+            if mode == InjectionMode::XTest {
+                    "xdo_send_keysequence_window"
+                } else {
+                    "fast_send_keysequence_window"
+                },
             status,
         );
         self.finish_backend_result(mode, result, options)
