@@ -361,6 +361,9 @@ impl SettingsEditor {
                     FlagGroup::Windows,
                 );
 
+                ui.add_space(10.0);
+                draw_astra_injector_settings(ui, &mut self.text, &mut self.error);
+
                 egui::CollapsingHeader::new("Флаги других платформ")
                     .default_open(false)
                     .show(ui, |ui| {
@@ -459,6 +462,241 @@ fn draw_flag_group(
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct AstraProfileDefaults {
+    wait_for_modifiers: bool,
+    modifier_timeout: usize,
+    focus_guard: bool,
+    focus_retry_count: usize,
+    focus_retry_delay: usize,
+    circuit_breaker: bool,
+    fast_failure_threshold: usize,
+    reinitialize_on_failure: bool,
+    clipboard_threshold: usize,
+}
+
+fn astra_profile_defaults(profile: &str) -> AstraProfileDefaults {
+    match profile {
+        "safe" => AstraProfileDefaults {
+            wait_for_modifiers: true,
+            modifier_timeout: 150,
+            focus_guard: true,
+            focus_retry_count: 3,
+            focus_retry_delay: 15,
+            circuit_breaker: true,
+            fast_failure_threshold: 1,
+            reinitialize_on_failure: true,
+            clipboard_threshold: 48,
+        },
+        "fast" => AstraProfileDefaults {
+            wait_for_modifiers: true,
+            modifier_timeout: 40,
+            focus_guard: false,
+            focus_retry_count: 0,
+            focus_retry_delay: 0,
+            circuit_breaker: false,
+            fast_failure_threshold: 3,
+            reinitialize_on_failure: false,
+            clipboard_threshold: usize::MAX,
+        },
+        "legacy" => AstraProfileDefaults {
+            wait_for_modifiers: false,
+            modifier_timeout: 0,
+            focus_guard: false,
+            focus_retry_count: 0,
+            focus_retry_delay: 0,
+            circuit_breaker: false,
+            fast_failure_threshold: 3,
+            reinitialize_on_failure: false,
+            clipboard_threshold: usize::MAX,
+        },
+        _ => AstraProfileDefaults {
+            wait_for_modifiers: true,
+            modifier_timeout: 100,
+            focus_guard: true,
+            focus_retry_count: 2,
+            focus_retry_delay: 10,
+            circuit_breaker: true,
+            fast_failure_threshold: 2,
+            reinitialize_on_failure: true,
+            clipboard_threshold: 100,
+        },
+    }
+}
+
+fn draw_astra_injector_settings(
+    ui: &mut egui::Ui,
+    text: &mut String,
+    error: &mut Option<String>,
+) {
+    ui.heading("Astra / Linux X11 — устойчивость инжектора");
+    ui.label(
+        egui::RichText::new(
+            "Параметры действуют только для X11. Для рабочей Astra рекомендуется Safe; Windows их игнорирует.",
+        )
+        .weak(),
+    );
+
+    let mut profile = read_top_level_string(text, "x11_injector_profile")
+        .unwrap_or_else(|| "balanced".to_owned())
+        .to_ascii_lowercase();
+    if !matches!(profile.as_str(), "safe" | "balanced" | "fast" | "legacy") {
+        profile = "balanced".to_owned();
+    }
+
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Профиль:");
+        for (value, title) in [
+            ("safe", "Safe"),
+            ("balanced", "Balanced"),
+            ("fast", "Fast"),
+            ("legacy", "Legacy"),
+        ] {
+            if ui.selectable_label(profile == value, title).clicked() && profile != value {
+                profile = value.to_owned();
+                *text = set_top_level_scalar(text, "x11_injector_profile", value);
+                *error = validate_yaml(text).err();
+            }
+        }
+    });
+
+    let description = match profile.as_str() {
+        "safe" => "XTest для управляющих клавиш, строгий focus guard, ожидание модификаторов, ранний clipboard и self-healing.",
+        "fast" => "Минимум защитных проверок; подходит только для уже проверенной X11-среды.",
+        "legacy" => "Старое поведение с synthetic release всех нажатых клавиш. Использовать только как аварийный откат.",
+        _ => "Быстрый путь разрешён, но включены focus guard, ожидание модификаторов, circuit breaker и self-healing.",
+    };
+    ui.label(egui::RichText::new(description).small().strong());
+
+    let defaults = astra_profile_defaults(&profile);
+    egui::CollapsingHeader::new("Расширенные параметры AstraSafeInjector")
+        .default_open(false)
+        .show(ui, |ui| {
+            let mut wait = read_top_level_bool(text, "x11_wait_for_modifiers")
+                .unwrap_or(defaults.wait_for_modifiers);
+            if ui
+                .checkbox(&mut wait, "Ждать отпускания Ctrl/Alt/Shift/Meta перед инъекцией")
+                .changed()
+            {
+                *text = set_top_level_bool(text, "x11_wait_for_modifiers", wait);
+            }
+
+            let mut focus = read_top_level_bool(text, "x11_focus_guard")
+                .unwrap_or(defaults.focus_guard);
+            if ui
+                .checkbox(&mut focus, "Не печатать, если целевое окно не удалось вернуть в focus")
+                .changed()
+            {
+                *text = set_top_level_bool(text, "x11_focus_guard", focus);
+            }
+
+            let mut breaker = read_top_level_bool(text, "x11_circuit_breaker")
+                .unwrap_or(defaults.circuit_breaker);
+            if ui
+                .checkbox(&mut breaker, "Circuit breaker: отключать fast backend после ошибок")
+                .changed()
+            {
+                *text = set_top_level_bool(text, "x11_circuit_breaker", breaker);
+            }
+
+            let mut reinit = read_top_level_bool(text, "x11_reinitialize_on_failure")
+                .unwrap_or(defaults.reinitialize_on_failure);
+            if ui
+                .checkbox(&mut reinit, "Переинициализировать libxdo после ошибки")
+                .changed()
+            {
+                *text = set_top_level_bool(text, "x11_reinitialize_on_failure", reinit);
+            }
+
+            ui.separator();
+            let mut timeout = read_top_level_usize(text, "x11_modifier_release_timeout")
+                .unwrap_or(defaults.modifier_timeout);
+            ui.horizontal(|ui| {
+                ui.label("Ожидание модификаторов:");
+                if ui
+                    .add(egui::DragValue::new(&mut timeout).range(0..=5000).suffix(" ms"))
+                    .changed()
+                {
+                    *text = set_top_level_scalar(
+                        text,
+                        "x11_modifier_release_timeout",
+                        &timeout.to_string(),
+                    );
+                }
+            });
+
+            let mut retries = read_top_level_usize(text, "x11_focus_retry_count")
+                .unwrap_or(defaults.focus_retry_count);
+            ui.horizontal(|ui| {
+                ui.label("Повторы восстановления focus:");
+                if ui
+                    .add(egui::DragValue::new(&mut retries).range(0..=20))
+                    .changed()
+                {
+                    *text = set_top_level_scalar(text, "x11_focus_retry_count", &retries.to_string());
+                }
+            });
+
+            let mut retry_delay = read_top_level_usize(text, "x11_focus_retry_delay")
+                .unwrap_or(defaults.focus_retry_delay);
+            ui.horizontal(|ui| {
+                ui.label("Пауза между попытками focus:");
+                if ui
+                    .add(egui::DragValue::new(&mut retry_delay).range(0..=1000).suffix(" ms"))
+                    .changed()
+                {
+                    *text = set_top_level_scalar(text, "x11_focus_retry_delay", &retry_delay.to_string());
+                }
+            });
+
+            let mut failures = read_top_level_usize(text, "x11_fast_failure_threshold")
+                .unwrap_or(defaults.fast_failure_threshold);
+            ui.horizontal(|ui| {
+                ui.label("Ошибок до отключения fast backend:");
+                if ui
+                    .add(egui::DragValue::new(&mut failures).range(1..=20))
+                    .changed()
+                {
+                    *text = set_top_level_scalar(text, "x11_fast_failure_threshold", &failures.to_string());
+                }
+            });
+
+            let mut clipboard_threshold = read_top_level_usize(text, "x11_safe_clipboard_threshold")
+                .unwrap_or(defaults.clipboard_threshold.min(10_000));
+            ui.horizontal(|ui| {
+                ui.label("Clipboard для ASCII длиннее:");
+                if ui
+                    .add(egui::DragValue::new(&mut clipboard_threshold).range(1..=10_000).suffix(" симв."))
+                    .changed()
+                {
+                    *text = set_top_level_scalar(
+                        text,
+                        "x11_safe_clipboard_threshold",
+                        &clipboard_threshold.to_string(),
+                    );
+                }
+            });
+
+            if ui.button("Сбросить расширенные overrides к профилю").clicked() {
+                *text = remove_top_level_keys(
+                    text,
+                    &[
+                        "x11_wait_for_modifiers",
+                        "x11_modifier_release_timeout",
+                        "x11_focus_guard",
+                        "x11_focus_retry_count",
+                        "x11_focus_retry_delay",
+                        "x11_circuit_breaker",
+                        "x11_fast_failure_threshold",
+                        "x11_reinitialize_on_failure",
+                        "x11_safe_clipboard_threshold",
+                    ],
+                );
+            }
+            *error = validate_yaml(text).err();
+        });
+}
+
 fn flag_default(flag: &BoolFlag) -> bool {
     if flag.key == "emulate_alt_codes" {
         cfg!(target_os = "windows")
@@ -484,6 +722,80 @@ fn read_top_level_bool(text: &str, key: &str) -> Option<bool> {
             _ => None,
         }
     })
+}
+
+fn read_top_level_string(text: &str, key: &str) -> Option<String> {
+    let value = serde_norway::from_str::<Value>(text).ok()?;
+    let Value::Mapping(mapping) = value else {
+        return None;
+    };
+    mapping.iter().find_map(|(candidate, value)| {
+        let Value::String(candidate) = candidate else { return None; };
+        if candidate != key { return None; }
+        match value {
+            Value::String(value) => Some(value.clone()),
+            _ => None,
+        }
+    })
+}
+
+fn read_top_level_usize(text: &str, key: &str) -> Option<usize> {
+    let value = serde_norway::from_str::<Value>(text).ok()?;
+    let Value::Mapping(mapping) = value else {
+        return None;
+    };
+    mapping.iter().find_map(|(candidate, value)| {
+        let Value::String(candidate) = candidate else { return None; };
+        if candidate != key { return None; }
+        match value {
+            Value::Number(number) => number.as_u64().and_then(|value| usize::try_from(value).ok()),
+            _ => None,
+        }
+    })
+}
+
+fn set_top_level_scalar(text: &str, key: &str, value: &str) -> String {
+    let replacement = format!("{key}: {value}");
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed == "{}" {
+        return format!("{replacement}\n");
+    }
+    let had_trailing_newline = text.ends_with('\n');
+    let mut replaced = false;
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        if is_top_level_key(line, key) {
+            let comment = line.find('#').map(|index| line[index..].trim_start());
+            lines.push(match comment {
+                Some(comment) => format!("{replacement}  {comment}"),
+                None => replacement.clone(),
+            });
+            replaced = true;
+        } else {
+            lines.push(line.to_owned());
+        }
+    }
+    if !replaced {
+        lines.push(replacement);
+    }
+    let mut result = lines.join("\n");
+    if had_trailing_newline || !replaced {
+        result.push('\n');
+    }
+    result
+}
+
+fn remove_top_level_keys(text: &str, keys: &[&str]) -> String {
+    let had_trailing_newline = text.ends_with('\n');
+    let mut result = text
+        .lines()
+        .filter(|line| !keys.iter().any(|key| is_top_level_key(line, key)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if had_trailing_newline && !result.is_empty() {
+        result.push('\n');
+    }
+    result
 }
 
 fn set_top_level_bool(text: &str, key: &str, value: bool) -> String {
