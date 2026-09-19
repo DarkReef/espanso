@@ -20,15 +20,42 @@
 use std::{collections::HashSet, sync::Arc};
 
 use espanso_config::{
-    config::{AppProperties, Config, ConfigStore},
+    config::{AppProperties, Config, ConfigStore, X11InjectorProfile},
     matches::store::{MatchSet, MatchStore},
 };
 use espanso_info::{AppInfo, AppInfoProvider};
 
 use super::{
     builtin::is_builtin_match,
-    engine::process::middleware::render::extension::clipboard::ClipboardOperationOptionsProvider,
+    engine::{
+        dispatch::executor::X11InjectParams,
+        process::middleware::render::extension::clipboard::ClipboardOperationOptionsProvider,
+    },
 };
+
+fn saturating_u32(value: usize) -> u32 {
+    u32::try_from(value).unwrap_or(u32::MAX)
+}
+
+fn x11_inject_params(config: &dyn Config) -> X11InjectParams {
+    let safety = config.x11_safe_injector();
+    X11InjectParams {
+        // Safe deliberately routes control-key injection through XTest even if
+        // the legacy fast path is enabled in the YAML.
+        disable_fast_inject: config.disable_x11_fast_inject()
+            || matches!(safety.profile, X11InjectorProfile::Safe),
+        use_xdotool_backend: config.x11_use_xdotool_backend(),
+        wait_for_modifiers: safety.wait_for_modifiers,
+        modifier_release_timeout_ms: saturating_u32(safety.modifier_release_timeout_ms),
+        focus_guard: safety.focus_guard,
+        focus_retry_count: saturating_u32(safety.focus_retry_count),
+        focus_retry_delay_ms: saturating_u32(safety.focus_retry_delay_ms),
+        circuit_breaker: safety.circuit_breaker,
+        fast_failure_threshold: saturating_u32(safety.fast_failure_threshold).max(1),
+        reinitialize_on_failure: safety.reinitialize_on_failure,
+        legacy_release_all_keys: safety.legacy_release_all_keys,
+    }
+}
 
 pub struct ConfigManager<'a> {
     config_store: &'a dyn ConfigStore,
@@ -139,26 +166,14 @@ impl super::engine::dispatch::executor::clipboard_injector::ClipboardParamsProvi
 {
     fn get(&self) -> super::engine::dispatch::executor::clipboard_injector::ClipboardParams {
         let active = self.active();
-        let x11_safe = active.x11_safe_injector();
         super::engine::dispatch::executor::clipboard_injector::ClipboardParams {
             pre_paste_delay: active.pre_paste_delay(),
             paste_shortcut_event_delay: active.paste_shortcut_event_delay(),
             paste_shortcut: active.paste_shortcut(),
-            disable_x11_fast_inject: active.disable_x11_fast_inject()
-                || matches!(x11_safe.profile, espanso_config::config::X11InjectorProfile::Safe),
             restore_clipboard: active.preserve_clipboard(),
             restore_clipboard_delay: active.restore_clipboard_delay(),
             x11_use_xclip_backend: active.x11_use_xclip_backend(),
-            x11_use_xdotool_backend: active.x11_use_xdotool_backend(),
-            x11_wait_for_modifiers: x11_safe.wait_for_modifiers,
-            x11_modifier_release_timeout_ms: x11_safe.modifier_release_timeout_ms.min(u32::MAX as usize) as u32,
-            x11_focus_guard: x11_safe.focus_guard,
-            x11_focus_retry_count: x11_safe.focus_retry_count.min(u32::MAX as usize) as u32,
-            x11_focus_retry_delay_ms: x11_safe.focus_retry_delay_ms.min(u32::MAX as usize) as u32,
-            x11_circuit_breaker: x11_safe.circuit_breaker,
-            x11_fast_failure_threshold: x11_safe.fast_failure_threshold.min(u32::MAX as usize) as u32,
-            x11_reinitialize_on_failure: x11_safe.reinitialize_on_failure,
-            x11_legacy_release_all_keys: x11_safe.legacy_release_all_keys,
+            x11: x11_inject_params(active.as_ref()),
         }
     }
 }
@@ -175,23 +190,11 @@ impl ClipboardOperationOptionsProvider for ConfigManager<'_> {
 impl super::engine::dispatch::executor::InjectParamsProvider for ConfigManager<'_> {
     fn get(&self) -> super::engine::dispatch::executor::InjectParams {
         let active = self.active();
-        let x11_safe = active.x11_safe_injector();
         super::engine::dispatch::executor::InjectParams {
-            disable_x11_fast_inject: active.disable_x11_fast_inject()
-                || matches!(x11_safe.profile, espanso_config::config::X11InjectorProfile::Safe),
             inject_delay: active.inject_delay(),
             key_delay: active.key_delay(),
             evdev_modifier_delay: active.evdev_modifier_delay(),
-            x11_use_xdotool_backend: active.x11_use_xdotool_backend(),
-            x11_wait_for_modifiers: x11_safe.wait_for_modifiers,
-            x11_modifier_release_timeout_ms: x11_safe.modifier_release_timeout_ms.min(u32::MAX as usize) as u32,
-            x11_focus_guard: x11_safe.focus_guard,
-            x11_focus_retry_count: x11_safe.focus_retry_count.min(u32::MAX as usize) as u32,
-            x11_focus_retry_delay_ms: x11_safe.focus_retry_delay_ms.min(u32::MAX as usize) as u32,
-            x11_circuit_breaker: x11_safe.circuit_breaker,
-            x11_fast_failure_threshold: x11_safe.fast_failure_threshold.min(u32::MAX as usize) as u32,
-            x11_reinitialize_on_failure: x11_safe.reinitialize_on_failure,
-            x11_legacy_release_all_keys: x11_safe.legacy_release_all_keys,
+            x11: x11_inject_params(active.as_ref()),
         }
     }
 }
