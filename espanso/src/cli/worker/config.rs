@@ -212,8 +212,19 @@ impl espanso_engine::process::UndoEnabledProvider for ConfigManager<'_> {
         // Because we cannot filter out espanso-generated events when using the X11 record injection
         // method, we need to disable undo_backspace to avoid looping (espanso picks up its own
         // injections, causing the program to misbehave)
-        if cfg!(target_os = "linux") && self.active().disable_x11_fast_inject() {
-            return false;
+        if cfg!(target_os = "linux") {
+            let active = self.active();
+            let profile = active.x11_safe_injector().profile;
+            if active.disable_x11_fast_inject()
+                || matches!(
+                    profile,
+                    espanso_config::config::X11InjectorProfile::Safe
+                        | espanso_config::config::X11InjectorProfile::Balanced
+                )
+            {
+                return false;
+            }
+            return active.undo_backspace();
         }
 
         self.active().undo_backspace()
