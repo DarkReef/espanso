@@ -245,7 +245,7 @@ impl SelectedTextProvider for ClipboardInjectorAdapter<'_> {
             std::env::consts::OS,
             params.restore_clipboard,
             params.x11_use_xclip_backend,
-            params.x11_use_xdotool_backend,
+            params.x11.use_xdotool_backend,
             params.paste_shortcut_event_delay,
             SELECTION_COPY_TIMEOUT.as_millis()
         );
