@@ -366,77 +366,14 @@ impl Config for ResolvedConfig {
     }
 
     fn x11_safe_injector(&self) -> X11SafeInjectorConfig {
-        let profile = match self
-            .parsed
-            .x11_injector_profile
-            .as_deref()
-            .map(str::to_lowercase)
-            .as_deref()
-        {
-            Some("safe") => X11InjectorProfile::Safe,
-            Some("fast") => X11InjectorProfile::Fast,
-            Some("legacy") => X11InjectorProfile::Legacy,
-            Some("balanced") | None => X11InjectorProfile::Balanced,
-            Some(other) => {
-                error!("invalid x11_injector_profile '{other}', falling back to balanced");
+        let profile = match self.parsed.x11_injector_profile.as_deref() {
+            Some(value) => X11InjectorProfile::from_name(value).unwrap_or_else(|| {
+                error!("invalid x11_injector_profile '{value}', falling back to balanced");
                 X11InjectorProfile::Balanced
-            }
+            }),
+            None => X11InjectorProfile::Balanced,
         };
-
-        let defaults = match profile {
-            X11InjectorProfile::Safe => X11SafeInjectorConfig {
-                profile,
-                wait_for_modifiers: true,
-                modifier_release_timeout_ms: 150,
-                focus_guard: true,
-                focus_retry_count: 3,
-                focus_retry_delay_ms: 15,
-                circuit_breaker: true,
-                fast_failure_threshold: 1,
-                reinitialize_on_failure: true,
-                clipboard_threshold: 48,
-                legacy_release_all_keys: false,
-            },
-            X11InjectorProfile::Balanced => X11SafeInjectorConfig {
-                profile,
-                wait_for_modifiers: true,
-                modifier_release_timeout_ms: 100,
-                focus_guard: true,
-                focus_retry_count: 2,
-                focus_retry_delay_ms: 10,
-                circuit_breaker: true,
-                fast_failure_threshold: 2,
-                reinitialize_on_failure: true,
-                clipboard_threshold: 100,
-                legacy_release_all_keys: false,
-            },
-            X11InjectorProfile::Fast => X11SafeInjectorConfig {
-                profile,
-                wait_for_modifiers: true,
-                modifier_release_timeout_ms: 40,
-                focus_guard: false,
-                focus_retry_count: 0,
-                focus_retry_delay_ms: 0,
-                circuit_breaker: false,
-                fast_failure_threshold: 3,
-                reinitialize_on_failure: false,
-                clipboard_threshold: usize::MAX,
-                legacy_release_all_keys: false,
-            },
-            X11InjectorProfile::Legacy => X11SafeInjectorConfig {
-                profile,
-                wait_for_modifiers: false,
-                modifier_release_timeout_ms: 0,
-                focus_guard: false,
-                focus_retry_count: 0,
-                focus_retry_delay_ms: 0,
-                circuit_breaker: false,
-                fast_failure_threshold: 3,
-                reinitialize_on_failure: false,
-                clipboard_threshold: usize::MAX,
-                legacy_release_all_keys: true,
-            },
-        };
+        let defaults = X11SafeInjectorConfig::for_profile(profile);
 
         X11SafeInjectorConfig {
             wait_for_modifiers: self
