@@ -75,6 +75,17 @@ pub struct InjectionOptions {
     // If true, use the xdotool fallback to perform the expansions.
     // NOTE: Only relevant on Linux-X11 systems.
     pub x11_use_xdotool_fallback: bool,
+
+    // Astra/X11 hardening knobs. They are ignored by non-X11 injectors.
+    pub x11_wait_for_modifiers: bool,
+    pub x11_modifier_release_timeout_ms: u32,
+    pub x11_focus_guard: bool,
+    pub x11_focus_retry_count: u32,
+    pub x11_focus_retry_delay_ms: u32,
+    pub x11_circuit_breaker: bool,
+    pub x11_fast_failure_threshold: u32,
+    pub x11_reinitialize_on_failure: bool,
+    pub x11_legacy_release_all_keys: bool,
 }
 
 impl Default for InjectionOptions {
@@ -100,6 +111,15 @@ impl Default for InjectionOptions {
             disable_fast_inject: false,
             evdev_modifier_delay: 10,
             x11_use_xdotool_fallback: false,
+            x11_wait_for_modifiers: false,
+            x11_modifier_release_timeout_ms: 100,
+            x11_focus_guard: false,
+            x11_focus_retry_count: 0,
+            x11_focus_retry_delay_ms: 10,
+            x11_circuit_breaker: false,
+            x11_fast_failure_threshold: 2,
+            x11_reinitialize_on_failure: false,
+            x11_legacy_release_all_keys: false,
         }
     }
 }
