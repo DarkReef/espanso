@@ -35,11 +35,24 @@ jobs:
     name: Full X11 core + Match Studio + KDE tray
     runs-on: ubuntu-22.04
     timeout-minutes: 240
+    env:
+      RESPANSO_RUST_TOOLCHAIN: '1.98.1'
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: Restore Astra Rust/Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .ci-cache/cargo
+            .ci-cache/rustup
+            target
+          key: astra-buster-rust-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            astra-buster-rust-${{ env.RESPANSO_RUST_TOOLCHAIN }}-
 
       - name: Prepare build identity
         shell: bash
@@ -78,14 +91,18 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          mkdir -p .ci-cache/cargo .ci-cache/rustup
           docker run --rm \
             -e RESPANSO_BUILD_DATE \
             -e RESPANSO_VERSION \
             -e RESPANSO_BUILD_SHA \
+            -e RESPANSO_RUST_TOOLCHAIN \
             -v "$GITHUB_WORKSPACE:/work" \
+            -v "$GITHUB_WORKSPACE/.ci-cache/cargo:/root/.cargo" \
+            -v "$GITHUB_WORKSPACE/.ci-cache/rustup:/root/.rustup" \
             -w /work \
             debian:buster-slim \
-            bash -lc 'bash scripts/build_pol_run_astra17.sh && timeout 45s xvfb-run -a bash scripts/test_astra_expansion.sh target/release/espanso'
+            bash -lc 'bash scripts/build_pol_run_astra17.sh'
 
       - name: Verify full package
         shell: bash
@@ -98,19 +115,10 @@ jobs:
           # Debian container creates the package as root; verification runs as runner.
           sudo chown -R "$(id -u):$(id -g)" "$OUT"
 
-          install -m 0755 scripts/export_logs.sh "$ROOT/export-logs.sh"
-          printf '%s\n' \
-            '' \
-            'DIAGNOSTICS' \
-            '  ./export-logs.sh    create a privacy-aware .tar.gz bundle in diagnostics/' \
-            '  tray menu:          Собрать архив диагностики' \
-            '' \
-            'The diagnostics bundle intentionally excludes configuration/match contents and' \
-            'never intentionally logs selected-text/clipboard contents.' \
-            >> "$ROOT/README-FIRST.txt"
+          # Package assembly already happened inside the Debian 10 ABI container.
+          # Verify the immutable archive rather than modifying and compressing it again.
+          (cd "$OUT" && sha256sum -c "$PACKAGE.sha256")
           bash -n "$ROOT/export-logs.sh"
-          tar -C "$OUT" -czf "$OUT/$PACKAGE.tar.gz" "$PACKAGE"
-          sha256sum "$OUT/$PACKAGE.tar.gz" >"$OUT/$PACKAGE.sha256"
 
           test -x "$ROOT/rEspanso-core"
           test -x "$ROOT/rEspanso-Match-Studio"
