@@ -1346,6 +1346,7 @@ dependencies = [
  "dirs",
  "eframe",
  "espanso-ai",
+ "espanso-config",
  "regex",
  "rhai",
  "serde",
