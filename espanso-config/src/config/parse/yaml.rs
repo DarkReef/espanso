@@ -142,6 +142,36 @@ pub struct YAMLConfig {
     #[serde(default)]
     pub x11_use_xdotool_backend: Option<bool>,
 
+    #[serde(default)]
+    pub x11_injector_profile: Option<String>,
+
+    #[serde(default)]
+    pub x11_wait_for_modifiers: Option<bool>,
+
+    #[serde(default)]
+    pub x11_modifier_release_timeout: Option<usize>,
+
+    #[serde(default)]
+    pub x11_focus_guard: Option<bool>,
+
+    #[serde(default)]
+    pub x11_focus_retry_count: Option<usize>,
+
+    #[serde(default)]
+    pub x11_focus_retry_delay: Option<usize>,
+
+    #[serde(default)]
+    pub x11_circuit_breaker: Option<bool>,
+
+    #[serde(default)]
+    pub x11_fast_failure_threshold: Option<usize>,
+
+    #[serde(default)]
+    pub x11_reinitialize_on_failure: Option<bool>,
+
+    #[serde(default)]
+    pub x11_safe_clipboard_threshold: Option<usize>,
+
     // Include/Exclude
     #[serde(default)]
     pub includes: Option<Vec<String>>,
@@ -248,6 +278,16 @@ impl TryFrom<YAMLConfig> for ParsedConfig {
             win32_keyboard_layout_cache_interval: yaml_config.win32_keyboard_layout_cache_interval,
             x11_use_xclip_backend: yaml_config.x11_use_xclip_backend,
             x11_use_xdotool_backend: yaml_config.x11_use_xdotool_backend,
+            x11_injector_profile: yaml_config.x11_injector_profile,
+            x11_wait_for_modifiers: yaml_config.x11_wait_for_modifiers,
+            x11_modifier_release_timeout: yaml_config.x11_modifier_release_timeout,
+            x11_focus_guard: yaml_config.x11_focus_guard,
+            x11_focus_retry_count: yaml_config.x11_focus_retry_count,
+            x11_focus_retry_delay: yaml_config.x11_focus_retry_delay,
+            x11_circuit_breaker: yaml_config.x11_circuit_breaker,
+            x11_fast_failure_threshold: yaml_config.x11_fast_failure_threshold,
+            x11_reinitialize_on_failure: yaml_config.x11_reinitialize_on_failure,
+            x11_safe_clipboard_threshold: yaml_config.x11_safe_clipboard_threshold,
 
             use_standard_includes: yaml_config.use_standard_includes,
             includes: yaml_config.includes,
