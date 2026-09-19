@@ -68,7 +68,8 @@ bash -n \
   scripts/test_astra_x11.sh \
   scripts/test_astra_worker.sh \
   scripts/test_astra_restart.sh \
-  scripts/test_astra_search_enter.sh
+  scripts/test_astra_search_enter.sh \
+  scripts/test_astra_injector_stress.sh
 bash scripts/test_astra_x11.sh
 
 echo "Build host: $(ldd --version | head -n1)"
@@ -89,6 +90,8 @@ cargo build --locked --release \
 timeout 30s xvfb-run -a bash scripts/test_astra_worker.sh target/release/espanso
 timeout 70s xvfb-run -a bash scripts/test_astra_restart.sh target/release/espanso
 timeout 30s xvfb-run -a bash scripts/test_astra_search_enter.sh target/release/espanso
+timeout 180s xvfb-run -a env RESPANSO_ASTRA_STRESS_ITERATIONS=12 \
+  bash scripts/test_astra_injector_stress.sh target/release/espanso
 
 # Run the complete workspace test suite with the same X11 feature selection
 # before packaging anything. This includes espanso-ai MCP/workspace tests and
