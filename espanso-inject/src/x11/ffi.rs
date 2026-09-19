@@ -130,5 +130,6 @@ extern "C" {
     pub fn XCloseIM(input_method: XIM) -> c_int;
     pub fn XFree(data: *mut c_void) -> c_int;
     pub fn XKeycodeToKeysym(display: *mut Display, keycode: c_uchar, index: c_int) -> c_ulong;
+    pub fn XKeysymToKeycode(display: *mut Display, keysym: c_ulong) -> KeyCode;
     pub fn XKeysymToString(keysym: c_ulong) -> *mut c_char;
 }
