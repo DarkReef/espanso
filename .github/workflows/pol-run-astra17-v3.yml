@@ -121,7 +121,7 @@ jobs:
 
           # Package assembly already happened inside the Debian 10 ABI container.
           # Verify the immutable archive rather than modifying and compressing it again.
-          (cd "$OUT" && sha256sum -c "$PACKAGE.sha256")
+          sha256sum -c "$OUT/$PACKAGE.sha256"
           bash -n "$ROOT/export-logs.sh"
 
           test -x "$ROOT/rEspanso-core"
