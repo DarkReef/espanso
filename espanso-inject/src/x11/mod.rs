@@ -24,6 +24,7 @@ use log::{debug, error, info, warn};
 use std::{
     ptr,
     sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
 };
 
 mod default;
@@ -82,51 +83,79 @@ pub(crate) fn pin_target_window() -> Option<ffi::Window> {
     }
 }
 
-fn restore_pinned_target_window() {
+fn restore_pinned_target_window(options: &crate::InjectionOptions) -> Result<()> {
     // One-shot by design: trigger compensation happens before renderer pinning,
     // while the first actual text/paste operation after rendering consumes it.
     let target = PINNED_TARGET_WINDOW.swap(0, Ordering::SeqCst);
     if target <= 1 {
-        return;
+        return Ok(());
     }
 
     unsafe {
         let display = ffi::XOpenDisplay(ptr::null());
         if display.is_null() {
-            warn!(
-                "[rESP-FOCUS] unable to restore target window={}: XOpenDisplay failed",
+            let message = format!(
+                "unable to restore target window={}: XOpenDisplay failed",
                 target
             );
-            return;
+            if options.x11_focus_guard {
+                bail!(message);
+            }
+            warn!("[rESP-FOCUS] {message}");
+            return Ok(());
         }
 
         let mut current: ffi::Window = 0;
         let mut revert_to = 0;
         ffi::XGetInputFocus(display, &mut current, &mut revert_to);
 
-        if current != target {
-            info!(
-                "[rESP-FOCUS] restoring focus current={} target={}",
-                current, target
-            );
+        if current == target {
+            debug!("[rESP-FOCUS] target already focused window={}", target);
+            ffi::XCloseDisplay(display);
+            return Ok(());
+        }
+
+        info!(
+            "[rESP-FOCUS] restoring focus current={} target={} guard={} retries={}",
+            current,
+            target,
+            options.x11_focus_guard,
+            options.x11_focus_retry_count
+        );
+
+        let attempts = options.x11_focus_retry_count.saturating_add(1);
+        let mut restored: ffi::Window = current;
+        for attempt in 0..attempts {
             ffi::XSetInputFocus(display, target, REVERT_TO_PARENT, CURRENT_TIME);
             ffi::XSync(display, 0);
-
-            let mut restored: ffi::Window = 0;
             ffi::XGetInputFocus(display, &mut restored, &mut revert_to);
-            if restored != target {
-                warn!(
-                    "[rESP-FOCUS] focus restore verification failed: target={} actual={}",
-                    target, restored
+            if restored == target {
+                info!(
+                    "[rESP-FOCUS] focus restored target={} attempt={}",
+                    target,
+                    attempt + 1
                 );
-            } else {
-                info!("[rESP-FOCUS] focus restored target={}", target);
+                ffi::XCloseDisplay(display);
+                return Ok(());
             }
-        } else {
-            debug!("[rESP-FOCUS] target already focused window={}", target);
+
+            if attempt + 1 < attempts && options.x11_focus_retry_delay_ms > 0 {
+                std::thread::sleep(Duration::from_millis(u64::from(
+                    options.x11_focus_retry_delay_ms,
+                )));
+            }
         }
 
         ffi::XCloseDisplay(display);
+        let message = format!(
+            "focus restore verification failed: target={} actual={} attempts={}",
+            target, restored, attempts
+        );
+        if options.x11_focus_guard {
+            bail!(message);
+        }
+        warn!("[rESP-FOCUS] {message}");
+        Ok(())
     }
 }
 
@@ -242,7 +271,7 @@ impl Injector for X11ProxyInjector {
             !options.disable_fast_inject,
             options.x11_use_xdotool_fallback
         );
-        restore_pinned_target_window();
+        restore_pinned_target_window(&options)?;
         let result = self.get_active_injector(&options)?.send_string(string, options);
         if let Err(ref error) = result {
             error!("[rESP-INJECT] send_string failed backend={}: {:?}", backend, error);
@@ -262,7 +291,7 @@ impl Injector for X11ProxyInjector {
             !options.disable_fast_inject,
             options.x11_use_xdotool_fallback
         );
-        restore_pinned_target_window();
+        restore_pinned_target_window(&options)?;
         let result = self.get_active_injector(&options)?.send_keys(keys, options);
         if let Err(ref error) = result {
             error!("[rESP-INJECT] send_keys failed backend={}: {:?}", backend, error);
@@ -297,7 +326,7 @@ impl Injector for X11ProxyInjector {
                 options.x11_use_xdotool_fallback
             );
         } else {
-            restore_pinned_target_window();
+            restore_pinned_target_window(&options)?;
         }
 
         let backend = self.active_injector_label(&options);
