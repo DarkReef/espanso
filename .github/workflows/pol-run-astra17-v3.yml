@@ -9,6 +9,8 @@ on:
       - 'scripts/pol_run_tray.cpp'
       - 'scripts/export_logs.sh'
       - 'espanso-ai/**'
+      - 'espanso-clipboard/**'
+      - 'espanso-config/**'
       - 'espanso-engine/**'
       - 'espanso-editor/**'
       - 'espanso-modulo/**'
@@ -16,6 +18,11 @@ on:
       - 'espanso-detect/**'
       - 'espanso-ipc/**'
       - 'espanso-inject/**'
+      - 'espanso-info/**'
+      - 'espanso-package/**'
+      - 'espanso-render/**'
+      - 'espanso-ui/**'
+      - 'schemas/**'
       - 'scripts/test_astra_*'
       - 'Cargo.toml'
       - 'Cargo.lock'
@@ -62,30 +69,27 @@ jobs:
           echo "RESPANSO_VERSION=$(awk -F'\"' '/^version =/ {print $2; exit}' espanso/Cargo.toml)" >> "$GITHUB_ENV"
           echo "RESPANSO_BUILD_SHA=${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
 
-      - name: Verify final Astra interaction sources
+      - name: Verify Astra release contracts and shell scripts
         shell: bash
         run: |
           set -euxo pipefail
-          grep -F 'Some("CTRL+ALT+SPACE".to_string())' espanso-config/src/config/resolve.rs
-          grep -F 'std::str::from_utf8(bytes)' espanso-detect/src/x11/mod.rs
-          grep -F 'raw_to_input_valid_buffer_without_nul_is_preserved' espanso-detect/src/x11/mod.rs
-          grep -F 'raw_to_input_invalid_utf8_buffer_has_no_value' espanso-detect/src/x11/mod.rs
-          grep -F 'sender.send((event, source_id)).is_err()' espanso/src/cli/worker/engine/funnel/mod.rs
-          grep -F '[rESP-HOTKEY] detected' espanso-engine/src/process/middleware/hotkey.rs
+
+          # Keep only user-visible/release contracts here. Internal behaviour is
+          # covered by Rust tests and X11 end-to-end tests, so refactors do not
+          # have to preserve implementation-specific source strings.
           grep -F 'DEFAULT_SELECTION_MATCH_SHORTCUT: &str = "CTRL+ALT+M"' espanso/src/cli/worker/builtin/selection.rs
           grep -F 'FALLBACK_SELECTION_MATCH_SHORTCUT: &str = "CTRL+ALT+SHIFT+M"' espanso/src/cli/worker/builtin/selection.rs
-          grep -F 'create_match_execute_selection_fallback()' espanso/src/cli/worker/builtin/mod.rs
-          grep -F '[rESP-SEL] SelectionMatchRequested begin' espanso-engine/src/process/middleware/selection_match.rs
-          grep -F '[rESP-SEL-CLIP] capture=' espanso/src/cli/worker/engine/dispatch/executor/clipboard_injector.rs
-          grep -F '[rESP-SEL-X11] Ctrl+C prepare' espanso-inject/src/x11/mod.rs
-          grep -F 'wxScrolledWindow' espanso-modulo/src/sys/form/form.cpp
-          grep -F 'raw_yaml_source_scroll' espanso-editor/src/app_legacy.rs
-          grep -F 'ScrollArea::vertical' espanso-editor/src/clinical_extender.rs
-          grep -F '.with_resizable(true)' espanso-editor/src/app_shell.rs
-          grep -F 'checked_delay_micros' espanso-inject/src/x11/xdotool/mod.rs
-          grep -F 'XDO_SUCCESS' espanso-inject/src/x11/xdotool/mod.rs
-          grep -F 'configuration inventory (contents intentionally excluded)' scripts/export_logs.sh
-          bash -n scripts/export_logs.sh
+          grep -F 'x11_injector_profile: safe' espanso/src/res/config/default.yml
+          grep -F 'Selected text and clipboard contents are NOT intentionally logged.' scripts/export_logs.sh
+
+          bash -n \
+            scripts/build_pol_run_astra17.sh \
+            scripts/export_logs.sh \
+            scripts/test_astra_x11.sh \
+            scripts/test_astra_worker.sh \
+            scripts/test_astra_restart.sh \
+            scripts/test_astra_search_enter.sh \
+            scripts/test_astra_injector_stress.sh
 
       - name: Build and validate full portable package in Debian 10
         shell: bash
