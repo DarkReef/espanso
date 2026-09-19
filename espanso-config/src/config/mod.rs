@@ -441,6 +441,40 @@ impl X11SafeInjectorConfig {
     }
 }
 
+#[cfg(test)]
+mod x11_profile_tests {
+    use super::{X11InjectorProfile, X11SafeInjectorConfig};
+
+    #[test]
+    fn profile_names_round_trip() {
+        for profile in [
+            X11InjectorProfile::Safe,
+            X11InjectorProfile::Balanced,
+            X11InjectorProfile::Fast,
+            X11InjectorProfile::Legacy,
+        ] {
+            assert_eq!(X11InjectorProfile::from_name(profile.name()), Some(profile));
+        }
+        assert_eq!(
+            X11InjectorProfile::from_name("SAFE"),
+            Some(X11InjectorProfile::Safe)
+        );
+        assert_eq!(X11InjectorProfile::from_name("unknown"), None);
+    }
+
+    #[test]
+    fn safe_profile_keeps_conservative_defaults() {
+        let safe = X11SafeInjectorConfig::for_profile(X11InjectorProfile::Safe);
+        assert!(safe.wait_for_modifiers);
+        assert!(safe.focus_guard);
+        assert!(safe.circuit_breaker);
+        assert!(safe.reinitialize_on_failure);
+        assert!(!safe.legacy_release_all_keys);
+        assert_eq!(safe.modifier_release_timeout_ms, 150);
+        assert_eq!(safe.clipboard_threshold, 48);
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct RMLVOConfig {
     pub rules: Option<String>,
