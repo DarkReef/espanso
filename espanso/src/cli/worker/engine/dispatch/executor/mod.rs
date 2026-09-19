@@ -35,4 +35,13 @@ pub struct InjectParams {
     pub disable_x11_fast_inject: bool,
     pub evdev_modifier_delay: Option<usize>,
     pub x11_use_xdotool_backend: bool,
+    pub x11_wait_for_modifiers: bool,
+    pub x11_modifier_release_timeout_ms: u32,
+    pub x11_focus_guard: bool,
+    pub x11_focus_retry_count: u32,
+    pub x11_focus_retry_delay_ms: u32,
+    pub x11_circuit_breaker: bool,
+    pub x11_fast_failure_threshold: u32,
+    pub x11_reinitialize_on_failure: bool,
+    pub x11_legacy_release_all_keys: bool,
 }
