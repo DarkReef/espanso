@@ -194,6 +194,10 @@ pub trait Config: Send + Sync {
     // This might improve the situation for certain locales/layouts on X11.
     fn x11_use_xdotool_backend(&self) -> bool;
 
+    // rEspanso X11 safety profile. This resolves a user-facing preset plus
+    // optional expert overrides into concrete injector behaviour.
+    fn x11_safe_injector(&self) -> X11SafeInjectorConfig;
+
     // If true, filter out keyboard events without an explicit HID device source on Windows.
     // This is needed to filter out the software-generated events, including
     // those from espanso, but might need to be disabled when using some software-level keyboards.
@@ -328,6 +332,29 @@ pub enum ToggleKey {
     LeftAlt,
     LeftShift,
     LeftMeta,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum X11InjectorProfile {
+    Safe,
+    Balanced,
+    Fast,
+    Legacy,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct X11SafeInjectorConfig {
+    pub profile: X11InjectorProfile,
+    pub wait_for_modifiers: bool,
+    pub modifier_release_timeout_ms: usize,
+    pub focus_guard: bool,
+    pub focus_retry_count: usize,
+    pub focus_retry_delay_ms: usize,
+    pub circuit_breaker: bool,
+    pub fast_failure_threshold: usize,
+    pub reinitialize_on_failure: bool,
+    pub clipboard_threshold: usize,
+    pub legacy_release_all_keys: bool,
 }
 
 #[derive(Debug, Clone, Default)]
