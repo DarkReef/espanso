@@ -84,11 +84,11 @@ pub struct Calculation {
     pub id: String,
     pub output: String,
     pub kind: CalculationKind,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub builtin: Option<BuiltinCalculator>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expression: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script: Option<String>,
     #[serde(default)]
     pub inputs: BTreeMap<String, String>,
