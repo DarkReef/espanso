@@ -183,6 +183,44 @@ pub struct EvaluationResult {
     pub errors: Vec<EngineMessage>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PackageValidation {
+    pub package_id: String,
+    pub name: String,
+    pub version: String,
+    pub field_count: usize,
+    pub calculation_count: usize,
+    pub rule_count: usize,
+}
+
+pub struct ClinicalTemplateApi;
+
+impl ClinicalTemplateApi {
+    pub fn validate_json(source: &str) -> Result<PackageValidation, String> {
+        let package = TemplatePackage::from_json(source)?;
+        Ok(PackageValidation {
+            package_id: package.package.id.clone(),
+            name: package.package.name.clone(),
+            version: package.package.version.clone(),
+            field_count: package.fields.len(),
+            calculation_count: package.calculations.len(),
+            rule_count: package.rules.len(),
+        })
+    }
+
+    pub fn evaluate_json(template_json: &str, input_json: &str) -> Result<String, String> {
+        let package = TemplatePackage::from_json(template_json)?;
+        let input: Value = serde_json::from_str(input_json)
+            .map_err(|error| format!("Ошибка входного JSON: {error}"))?;
+        serde_json::to_string_pretty(&package.evaluate(&input))
+            .map_err(|error| format!("Ошибка сериализации результата: {error}"))
+    }
+
+    pub fn parse_json(source: &str) -> Result<TemplatePackage, String> {
+        TemplatePackage::from_json(source)
+    }
+}
+
 impl EvaluationResult {
     fn new(values: BTreeMap<String, Value>) -> Self {
         Self {
@@ -1475,6 +1513,26 @@ mod tests {
         let package = TemplatePackage::from_json(&json).unwrap();
         assert_eq!(package.schema_version, TEMPLATE_SCHEMA_VERSION);
         assert_eq!(TemplatePackage::from_json(&package.to_pretty_json().unwrap()).unwrap(), package);
+    }
+
+    #[test]
+    fn checked_in_json_example_matches_the_engine_contract() {
+        let json = include_str!("../examples/clinical-template-package.example.json");
+        let report = ClinicalTemplateApi::validate_json(json).unwrap();
+        assert_eq!(report.package_id, "ru.respanso.demo.dynamic-exam");
+        assert_eq!(report.calculation_count, 2);
+    }
+
+    #[test]
+    fn public_json_api_evaluates_without_ui() {
+        let result = ClinicalTemplateApi::evaluate_json(
+            &example_package_json(),
+            &example_input_json(),
+        )
+        .unwrap();
+        let value: Value = serde_json::from_str(&result).unwrap();
+        assert!(value["values"]["vitals.bmi"].is_number());
+        assert!(value["values"]["renal.egfr"].is_number());
     }
 
     #[test]
