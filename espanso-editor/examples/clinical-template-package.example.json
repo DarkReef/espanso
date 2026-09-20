@@ -76,7 +76,7 @@
       "id": "calc.egfr",
       "output": "renal.egfr",
       "kind": "builtin",
-      "builtin": "ckd_epi2021",
+      "builtin": "ckd_epi_2021",
       "inputs": {
         "creatinine_umol_l": "labs.creatinine_umol_l",
         "age": "patient.age",
