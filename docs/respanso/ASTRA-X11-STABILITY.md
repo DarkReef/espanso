@@ -46,3 +46,42 @@ start `run.sh`, expand a test trigger in a text editor, switch RU/EN layouts,
 open Studio and AI preview with Alt+L (if free), then stop/start the same folder.
 If there is a failure, run `diagnose.sh`; do not send API key files or clinical
 text. AI provider requests still require configured credentials and review.
+
+
+## AstraSafeInjector
+
+The current Astra build uses a configurable X11 safety policy rather than one
+hard-coded injection behaviour. The user-facing profiles are `Safe`,
+`Balanced`, `Fast` and `Legacy`; the shipped Astra portable config defaults
+to `Safe`.
+
+The main invariants are:
+
+- Safe/Balanced wait for physically held Ctrl/Alt/Shift/Meta keys to be released
+  instead of synthesizing key-up events for every pressed key.
+- The rendered expansion target is pinned before UI rendering and consumed once.
+  With focus guard enabled, injection aborts if that target cannot be restored
+  and verified after bounded retries.
+- The fast libxdo path has a circuit breaker. Repeated backend errors move later
+  operations to the XTest path for the current worker session.
+- Optional libxdo self-healing recreates the backend context after an error.
+  The failed operation is not blindly replayed, preventing duplicate partial
+  clinical text.
+- `Legacy` is a compatibility escape hatch that preserves the old
+  release-all-pressed-keys behaviour. It is not the recommended Astra profile.
+
+These values are defined once in `espanso-config` and reused by runtime and
+Match Studio, so the UI cannot silently drift from the actual injector defaults.
+
+Useful log markers:
+
+- `[rESP-HOTKEY]` — registration/detection backend.
+- `[rESP-FOCUS]` — one-shot target pin/restore.
+- `[rESP-INJECT]` — injection operation and selected backend.
+- `[rESP-INJECT-BREAKER]` — fast-path circuit breaker activation.
+- `[rESP-INJECT-HEAL]` — libxdo context recreation.
+
+`scripts/test_astra_injector_stress.sh` repeats the complete X11 expansion path
+under Xvfb. It is a regression gate, not a substitute for a real workstation
+soak test with the target MИС, RU/EN layout switching, forms and session
+restart/suspend behaviour.
