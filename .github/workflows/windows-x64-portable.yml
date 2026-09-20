@@ -6,6 +6,27 @@ on:
     branches:
       - build/windows-latest
       - build/windows-4f8e369
+    # Avoid rebuilding Windows for Astra-only docs/workflow changes. Keep this
+    # list aligned with code and packaging inputs that can change the artifact.
+    paths:
+      - '.github/workflows/windows-x64-portable.yml'
+      - 'scripts/build_windows_native_portable_with_studio.ps1'
+      - 'espanso-ai/**'
+      - 'espanso-clipboard/**'
+      - 'espanso-config/**'
+      - 'espanso-engine/**'
+      - 'espanso-editor/**'
+      - 'espanso-modulo/**'
+      - 'espanso/**'
+      - 'espanso-detect/**'
+      - 'espanso-ipc/**'
+      - 'espanso-inject/**'
+      - 'espanso-info/**'
+      - 'espanso-package/**'
+      - 'espanso-render/**'
+      - 'espanso-ui/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
 
 permissions:
   contents: read
