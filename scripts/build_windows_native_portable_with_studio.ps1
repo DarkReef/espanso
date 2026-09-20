@@ -52,6 +52,7 @@ $matchDir = Join-Path $packageDir "match"
 $runtimeDir = Join-Path $packageDir "runtime"
 $packagesDir = Join-Path $packageDir "packages"
 $scriptsDir = Join-Path $packageDir "scripts"
+$clinicalDir = Join-Path $packageDir "clinical_extender"
 $docsDir = Join-Path $packageDir "docs"
 $forbiddenNestedConfig = Join-Path $configDir "config"
 $legacyPortable = Join-Path $packageDir "portable"
@@ -59,7 +60,7 @@ $portableLauncher = Join-Path $packageDir "rEspanso.exe"
 $portableCore = Join-Path $packageDir "rEspanso-core.exe"
 $portableStudio = Join-Path $packageDir "rEspanso Match Studio.exe"
 
-New-Item -Path $configDir, $matchDir, $runtimeDir, $packagesDir, $scriptsDir, $docsDir -ItemType Directory -Force | Out-Null
+New-Item -Path $configDir, $matchDir, $runtimeDir, $packagesDir, $scriptsDir, $clinicalDir, $docsDir -ItemType Directory -Force | Out-Null
 
 Copy-Item $launcher $portableLauncher
 Copy-Item $core $portableCore
@@ -76,6 +77,7 @@ if (Test-Path "LICENSE") {
     Copy-Item "LICENSE" (Join-Path $packageDir "LICENSE.txt")
 }
 Copy-Item "docs/respanso/*" $docsDir -Recurse -Force
+Copy-Item "espanso-editor/examples/clinical-template-package.example.json" (Join-Path $clinicalDir "template-engine.example.json")
 
 Copy-Item "espanso/src/res/config/default.yml" (Join-Path $configDir "default.yml")
 Copy-Item "espanso/src/res/config/base.yml" (Join-Path $matchDir "base.yml")
@@ -109,6 +111,7 @@ rEspanso Portable + Match Studio
   runtime\
   packages\
   scripts\example.rhai
+  clinical_extender\template-engine.example.json
   docs\README.ru.md
 
 Все каталоги находятся непосредственно рядом с rEspanso.exe.
@@ -128,6 +131,7 @@ $required = @(
     $runtimeDir,
     $packagesDir,
     (Join-Path $scriptsDir "example.rhai"),
+    (Join-Path $clinicalDir "template-engine.example.json"),
     (Join-Path $docsDir "README.ru.md"),
     (Join-Path $docsDir "RHAI_PROMPT.ru.md")
 )
