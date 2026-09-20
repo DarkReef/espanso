@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+ci_phase() {
+  local name="$1"
+  shift
+  local started=$SECONDS
+  echo "[rESP-CI] phase=$name status=start"
+  "$@"
+  local elapsed=$((SECONDS - started))
+  echo "[rESP-CI-TIMING] phase=$name seconds=$elapsed"
+}
+
 # Full rEspanso portable build for Astra Linux 1.7 / KDE / X11.
 # Run this script inside an amd64 Debian 10 (buster) build environment whose
 # glibc is 2.28. Nothing is installed on the target Astra workstation: the
@@ -86,33 +96,39 @@ rustc --version
 cargo --version
 
 echo '=== static Rust checks (before build) ==='
-cargo check --locked -p espanso-inject -p espanso-detect --no-default-features
+ci_phase rust-check \
+  cargo check --locked -p espanso-inject -p espanso-detect --no-default-features
 
-# X11 core: no Wayland feature. vendored-tls avoids target OpenSSL coupling.
-cargo build --locked --release \
-  -p espanso --bin espanso \
-  --no-default-features \
-  --features modulo,vendored-tls
+# Build both shipped Rust executables in one release graph. This lets Cargo
+# schedule and reuse shared release dependencies once instead of reopening the
+# graph later for Match Studio. The core remains X11-only (no Wayland feature).
+ci_phase release-build \
+  cargo build --locked --release \
+    -p espanso --bin espanso \
+    -p espanso-editor --bin espanso-editor \
+    --no-default-features \
+    --features espanso/modulo,espanso/vendored-tls
 
 # Exercise the X11 worker itself, the unmanaged daemon/service lifecycle and the
 # real wxWidgets search window before running the slower Rust workspace suite.
-timeout 30s xvfb-run -a bash scripts/test_astra_worker.sh target/release/espanso
-timeout 70s xvfb-run -a bash scripts/test_astra_restart.sh target/release/espanso
-timeout 30s xvfb-run -a bash scripts/test_astra_search_enter.sh target/release/espanso
-timeout 180s xvfb-run -a env RESPANSO_ASTRA_STRESS_ITERATIONS=12 \
-  bash scripts/test_astra_injector_stress.sh target/release/espanso
+ci_phase x11-worker-smoke \
+  timeout 30s xvfb-run -a bash scripts/test_astra_worker.sh target/release/espanso
+ci_phase x11-restart-smoke \
+  timeout 70s xvfb-run -a bash scripts/test_astra_restart.sh target/release/espanso
+ci_phase x11-search-smoke \
+  timeout 30s xvfb-run -a bash scripts/test_astra_search_enter.sh target/release/espanso
+ci_phase x11-injector-stress \
+  timeout 180s xvfb-run -a env RESPANSO_ASTRA_STRESS_ITERATIONS=12 \
+    bash scripts/test_astra_injector_stress.sh target/release/espanso
 
 # Run the complete workspace test suite with the same X11 feature selection
 # before packaging anything. This includes espanso-ai MCP/workspace tests and
 # Match Studio library tests. Clear external MCP credentials so the tests are
 # deterministic even if the invoking shell is configured for an agent.
-env -u RESPANSO_MCP_AGENT_ID -u RESPANSO_MCP_TOKEN \
-  cargo test --locked --workspace --no-default-features \
-  --features espanso/modulo,espanso/vendored-tls
-
-# Match Studio is explicitly eframe + glow + X11 in espanso-editor/Cargo.toml.
-cargo build --locked --release \
-  -p espanso-editor --bin espanso-editor
+ci_phase workspace-tests \
+  env -u RESPANSO_MCP_AGENT_ID -u RESPANSO_MCP_TOKEN \
+    cargo test --locked --workspace --no-default-features \
+      --features espanso/modulo,espanso/vendored-tls
 
 CORE="target/release/espanso"
 STUDIO="target/release/espanso-editor"
@@ -125,9 +141,10 @@ ROOT="$OUT/$PACKAGE"
 # Astra compatibility stack, so this adds a KDE tray icon without installing
 # anything on the workstation.
 # shellcheck disable=SC2046
-g++ -O2 -pipe -std=c++11 scripts/pol_run_tray.cpp \
-  $(wx-config --cxxflags) $(wx-config --libs) \
-  -o "$TRAY"
+ci_phase tray-build \
+  g++ -O2 -pipe -std=c++11 scripts/pol_run_tray.cpp \
+    $(wx-config --cxxflags) $(wx-config --libs) \
+    -o "$TRAY"
 
 rm -rf "$OUT"
 mkdir -p \
