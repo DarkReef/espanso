@@ -44,9 +44,6 @@ jobs:
     timeout-minutes: 240
     env:
       RESPANSO_RUST_TOOLCHAIN: '1.98.1'
-      # This hash follows compiler inputs, not the commit SHA. Documentation or
-      # CI-only edits can therefore reuse the exact compiled dependency cache.
-      RESPANSO_COMPILE_INPUT_HASH: ${{ hashFiles('Cargo.toml', 'Cargo.lock', 'espanso*/Cargo.toml', 'espanso*/build.rs', 'espanso*/src/**', 'scripts/build_pol_run_astra17.sh') }}
       # Cargo incremental directories are large and poor cross-run cache material.
       # Fingerprints + compiled deps give more predictable hosted-runner reuse.
       CARGO_INCREMENTAL: '0'
@@ -77,6 +74,7 @@ jobs:
             astra-buster-registry-v1-
 
       - name: Restore Astra compiled dependency cache
+        id: astra-target-cache
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -87,12 +85,25 @@ jobs:
             target/release/.fingerprint
             target/release/build
             target/release/deps
-          key: astra-buster-target-v3-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-${{ env.RESPANSO_COMPILE_INPUT_HASH }}
+          # Deliberately independent of source SHA. The cache is a dependency
+          # baseline; Cargo fingerprints rebuild changed workspace crates.
+          # Keeping one immutable cache per Rust+lockfile avoids multi-GB cache
+          # growth after every source commit.
+          key: astra-buster-target-v4-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
+            # One-time migration from earlier source-keyed caches.
             astra-buster-target-v3-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
-            astra-buster-target-v3-${{ env.RESPANSO_RUST_TOOLCHAIN }}-
-            # One-time migration path from the previous SHA-keyed cache.
             astra-buster-target-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
+
+      - name: Normalize restored cache ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Old cache generations may contain files archived with container-root
+          # ownership. Normalize before Docker starts so both Cargo and later
+          # cache/save steps can read every restored file.
+          sudo chown -R "$(id -u):$(id -g)" .ci-cache target 2>/dev/null || true
+          chmod -R u+rwX .ci-cache target 2>/dev/null || true
 
       - name: Prepare build identity
         shell: bash
@@ -289,7 +300,7 @@ jobs:
           key: astra-buster-registry-v1-${{ hashFiles('Cargo.lock') }}
 
       - name: Save Astra compiled dependency cache
-        if: success()
+        if: success() && steps.astra-target-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
@@ -300,7 +311,7 @@ jobs:
             target/release/.fingerprint
             target/release/build
             target/release/deps
-          key: astra-buster-target-v3-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-${{ env.RESPANSO_COMPILE_INPUT_HASH }}
+          key: astra-buster-target-v4-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Upload full Astra portable artifact
         uses: actions/upload-artifact@v4
