@@ -77,14 +77,29 @@ pub struct InjectionOptions {
     pub x11_use_xdotool_fallback: bool,
 
     // Astra/X11 hardening knobs. They are ignored by non-X11 injectors.
+
+    // Wait for physically held Ctrl/Alt/Shift/Meta keys to be released before
+    // injection. This avoids synthesizing key-up events for the user's keys.
     pub x11_wait_for_modifiers: bool,
     pub x11_modifier_release_timeout_ms: u32,
+
+    // Abort guarded injection when the one-shot target window cannot be restored
+    // and verified. Retries are bounded to avoid typing into the wrong window.
     pub x11_focus_guard: bool,
     pub x11_focus_retry_count: u32,
     pub x11_focus_retry_delay_ms: u32,
+
+    // After repeated fast-backend errors, route later operations through XTest
+    // for the rest of the worker session.
     pub x11_circuit_breaker: bool,
     pub x11_fast_failure_threshold: u32,
+
+    // Recreate the libxdo context after an injection error so later operations
+    // are not forced to reuse a possibly broken X11 connection.
     pub x11_reinitialize_on_failure: bool,
+
+    // Compatibility escape hatch only: reproduce the historical behaviour that
+    // synthetically releases every currently pressed key before injection.
     pub x11_legacy_release_all_keys: bool,
 }
 
