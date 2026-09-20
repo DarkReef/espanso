@@ -105,6 +105,7 @@ pub enum CalculationKind {
 #[serde(rename_all = "snake_case")]
 pub enum BuiltinCalculator {
     Bmi,
+    #[serde(rename = "ckd_epi_2021")]
     CkdEpi2021,
 }
 
