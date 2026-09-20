@@ -54,7 +54,8 @@ jobs:
           fetch-depth: 1
 
       - name: Restore Astra toolchain and Cargo registry
-        uses: actions/cache@v4
+        id: astra-toolchain-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             .ci-cache/cargo
@@ -214,6 +215,38 @@ jobs:
           path: target/astra-ci-build.log
           if-no-files-found: warn
           retention-days: 5
+
+      - name: Verify Astra cache readability
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in .ci-cache/cargo .ci-cache/rustup target/debug target/release; do
+            [[ -e "$path" ]] || continue
+            unreadable="$(find "$path" -type f ! -readable -print -quit)"
+            if [[ -n "$unreadable" ]]; then
+              echo "ERROR: cache contains unreadable file: $unreadable" >&2
+              exit 1
+            fi
+          done
+
+          {
+            echo
+            echo '### Astra cache footprint'
+            echo
+            echo '```text'
+            du -sh .ci-cache/cargo .ci-cache/rustup target/debug/deps target/release/deps 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save Astra toolchain and Cargo registry
+        if: success() && steps.astra-toolchain-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .ci-cache/cargo
+            .ci-cache/rustup
+          key: astra-buster-toolchain-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
 
       - name: Save Astra compiled dependency cache
         if: success()
