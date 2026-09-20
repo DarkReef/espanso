@@ -1,0 +1,4241 @@
+{
+  "schema_version": 1,
+  "package": {
+    "id": "ru.respanso.hypertension.adults.2024",
+    "name": "Артериальная гипертензия у взрослых — динамический шаблон",
+    "version": "2024.1.0",
+    "status": "draft",
+    "description": "Динамический шаблон ГБ/АГ по клиническим рекомендациям 2024: классификация АД, ФР, ПОМ, АКС, автоматический расчет ИМТ/рСКФ/ПД, стадия ГБ, правила обследования, целевого АД, старта/эскалации АГТ и скрининга вторичной/резистентной АГ."
+  },
+  "fields": [
+    {
+      "id": "patient.age",
+      "label": "Возраст",
+      "kind": "integer",
+      "unit": "лет",
+      "required": true,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.4. Оценка сердечно-сосудистого риска",
+        "note": "Стр. 28–30"
+      }
+    },
+    {
+      "id": "patient.sex",
+      "label": "Пол",
+      "kind": "choice",
+      "required": true,
+      "choices": [
+        "male",
+        "female"
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Классификация",
+        "note": "Стр. 18–21"
+      }
+    },
+    {
+      "id": "visit.complaints",
+      "label": "Жалобы",
+      "kind": "text",
+      "default": "",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.5. Жалобы и анамнез",
+        "note": "Стр. 30"
+      }
+    },
+    {
+      "id": "visit.family_history",
+      "label": "Семейный анамнез АГ/ССЗ",
+      "kind": "text",
+      "default": "",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.5. Жалобы и анамнез",
+        "note": "Стр. 30"
+      }
+    },
+    {
+      "id": "visit.secondary_htn_clues",
+      "label": "Клинические/лабораторные признаки вторичной АГ",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1. Критерии установления диагноза",
+        "note": "Стр. 24–25"
+      }
+    },
+    {
+      "id": "visit.neurologic_symptoms",
+      "label": "Неврологические симптомы",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.8. Инструментальные исследования",
+        "note": "Стр. 36"
+      }
+    },
+    {
+      "id": "visit.cognitive_impairment",
+      "label": "Когнитивные нарушения",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.8–2.9",
+        "note": "Стр. 36"
+      }
+    },
+    {
+      "id": "visit.osa_symptoms",
+      "label": "Симптомы СОАС",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1; 3.6.9",
+        "note": "Стр. 24, 66"
+      }
+    },
+    {
+      "id": "visit.pheochromocytoma_clues",
+      "label": "Симптомы/семейный анамнез феохромоцитомы",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1",
+        "note": "Стр. 24"
+      }
+    },
+    {
+      "id": "visit.sudden_onset_htn",
+      "label": "Внезапное развитие АГ после стойкой нормотонии",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1",
+        "note": "Стр. 24"
+      }
+    },
+    {
+      "id": "bp.sbp",
+      "label": "САД",
+      "kind": "integer",
+      "unit": "mmHg",
+      "required": true,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.3. Принципы измерения АД",
+        "note": "Стр. 23–27"
+      }
+    },
+    {
+      "id": "bp.dbp",
+      "label": "ДАД",
+      "kind": "integer",
+      "unit": "mmHg",
+      "required": true,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.3. Принципы измерения АД",
+        "note": "Стр. 23–27"
+      }
+    },
+    {
+      "id": "bp.hr",
+      "label": "ЧСС",
+      "kind": "integer",
+      "unit": "/min",
+      "required": true,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.3. Принципы измерения АД",
+        "note": "Стр. 23–27"
+      }
+    },
+    {
+      "id": "bp.confirmed_two_visits",
+      "label": "Повышение АД подтверждено на двух визитах",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1",
+        "note": "Стр. 23–24"
+      }
+    },
+    {
+      "id": "bp.out_of_office_confirms",
+      "label": "СМАД/ДМАД подтверждает АГ",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1–2.3",
+        "note": "Стр. 23–27"
+      }
+    },
+    {
+      "id": "bp.out_of_office_uncontrolled",
+      "label": "СМАД/ДМАД подтверждает отсутствие контроля АД",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "3.6.11",
+        "note": "Стр. 67–71"
+      }
+    },
+    {
+      "id": "bp.office_category",
+      "label": "Категория офисного АД",
+      "kind": "computed"
+    },
+    {
+      "id": "bp.grade",
+      "label": "Степень АГ",
+      "kind": "computed"
+    },
+    {
+      "id": "bp.pattern",
+      "label": "Профиль АД",
+      "kind": "computed"
+    },
+    {
+      "id": "bp.pulse_pressure",
+      "label": "Пульсовое давление",
+      "kind": "computed",
+      "unit": "mmHg"
+    },
+    {
+      "id": "bp.initial_target_achieved",
+      "label": "АД <140/90",
+      "kind": "computed",
+      "default": false
+    },
+    {
+      "id": "bp.target_text",
+      "label": "Целевой диапазон АД",
+      "kind": "computed",
+      "default": "Индивидуализировать с учетом возраста, переносимости и сопутствующих заболеваний"
+    },
+    {
+      "id": "vitals.height_cm",
+      "label": "Рост",
+      "kind": "decimal",
+      "unit": "cm",
+      "required": true,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.6. Физикальное обследование",
+        "note": "Стр. 31"
+      }
+    },
+    {
+      "id": "vitals.weight_kg",
+      "label": "Вес",
+      "kind": "decimal",
+      "unit": "kg",
+      "required": true,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.6. Физикальное обследование",
+        "note": "Стр. 31"
+      }
+    },
+    {
+      "id": "vitals.waist_cm",
+      "label": "Окружность талии",
+      "kind": "decimal",
+      "unit": "cm",
+      "required": true,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5; 2.6",
+        "note": "Стр. 19, 31"
+      }
+    },
+    {
+      "id": "vitals.bmi",
+      "label": "ИМТ",
+      "kind": "computed",
+      "unit": "kg/m2"
+    },
+    {
+      "id": "labs.glucose_fasting",
+      "label": "Глюкоза натощак",
+      "kind": "decimal",
+      "unit": "mmol/L",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.7. Лабораторные исследования",
+        "note": "Стр. 31–32"
+      }
+    },
+    {
+      "id": "labs.hba1c",
+      "label": "HbA1c",
+      "kind": "decimal",
+      "unit": "%",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.7. Лабораторные исследования",
+        "note": "Стр. 31–32"
+      }
+    },
+    {
+      "id": "labs.total_cholesterol",
+      "label": "ОХС",
+      "kind": "decimal",
+      "unit": "mmol/L",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.7. Лабораторные исследования",
+        "note": "Стр. 33"
+      }
+    },
+    {
+      "id": "labs.ldl",
+      "label": "ХС ЛНП",
+      "kind": "decimal",
+      "unit": "mmol/L",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.7. Лабораторные исследования",
+        "note": "Стр. 33"
+      }
+    },
+    {
+      "id": "labs.hdl",
+      "label": "ХС ЛВП",
+      "kind": "decimal",
+      "unit": "mmol/L",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.7. Лабораторные исследования",
+        "note": "Стр. 33"
+      }
+    },
+    {
+      "id": "labs.triglycerides",
+      "label": "Триглицериды",
+      "kind": "decimal",
+      "unit": "mmol/L",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.7. Лабораторные исследования",
+        "note": "Стр. 33"
+      }
+    },
+    {
+      "id": "labs.uric_acid",
+      "label": "Мочевая кислота",
+      "kind": "decimal",
+      "unit": "umol/L",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.7. Лабораторные исследования",
+        "note": "Стр. 33"
+      }
+    },
+    {
+      "id": "labs.potassium",
+      "label": "Калий",
+      "kind": "decimal",
+      "unit": "mmol/L",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.7. Лабораторные исследования",
+        "note": "Стр. 33"
+      }
+    },
+    {
+      "id": "labs.sodium",
+      "label": "Натрий",
+      "kind": "decimal",
+      "unit": "mmol/L",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.7. Лабораторные исследования",
+        "note": "Стр. 33"
+      }
+    },
+    {
+      "id": "labs.creatinine_umol_l",
+      "label": "Креатинин",
+      "kind": "decimal",
+      "unit": "umol/L",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.7. Лабораторные исследования",
+        "note": "Стр. 32"
+      }
+    },
+    {
+      "id": "renal.acr_mg_g",
+      "label": "Альбумин/креатинин мочи",
+      "kind": "decimal",
+      "unit": "mg/g",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.7. Лабораторные исследования",
+        "note": "Стр. 32–33"
+      }
+    },
+    {
+      "id": "renal.egfr",
+      "label": "рСКФ CKD-EPI",
+      "kind": "computed",
+      "unit": "mL/min/1.73m2",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.7",
+        "note": "Стр. 32"
+      }
+    },
+    {
+      "id": "renal.ckd_confirmed",
+      "label": "ХБП подтверждена (≥3 мес/иные критерии хронического поражения)",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Термины и определения; 1.5",
+        "note": "Стр. 12, 20–21"
+      }
+    },
+    {
+      "id": "renal.ckd_stage",
+      "label": "Стадия ХБП",
+      "kind": "choice",
+      "default": "not_assessed",
+      "choices": [
+        "not_assessed",
+        "G1",
+        "G2",
+        "G3a",
+        "G3b",
+        "G4",
+        "G5"
+      ]
+    },
+    {
+      "id": "rf.smoking",
+      "label": "Курение",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20"
+      }
+    },
+    {
+      "id": "rf.family_history_early_cvd",
+      "label": "Семейный анамнез ранних ССЗ",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20"
+      }
+    },
+    {
+      "id": "rf.physical_inactivity",
+      "label": "Малоподвижный образ жизни",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20"
+      }
+    },
+    {
+      "id": "rf.early_menopause",
+      "label": "Ранняя менопауза",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20"
+      }
+    },
+    {
+      "id": "rf.psychosocial",
+      "label": "Психологические/социально-экономические факторы",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20"
+      }
+    },
+    {
+      "id": "rf.age",
+      "label": "Возрастной фактор риска",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20"
+      }
+    },
+    {
+      "id": "rf.dyslipidemia",
+      "label": "Дислипидемия",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20"
+      }
+    },
+    {
+      "id": "rf.hyperuricemia",
+      "label": "Гиперурикемия",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20"
+      }
+    },
+    {
+      "id": "rf.impaired_fasting_glucose",
+      "label": "Нарушенная гликемия натощак",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20"
+      }
+    },
+    {
+      "id": "rf.overweight",
+      "label": "Избыточная масса тела",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20"
+      }
+    },
+    {
+      "id": "rf.obesity",
+      "label": "Ожирение",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20"
+      }
+    },
+    {
+      "id": "rf.abdominal_obesity",
+      "label": "Абдоминальное ожирение",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20"
+      }
+    },
+    {
+      "id": "rf.hr_gt_80",
+      "label": "ЧСС >80/мин",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20"
+      }
+    },
+    {
+      "id": "cv.risk_factor_count",
+      "label": "Количество учитываемых ФР",
+      "kind": "computed",
+      "default": 0
+    },
+    {
+      "id": "cv.risk_category",
+      "label": "Категория СС риска",
+      "kind": "choice",
+      "required": true,
+      "default": "not_assessed",
+      "choices": [
+        "not_assessed",
+        "low",
+        "moderate",
+        "high",
+        "very_high",
+        "extreme"
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5; 2.4",
+        "note": "Стр. 21, 28–30"
+      }
+    },
+    {
+      "id": "cv.extreme_risk_criteria",
+      "label": "Критерии экстремального СС риска",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.4. Оценка сердечно-сосудистого риска",
+        "note": "Стр. 29. ≥2 СС осложнений за 2 года несмотря на оптимальную гиполипидемическую терапию и/или достигнутый ХС ЛНП <1,4 ммоль/л."
+      }
+    },
+    {
+      "id": "cv.score2_percent",
+      "label": "SCORE2/SCORE2-OP",
+      "kind": "decimal",
+      "unit": "%",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.4",
+        "note": "Стр. 28"
+      }
+    },
+    {
+      "id": "cv.high_risk_by_condition",
+      "label": "Высокий/очень высокий риск по состоянию",
+      "kind": "computed",
+      "default": false
+    },
+    {
+      "id": "hmod.lvh_ecg",
+      "label": "ГЛЖ по ЭКГ",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Поражение органов-мишеней",
+        "note": "Стр. 20–21"
+      }
+    },
+    {
+      "id": "hmod.lvh_echo",
+      "label": "ГЛЖ по ЭхоКГ",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Поражение органов-мишеней",
+        "note": "Стр. 20–21"
+      }
+    },
+    {
+      "id": "hmod.severe_retinopathy",
+      "label": "Тяжелая гипертоническая ретинопатия",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Поражение органов-мишеней",
+        "note": "Стр. 20–21"
+      }
+    },
+    {
+      "id": "hmod.cfpwv_m_s",
+      "label": "Каротидно-феморальная СПВ",
+      "kind": "decimal",
+      "unit": "m/s",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 20"
+      }
+    },
+    {
+      "id": "hmod.abi",
+      "label": "Лодыжечно-плечевой индекс",
+      "kind": "decimal",
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 20"
+      }
+    },
+    {
+      "id": "hmod.pulse_pressure_elderly",
+      "label": "ПД ≥60 у пожилого пациента",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Поражение органов-мишеней",
+        "note": "Стр. 20–21"
+      }
+    },
+    {
+      "id": "hmod.albuminuria_a2",
+      "label": "Альбуминурия A2 (30–300 мг/г)",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Поражение органов-мишеней",
+        "note": "Стр. 20–21"
+      }
+    },
+    {
+      "id": "hmod.ckd_g3",
+      "label": "Подтвержденная ХБП G3",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Поражение органов-мишеней",
+        "note": "Стр. 20–21"
+      }
+    },
+    {
+      "id": "hmod.abi_low",
+      "label": "ЛПИ <0,9",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Поражение органов-мишеней",
+        "note": "Стр. 20–21"
+      }
+    },
+    {
+      "id": "hmod.pwv_high",
+      "label": "СПВ >10 м/с",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Поражение органов-мишеней",
+        "note": "Стр. 20–21"
+      }
+    },
+    {
+      "id": "hmod.any",
+      "label": "Есть ПОМ",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Поражение органов-мишеней",
+        "note": "Стр. 20–21"
+      }
+    },
+    {
+      "id": "acs.stroke",
+      "label": "Инсульт",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Ассоциированные клинические состояния",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "acs.tia",
+      "label": "ТИА",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Ассоциированные клинические состояния",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "acs.mi",
+      "label": "Инфаркт миокарда",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Ассоциированные клинические состояния",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "acs.angina",
+      "label": "Стенокардия",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Ассоциированные клинические состояния",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "acs.revascularization",
+      "label": "Реваскуляризация миокарда",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Ассоциированные клинические состояния",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "acs.atherosclerotic_plaque_ge50",
+      "label": "Атеросклеротическая бляшка/стеноз ≥50%",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Ассоциированные клинические состояния",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "acs.heart_failure",
+      "label": "Сердечная недостаточность",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Ассоциированные клинические состояния",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "acs.peripheral_artery_disease",
+      "label": "Заболевание периферических артерий",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Ассоциированные клинические состояния",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "acs.atrial_fibrillation",
+      "label": "Фибрилляция предсердий",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Ассоциированные клинические состояния",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "acs.severe_ckd",
+      "label": "Тяжелая подтвержденная ХБП с рСКФ <30",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "acs.any",
+      "label": "Есть АКС",
+      "kind": "computed",
+      "default": false
+    },
+    {
+      "id": "diabetes.present",
+      "label": "Сахарный диабет",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "diabetes.organ_damage",
+      "label": "СД с поражением органов-мишеней",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "diagnosis.icd10",
+      "label": "Код МКБ-10",
+      "kind": "choice",
+      "required": true,
+      "default": "I10",
+      "choices": [
+        "I10",
+        "I11.0",
+        "I11.9",
+        "I12.0",
+        "I12.9",
+        "I13.0",
+        "I13.1",
+        "I13.2",
+        "I13.9"
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.4. Кодирование по МКБ",
+        "note": "Стр. 17–18"
+      }
+    },
+    {
+      "id": "diagnosis.preexisting",
+      "label": "Диагноз АГ/ГБ ранее установлен",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1–2.2",
+        "note": "Стр. 23–25"
+      }
+    },
+    {
+      "id": "diagnosis.stage",
+      "label": "Стадия ГБ",
+      "kind": "computed",
+      "default": "I"
+    },
+    {
+      "id": "diagnosis.bp_status",
+      "label": "Степень/контроль АД для диагноза",
+      "kind": "computed",
+      "default": "не оценено"
+    },
+    {
+      "id": "diagnosis.hypertension_confirmed",
+      "label": "Диагноз АГ подтвержден",
+      "kind": "computed",
+      "default": false
+    },
+    {
+      "id": "diagnosis.resistant_hypertension",
+      "label": "Резистентная АГ",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "3.6.11",
+        "note": "Стр. 67–71"
+      }
+    },
+    {
+      "id": "diagnosis.secondary_htn_red_flag",
+      "label": "Есть показания к исключению вторичной АГ",
+      "kind": "computed",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1",
+        "note": "Стр. 24–25"
+      }
+    },
+    {
+      "id": "therapy.antihypertensive_current",
+      "label": "Получает антигипертензивную терапию",
+      "kind": "boolean",
+      "required": true,
+      "default": false
+    },
+    {
+      "id": "therapy.target_achieved",
+      "label": "Целевой уровень АД по индивидуальной цели",
+      "kind": "choice",
+      "required": true,
+      "default": "not_assessed",
+      "choices": [
+        "not_assessed",
+        "achieved",
+        "not_achieved"
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.2; 3.2",
+        "note": "Стр. 25, 38–40"
+      }
+    },
+    {
+      "id": "therapy.frailty",
+      "label": "Синдром старческой астении",
+      "kind": "boolean",
+      "default": false,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "3.1–3.2",
+        "note": "Стр. 37–40"
+      }
+    },
+    {
+      "id": "therapy.drug_count",
+      "label": "Число антигипертензивных препаратов",
+      "kind": "integer",
+      "default": 0
+    },
+    {
+      "id": "therapy.includes_raas",
+      "label": "Есть ИАПФ/БРА",
+      "kind": "boolean",
+      "default": false
+    },
+    {
+      "id": "therapy.includes_ccb",
+      "label": "Есть антагонист кальция",
+      "kind": "boolean",
+      "default": false
+    },
+    {
+      "id": "therapy.includes_diuretic",
+      "label": "Есть диуретик",
+      "kind": "boolean",
+      "default": false
+    },
+    {
+      "id": "therapy.max_tolerated_doses",
+      "label": "Оптимальные/максимально переносимые дозы",
+      "kind": "boolean",
+      "default": false
+    },
+    {
+      "id": "therapy.adherence_confirmed",
+      "label": "Приверженность подтверждена",
+      "kind": "boolean",
+      "default": false
+    },
+    {
+      "id": "therapy.lifestyle_adherence",
+      "label": "Мероприятия по образу жизни соблюдаются",
+      "kind": "boolean",
+      "default": false
+    },
+    {
+      "id": "secondary_causes.excluded",
+      "label": "Вторичные причины АГ исключены",
+      "kind": "boolean",
+      "default": false
+    }
+  ],
+  "calculations": [
+    {
+      "id": "calc.bmi",
+      "output": "vitals.bmi",
+      "kind": "builtin",
+      "builtin": "bmi",
+      "inputs": {
+        "height_cm": "vitals.height_cm",
+        "weight_kg": "vitals.weight_kg"
+      },
+      "precision": 1,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.6. Физикальное обследование",
+        "note": "Стр. 31"
+      }
+    },
+    {
+      "id": "calc.egfr",
+      "output": "renal.egfr",
+      "kind": "builtin",
+      "builtin": "ckd_epi_2021",
+      "inputs": {
+        "creatinine_umol_l": "labs.creatinine_umol_l",
+        "age": "patient.age",
+        "sex": "patient.sex"
+      },
+      "precision": 0,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.7. Лабораторные исследования",
+        "note": "Стр. 32. В КР указан CKD-EPI; движок v1 использует встроенный CKD-EPI 2021."
+      }
+    },
+    {
+      "id": "calc.pulse_pressure",
+      "output": "bp.pulse_pressure",
+      "kind": "formula",
+      "expression": "sbp - dbp",
+      "inputs": {
+        "sbp": "bp.sbp",
+        "dbp": "bp.dbp"
+      },
+      "precision": 0,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Классификация",
+        "note": "Стр. 20"
+      }
+    },
+    {
+      "id": "calc.risk_factor_count",
+      "output": "cv.risk_factor_count",
+      "kind": "script",
+      "script": "let n = 0;\nif age_risk { n += 1; }\nif smoking { n += 1; }\nif dyslipidemia { n += 1; }\nif hyperuricemia { n += 1; }\nif impaired_glucose { n += 1; }\nif overweight { n += 1; }\nif abdominal_obesity { n += 1; }\nif family_history { n += 1; }\nif inactivity { n += 1; }\nif early_menopause { n += 1; }\nif psychosocial { n += 1; }\nif hr_gt_80 { n += 1; }\nn",
+      "inputs": {
+        "age_risk": "rf.age",
+        "smoking": "rf.smoking",
+        "dyslipidemia": "rf.dyslipidemia",
+        "hyperuricemia": "rf.hyperuricemia",
+        "impaired_glucose": "rf.impaired_fasting_glucose",
+        "overweight": "rf.overweight",
+        "abdominal_obesity": "rf.abdominal_obesity",
+        "family_history": "rf.family_history_early_cvd",
+        "inactivity": "rf.physical_inactivity",
+        "early_menopause": "rf.early_menopause",
+        "psychosocial": "rf.psychosocial",
+        "hr_gt_80": "rf.hr_gt_80"
+      },
+      "precision": 0,
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5. Факторы СС риска",
+        "note": "Стр. 19–20. Служебный счетчик, не самостоятельная шкала риска."
+      }
+    }
+  ],
+  "rules": [
+    {
+      "id": "bp.optimal",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.sbp"
+            },
+            "right": {
+              "value": 120
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.dbp"
+            },
+            "right": {
+              "value": 80
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "bp.office_category",
+          "value": {
+            "value": "optimal"
+          }
+        },
+        {
+          "type": "set",
+          "field": "bp.grade",
+          "value": {
+            "value": "none"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Таблица П2/А3",
+        "note": "Стр. 168"
+      }
+    },
+    {
+      "id": "bp.normal",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.sbp"
+            },
+            "right": {
+              "value": 130
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.dbp"
+            },
+            "right": {
+              "value": 85
+            }
+          },
+          {
+            "op": "any",
+            "conditions": [
+              {
+                "op": "gte",
+                "left": {
+                  "var": "bp.sbp"
+                },
+                "right": {
+                  "value": 120
+                }
+              },
+              {
+                "op": "gte",
+                "left": {
+                  "var": "bp.dbp"
+                },
+                "right": {
+                  "value": 80
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "bp.office_category",
+          "value": {
+            "value": "normal"
+          }
+        },
+        {
+          "type": "set",
+          "field": "bp.grade",
+          "value": {
+            "value": "none"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Таблица П2/А3",
+        "note": "Стр. 168"
+      }
+    },
+    {
+      "id": "bp.high_normal",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.sbp"
+            },
+            "right": {
+              "value": 140
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.dbp"
+            },
+            "right": {
+              "value": 90
+            }
+          },
+          {
+            "op": "any",
+            "conditions": [
+              {
+                "op": "gte",
+                "left": {
+                  "var": "bp.sbp"
+                },
+                "right": {
+                  "value": 130
+                }
+              },
+              {
+                "op": "gte",
+                "left": {
+                  "var": "bp.dbp"
+                },
+                "right": {
+                  "value": 85
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "bp.office_category",
+          "value": {
+            "value": "high_normal"
+          }
+        },
+        {
+          "type": "set",
+          "field": "bp.grade",
+          "value": {
+            "value": "none"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Таблица П2/А3",
+        "note": "Стр. 168"
+      }
+    },
+    {
+      "id": "bp.grade1",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.sbp"
+            },
+            "right": {
+              "value": 160
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.dbp"
+            },
+            "right": {
+              "value": 100
+            }
+          },
+          {
+            "op": "any",
+            "conditions": [
+              {
+                "op": "gte",
+                "left": {
+                  "var": "bp.sbp"
+                },
+                "right": {
+                  "value": 140
+                }
+              },
+              {
+                "op": "gte",
+                "left": {
+                  "var": "bp.dbp"
+                },
+                "right": {
+                  "value": 90
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "bp.office_category",
+          "value": {
+            "value": "hypertension"
+          }
+        },
+        {
+          "type": "set",
+          "field": "bp.grade",
+          "value": {
+            "value": "1"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Таблица П2/А3",
+        "note": "Стр. 168"
+      }
+    },
+    {
+      "id": "bp.grade2",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.sbp"
+            },
+            "right": {
+              "value": 180
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.dbp"
+            },
+            "right": {
+              "value": 110
+            }
+          },
+          {
+            "op": "any",
+            "conditions": [
+              {
+                "op": "gte",
+                "left": {
+                  "var": "bp.sbp"
+                },
+                "right": {
+                  "value": 160
+                }
+              },
+              {
+                "op": "gte",
+                "left": {
+                  "var": "bp.dbp"
+                },
+                "right": {
+                  "value": 100
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "bp.office_category",
+          "value": {
+            "value": "hypertension"
+          }
+        },
+        {
+          "type": "set",
+          "field": "bp.grade",
+          "value": {
+            "value": "2"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Таблица П2/А3",
+        "note": "Стр. 168"
+      }
+    },
+    {
+      "id": "bp.grade3",
+      "when": {
+        "op": "any",
+        "conditions": [
+          {
+            "op": "gte",
+            "left": {
+              "var": "bp.sbp"
+            },
+            "right": {
+              "value": 180
+            }
+          },
+          {
+            "op": "gte",
+            "left": {
+              "var": "bp.dbp"
+            },
+            "right": {
+              "value": 110
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "bp.office_category",
+          "value": {
+            "value": "hypertension"
+          }
+        },
+        {
+          "type": "set",
+          "field": "bp.grade",
+          "value": {
+            "value": "3"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Таблица П2/А3",
+        "note": "Стр. 168. Граница реализована как ≥180/≥110, чтобы категории не имели разрыва."
+      }
+    },
+    {
+      "id": "bp.isolated_systolic",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "gte",
+            "left": {
+              "var": "bp.sbp"
+            },
+            "right": {
+              "value": 140
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.dbp"
+            },
+            "right": {
+              "value": 90
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "bp.pattern",
+          "value": {
+            "value": "isolated_systolic"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Таблица П2/А3",
+        "note": "Стр. 168"
+      }
+    },
+    {
+      "id": "bp.isolated_diastolic",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.sbp"
+            },
+            "right": {
+              "value": 140
+            }
+          },
+          {
+            "op": "gte",
+            "left": {
+              "var": "bp.dbp"
+            },
+            "right": {
+              "value": 90
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "bp.pattern",
+          "value": {
+            "value": "isolated_diastolic"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Таблица П2/А3",
+        "note": "Стр. 168"
+      }
+    },
+    {
+      "id": "bp.initial_target",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.sbp"
+            },
+            "right": {
+              "value": 140
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "bp.dbp"
+            },
+            "right": {
+              "value": 90
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "bp.initial_target_achieved",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "3.2. Целевые уровни АД",
+        "note": "Стр. 38–40"
+      }
+    },
+    {
+      "id": "target.age_lt65",
+      "when": {
+        "op": "lt",
+        "left": {
+          "var": "patient.age"
+        },
+        "right": {
+          "value": 65
+        }
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "bp.target_text",
+          "value": {
+            "value": "САД 120–129 мм рт. ст. при переносимости; ДАД <80 мм рт. ст. (не стремиться ниже 70 мм рт. ст.)"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "3.2; Таблица П19/А3",
+        "note": "Стр. 39, 189"
+      }
+    },
+    {
+      "id": "target.age_ge65",
+      "when": {
+        "op": "gte",
+        "left": {
+          "var": "patient.age"
+        },
+        "right": {
+          "value": 65
+        }
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "bp.target_text",
+          "value": {
+            "value": "САД 130–139 мм рт. ст. при переносимости; ДАД <80 мм рт. ст.; учитывать переносимость, ортостаз и старческую астению"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "3.2; Таблица П19/А3",
+        "note": "Стр. 39–40, 189"
+      }
+    },
+    {
+      "id": "diagnosis.confirmed_preexisting",
+      "when": {
+        "op": "eq",
+        "left": {
+          "var": "diagnosis.preexisting"
+        },
+        "right": {
+          "value": true
+        }
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.hypertension_confirmed",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1–2.2",
+        "note": "Стр. 23–25. Ранее установленный диагноз рассматривается как уже подтвержденный в контексте повторного осмотра."
+      }
+    },
+    {
+      "id": "diagnosis.confirmed_two_visits",
+      "when": {
+        "op": "eq",
+        "left": {
+          "var": "bp.confirmed_two_visits"
+        },
+        "right": {
+          "value": true
+        }
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.hypertension_confirmed",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1",
+        "note": "Стр. 23–24"
+      }
+    },
+    {
+      "id": "diagnosis.confirmed_out_of_office",
+      "when": {
+        "op": "eq",
+        "left": {
+          "var": "bp.out_of_office_confirms"
+        },
+        "right": {
+          "value": true
+        }
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.hypertension_confirmed",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1–2.3",
+        "note": "Стр. 23–27"
+      }
+    },
+    {
+      "id": "diagnosis.severe_exception",
+      "when": {
+        "op": "any",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "2"
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "3"
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.hypertension_confirmed",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1",
+        "note": "Стр. 23–24. КР допускают исключение из правила двух визитов при тяжелой АГ, особенно у пациентов высокого риска."
+      }
+    },
+    {
+      "id": "diagnosis.unconfirmed_grade1",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "1"
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "diagnosis.hypertension_confirmed"
+            },
+            "right": {
+              "value": false
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "warning",
+          "message": "АГ 1-й степени требует подтверждения повторными измерениями на разных визитах и/или данными СМАД/ДМАД.",
+          "level": "review"
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1",
+        "note": "Стр. 23–24"
+      }
+    },
+    {
+      "id": "rf.age_male",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "patient.sex"
+            },
+            "right": {
+              "value": "male"
+            }
+          },
+          {
+            "op": "gte",
+            "left": {
+              "var": "patient.age"
+            },
+            "right": {
+              "value": 55
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "rf.age",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 19"
+      }
+    },
+    {
+      "id": "rf.age_female",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "patient.sex"
+            },
+            "right": {
+              "value": "female"
+            }
+          },
+          {
+            "op": "gte",
+            "left": {
+              "var": "patient.age"
+            },
+            "right": {
+              "value": 65
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "rf.age",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 19"
+      }
+    },
+    {
+      "id": "rf.overweight",
+      "when": {
+        "op": "gte",
+        "left": {
+          "var": "vitals.bmi"
+        },
+        "right": {
+          "value": 25
+        }
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "rf.overweight",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 19"
+      }
+    },
+    {
+      "id": "rf.obesity",
+      "when": {
+        "op": "gte",
+        "left": {
+          "var": "vitals.bmi"
+        },
+        "right": {
+          "value": 30
+        }
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "rf.obesity",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 19"
+      }
+    },
+    {
+      "id": "rf.abdominal_male",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "patient.sex"
+            },
+            "right": {
+              "value": "male"
+            }
+          },
+          {
+            "op": "gt",
+            "left": {
+              "var": "vitals.waist_cm"
+            },
+            "right": {
+              "value": 94
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "rf.abdominal_obesity",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 19"
+      }
+    },
+    {
+      "id": "rf.abdominal_female",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "patient.sex"
+            },
+            "right": {
+              "value": "female"
+            }
+          },
+          {
+            "op": "gt",
+            "left": {
+              "var": "vitals.waist_cm"
+            },
+            "right": {
+              "value": 80
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "rf.abdominal_obesity",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 19"
+      }
+    },
+    {
+      "id": "rf.hr",
+      "when": {
+        "op": "gt",
+        "left": {
+          "var": "bp.hr"
+        },
+        "right": {
+          "value": 80
+        }
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "rf.hr_gt_80",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 20"
+      }
+    },
+    {
+      "id": "rf.hyperuricemia",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "exists",
+            "var": "labs.uric_acid"
+          },
+          {
+            "op": "gte",
+            "left": {
+              "var": "labs.uric_acid"
+            },
+            "right": {
+              "value": 360
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "rf.hyperuricemia",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 19"
+      }
+    },
+    {
+      "id": "rf.impaired_glucose",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "exists",
+            "var": "labs.glucose_fasting"
+          },
+          {
+            "op": "gte",
+            "left": {
+              "var": "labs.glucose_fasting"
+            },
+            "right": {
+              "value": 5.6
+            }
+          },
+          {
+            "op": "lte",
+            "left": {
+              "var": "labs.glucose_fasting"
+            },
+            "right": {
+              "value": 6.9
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "rf.impaired_fasting_glucose",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 19"
+      }
+    },
+    {
+      "id": "rf.dyslipidemia",
+      "when": {
+        "op": "any",
+        "conditions": [
+          {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "exists",
+                "var": "labs.total_cholesterol"
+              },
+              {
+                "op": "gt",
+                "left": {
+                  "var": "labs.total_cholesterol"
+                },
+                "right": {
+                  "value": 4.9
+                }
+              }
+            ]
+          },
+          {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "exists",
+                "var": "labs.ldl"
+              },
+              {
+                "op": "gt",
+                "left": {
+                  "var": "labs.ldl"
+                },
+                "right": {
+                  "value": 3
+                }
+              }
+            ]
+          },
+          {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "exists",
+                "var": "labs.triglycerides"
+              },
+              {
+                "op": "gt",
+                "left": {
+                  "var": "labs.triglycerides"
+                },
+                "right": {
+                  "value": 1.7
+                }
+              }
+            ]
+          },
+          {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "eq",
+                "left": {
+                  "var": "patient.sex"
+                },
+                "right": {
+                  "value": "male"
+                }
+              },
+              {
+                "op": "exists",
+                "var": "labs.hdl"
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "var": "labs.hdl"
+                },
+                "right": {
+                  "value": 1
+                }
+              }
+            ]
+          },
+          {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "eq",
+                "left": {
+                  "var": "patient.sex"
+                },
+                "right": {
+                  "value": "female"
+                }
+              },
+              {
+                "op": "exists",
+                "var": "labs.hdl"
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "var": "labs.hdl"
+                },
+                "right": {
+                  "value": 1.2
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "rf.dyslipidemia",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 19"
+      }
+    },
+    {
+      "id": "hmod.pulse_pressure_elderly",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "gte",
+            "left": {
+              "var": "patient.age"
+            },
+            "right": {
+              "value": 60
+            }
+          },
+          {
+            "op": "gte",
+            "left": {
+              "var": "bp.pulse_pressure"
+            },
+            "right": {
+              "value": 60
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "hmod.pulse_pressure_elderly",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 20"
+      }
+    },
+    {
+      "id": "hmod.albuminuria_a2",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "exists",
+            "var": "renal.acr_mg_g"
+          },
+          {
+            "op": "gte",
+            "left": {
+              "var": "renal.acr_mg_g"
+            },
+            "right": {
+              "value": 30
+            }
+          },
+          {
+            "op": "lte",
+            "left": {
+              "var": "renal.acr_mg_g"
+            },
+            "right": {
+              "value": 300
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "hmod.albuminuria_a2",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 20"
+      }
+    },
+    {
+      "id": "hmod.ckd_g3",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "renal.ckd_confirmed"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "gte",
+            "left": {
+              "var": "renal.egfr"
+            },
+            "right": {
+              "value": 30
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "renal.egfr"
+            },
+            "right": {
+              "value": 60
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "hmod.ckd_g3",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 20"
+      }
+    },
+    {
+      "id": "hmod.abi_low",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "exists",
+            "var": "hmod.abi"
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "hmod.abi"
+            },
+            "right": {
+              "value": 0.9
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "hmod.abi_low",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 20"
+      }
+    },
+    {
+      "id": "hmod.pwv_high",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "exists",
+            "var": "hmod.cfpwv_m_s"
+          },
+          {
+            "op": "gt",
+            "left": {
+              "var": "hmod.cfpwv_m_s"
+            },
+            "right": {
+              "value": 10
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "hmod.pwv_high",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 20"
+      }
+    },
+    {
+      "id": "hmod.any",
+      "when": {
+        "op": "any",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "hmod.lvh_ecg"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "hmod.lvh_echo"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "hmod.severe_retinopathy"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "hmod.pulse_pressure_elderly"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "hmod.albuminuria_a2"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "hmod.ckd_g3"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "hmod.abi_low"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "hmod.pwv_high"
+            },
+            "right": {
+              "value": true
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "hmod.any",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 20–21"
+      }
+    },
+    {
+      "id": "acs.severe_ckd",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "renal.ckd_confirmed"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "renal.egfr"
+            },
+            "right": {
+              "value": 30
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "acs.severe_ckd",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "acs.any",
+      "when": {
+        "op": "any",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.stroke"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.tia"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.mi"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.angina"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.revascularization"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.atherosclerotic_plaque_ge50"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.heart_failure"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.peripheral_artery_disease"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.atrial_fibrillation"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.severe_ckd"
+            },
+            "right": {
+              "value": true
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "acs.any",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "1.5",
+        "note": "Стр. 21"
+      }
+    },
+    {
+      "id": "renal.egfr_lt60_review",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "exists",
+            "var": "renal.egfr"
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "renal.egfr"
+            },
+            "right": {
+              "value": 60
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "warning",
+          "message": "рСКФ {{renal.egfr}} мл/мин/1,73 м²: снижение прогностически значимо. Не устанавливать ХБП только по одному значению — требуется подтверждение хронического поражения почек.",
+          "level": "review"
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Термины и определения; 2.7",
+        "note": "Стр. 12, 32"
+      }
+    },
+    {
+      "id": "renal.nephrology_egfr_lt30",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "renal.ckd_confirmed"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "renal.egfr"
+            },
+            "right": {
+              "value": 30
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "Рассмотреть консультацию нефролога: подтвержденная ХБП с рСКФ <30 мл/мин/1,73 м²."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.4. Оценка СС риска",
+        "note": "Стр. 29"
+      }
+    },
+    {
+      "id": "renal.nephrology_acr_a3",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "exists",
+            "var": "renal.acr_mg_g"
+          },
+          {
+            "op": "gt",
+            "left": {
+              "var": "renal.acr_mg_g"
+            },
+            "right": {
+              "value": 300
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "Рассмотреть консультацию нефролога при выраженной альбуминурии/протеинурии."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.4. Оценка СС риска",
+        "note": "Стр. 29"
+      }
+    },
+    {
+      "id": "stage.I",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.any"
+            },
+            "right": {
+              "value": false
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "hmod.any"
+            },
+            "right": {
+              "value": false
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "diabetes.present"
+            },
+            "right": {
+              "value": false
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.stage",
+          "value": {
+            "value": "I"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Таблица П15/А3",
+        "note": "Стр. 185–186. Стадия I: отсутствие ПОМ/АКС; стадия II: ПОМ, ХБП стадия 3 или СД без ПОМ; стадия III: установленное ССЗ, ХБП ≥4 или СД с ПОМ."
+      }
+    },
+    {
+      "id": "stage.II",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.any"
+            },
+            "right": {
+              "value": false
+            }
+          },
+          {
+            "op": "not",
+            "condition": {
+              "op": "all",
+              "conditions": [
+                {
+                  "op": "eq",
+                  "left": {
+                    "var": "diabetes.present"
+                  },
+                  "right": {
+                    "value": true
+                  }
+                },
+                {
+                  "op": "eq",
+                  "left": {
+                    "var": "hmod.any"
+                  },
+                  "right": {
+                    "value": true
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "any",
+            "conditions": [
+              {
+                "op": "eq",
+                "left": {
+                  "var": "hmod.any"
+                },
+                "right": {
+                  "value": true
+                }
+              },
+              {
+                "op": "eq",
+                "left": {
+                  "var": "diabetes.present"
+                },
+                "right": {
+                  "value": true
+                }
+              },
+              {
+                "op": "eq",
+                "left": {
+                  "var": "hmod.ckd_g3"
+                },
+                "right": {
+                  "value": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.stage",
+          "value": {
+            "value": "II"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Таблица П15/А3",
+        "note": "Стр. 185–186. Стадия II: ПОМ, ХБП стадия 3 или СД без поражения органов."
+      }
+    },
+    {
+      "id": "stage.III",
+      "when": {
+        "op": "any",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.any"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "eq",
+                "left": {
+                  "var": "diabetes.present"
+                },
+                "right": {
+                  "value": true
+                }
+              },
+              {
+                "op": "eq",
+                "left": {
+                  "var": "hmod.any"
+                },
+                "right": {
+                  "value": true
+                }
+              }
+            ]
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "diabetes.organ_damage"
+            },
+            "right": {
+              "value": true
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.stage",
+          "value": {
+            "value": "III"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Таблица П15/А3",
+        "note": "Стр. 185–186. Стадия III: установленное ССЗ, ХБП стадия ≥4 или СД с поражением органов."
+      }
+    },
+    {
+      "id": "risk.stage3_very_high",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "diagnosis.stage"
+            },
+            "right": {
+              "value": "III"
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "cv.extreme_risk_criteria"
+            },
+            "right": {
+              "value": false
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "cv.risk_category",
+          "value": {
+            "value": "very_high"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "Таблица П15/А3",
+        "note": "Стр. 185–186. Стадия III относится к очень высокому риску (риск 4)."
+      }
+    },
+    {
+      "id": "risk.extreme",
+      "when": {
+        "op": "eq",
+        "left": {
+          "var": "cv.extreme_risk_criteria"
+        },
+        "right": {
+          "value": true
+        }
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "cv.risk_category",
+          "value": {
+            "value": "extreme"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.4. Оценка сердечно-сосудистого риска",
+        "note": "Стр. 29"
+      }
+    },
+    {
+      "id": "risk.high_by_condition",
+      "when": {
+        "op": "any",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "3"
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.any"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "diabetes.present"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "eq",
+                "left": {
+                  "var": "renal.ckd_confirmed"
+                },
+                "right": {
+                  "value": true
+                }
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "var": "renal.egfr"
+                },
+                "right": {
+                  "value": 60
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "cv.high_risk_by_condition",
+          "value": {
+            "value": true
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.4",
+        "note": "Стр. 28–30"
+      }
+    },
+    {
+      "id": "risk.score2_age40_69",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "cv.high_risk_by_condition"
+            },
+            "right": {
+              "value": false
+            }
+          },
+          {
+            "op": "gte",
+            "left": {
+              "var": "patient.age"
+            },
+            "right": {
+              "value": 40
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "patient.age"
+            },
+            "right": {
+              "value": 70
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "Если пациент не относится к категории высокого/очень высокого риска по состоянию, рассчитать SCORE2."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.4. Оценка СС риска",
+        "note": "Стр. 28"
+      }
+    },
+    {
+      "id": "risk.score2op_age70plus",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "cv.high_risk_by_condition"
+            },
+            "right": {
+              "value": false
+            }
+          },
+          {
+            "op": "gte",
+            "left": {
+              "var": "patient.age"
+            },
+            "right": {
+              "value": 70
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "Если пациент не относится к категории высокого/очень высокого риска по состоянию, рассчитать SCORE2-OP."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.4. Оценка СС риска",
+        "note": "Стр. 28"
+      }
+    },
+    {
+      "id": "diagnosis.status_untreated_g1",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.antihypertensive_current"
+            },
+            "right": {
+              "value": false
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "1"
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.bp_status",
+          "value": {
+            "value": "Степень АГ 1"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.2",
+        "note": "Стр. 25"
+      }
+    },
+    {
+      "id": "diagnosis.status_untreated_g2",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.antihypertensive_current"
+            },
+            "right": {
+              "value": false
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "2"
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.bp_status",
+          "value": {
+            "value": "Степень АГ 2"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.2",
+        "note": "Стр. 25"
+      }
+    },
+    {
+      "id": "diagnosis.status_untreated_g3",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.antihypertensive_current"
+            },
+            "right": {
+              "value": false
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "3"
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.bp_status",
+          "value": {
+            "value": "Степень АГ 3"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.2",
+        "note": "Стр. 25"
+      }
+    },
+    {
+      "id": "diagnosis.status_treated_achieved",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.antihypertensive_current"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.target_achieved"
+            },
+            "right": {
+              "value": "achieved"
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.bp_status",
+          "value": {
+            "value": "Целевой уровень АД достигнут"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.2",
+        "note": "Стр. 25"
+      }
+    },
+    {
+      "id": "diagnosis.status_treated_not_achieved",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.antihypertensive_current"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.target_achieved"
+            },
+            "right": {
+              "value": "not_achieved"
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.bp_status",
+          "value": {
+            "value": "Целевой уровень АД не достигнут"
+          }
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.2",
+        "note": "Стр. 25"
+      }
+    },
+    {
+      "id": "diagnosis.status_treated_unassessed",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.antihypertensive_current"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.target_achieved"
+            },
+            "right": {
+              "value": "not_assessed"
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.bp_status",
+          "value": {
+            "value": "Контроль АД требует оценки"
+          }
+        },
+        {
+          "type": "warning",
+          "message": "У пациента на АГТ в диагнозе следует указывать достижение/недостижение целевого АД, а не степень АГ.",
+          "level": "review"
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.2",
+        "note": "Стр. 25"
+      }
+    },
+    {
+      "id": "secondary.red_flag",
+      "when": {
+        "op": "any",
+        "conditions": [
+          {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "lt",
+                "left": {
+                  "var": "patient.age"
+                },
+                "right": {
+                  "value": 40
+                }
+              },
+              {
+                "op": "eq",
+                "left": {
+                  "var": "bp.grade"
+                },
+                "right": {
+                  "value": "2"
+                }
+              }
+            ]
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "visit.sudden_onset_htn"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "diagnosis.resistant_hypertension"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "3"
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "visit.secondary_htn_clues"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "visit.osa_symptoms"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "visit.pheochromocytoma_clues"
+            },
+            "right": {
+              "value": true
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.secondary_htn_red_flag",
+          "value": {
+            "value": true
+          }
+        },
+        {
+          "type": "recommendation",
+          "message": "Имеются признаки, при которых КР рекомендуют исключать вторичную (симптоматическую) АГ."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.1. Критерии установления диагноза",
+        "note": "Стр. 24–25"
+      }
+    },
+    {
+      "id": "resistant.detect",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "gte",
+            "left": {
+              "var": "therapy.drug_count"
+            },
+            "right": {
+              "value": 3
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.includes_raas"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.includes_ccb"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.includes_diuretic"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.max_tolerated_doses"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.adherence_confirmed"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.lifestyle_adherence"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.out_of_office_uncontrolled"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "secondary_causes.excluded"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.initial_target_achieved"
+            },
+            "right": {
+              "value": false
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "diagnosis.resistant_hypertension",
+          "value": {
+            "value": true
+          }
+        },
+        {
+          "type": "warning",
+          "message": "Критерии соответствуют резистентной АГ: проверить псевдорезистентность, приверженность, СМАД/ДМАД, вторичные причины и корректность доз.",
+          "level": "review"
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "3.6.11. Резистентная АГ",
+        "note": "Стр. 67–71"
+      }
+    },
+    {
+      "id": "treatment.grade2_3",
+      "when": {
+        "op": "any",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "2"
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "3"
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "АГ 2–3-й степени: незамедлительно начать/интенсифицировать антигипертензивную лекарственную терапию одновременно с изменением образа жизни."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "3.1. Показания к АГТ",
+        "note": "Стр. 37"
+      }
+    },
+    {
+      "id": "treatment.grade1_highrisk",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "1"
+            }
+          },
+          {
+            "op": "any",
+            "conditions": [
+              {
+                "op": "eq",
+                "left": {
+                  "var": "cv.risk_category"
+                },
+                "right": {
+                  "value": "high"
+                }
+              },
+              {
+                "op": "eq",
+                "left": {
+                  "var": "cv.risk_category"
+                },
+                "right": {
+                  "value": "very_high"
+                }
+              },
+              {
+                "op": "eq",
+                "left": {
+                  "var": "cv.risk_category"
+                },
+                "right": {
+                  "value": "extreme"
+                }
+              },
+              {
+                "op": "eq",
+                "left": {
+                  "var": "hmod.any"
+                },
+                "right": {
+                  "value": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "АГ 1-й степени высокого риска или при наличии ПОМ: КР рекомендуют незамедлительное начало АГТ вместе с изменением образа жизни."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "3.1. Показания к АГТ",
+        "note": "Стр. 38"
+      }
+    },
+    {
+      "id": "treatment.grade1_lowmoderate",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "1"
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "hmod.any"
+            },
+            "right": {
+              "value": false
+            }
+          },
+          {
+            "op": "any",
+            "conditions": [
+              {
+                "op": "eq",
+                "left": {
+                  "var": "cv.risk_category"
+                },
+                "right": {
+                  "value": "low"
+                }
+              },
+              {
+                "op": "eq",
+                "left": {
+                  "var": "cv.risk_category"
+                },
+                "right": {
+                  "value": "moderate"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "АГ 1-й степени низкого/умеренного риска без ПОМ: изменение образа жизни; при сохранении повышенного АД через 3 месяца — начать АГТ."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "3.1. Показания к АГТ",
+        "note": "Стр. 37–38"
+      }
+    },
+    {
+      "id": "treatment.general_combination",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.antihypertensive_current"
+            },
+            "right": {
+              "value": false
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "patient.age"
+            },
+            "right": {
+              "value": 80
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.frailty"
+            },
+            "right": {
+              "value": false
+            }
+          },
+          {
+            "op": "any",
+            "conditions": [
+              {
+                "op": "eq",
+                "left": {
+                  "var": "bp.grade"
+                },
+                "right": {
+                  "value": "2"
+                }
+              },
+              {
+                "op": "eq",
+                "left": {
+                  "var": "bp.grade"
+                },
+                "right": {
+                  "value": "3"
+                }
+              },
+              {
+                "op": "all",
+                "conditions": [
+                  {
+                    "op": "eq",
+                    "left": {
+                      "var": "bp.grade"
+                    },
+                    "right": {
+                      "value": "1"
+                    }
+                  },
+                  {
+                    "op": "gte",
+                    "left": {
+                      "var": "bp.sbp"
+                    },
+                    "right": {
+                      "value": 150
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "Для большинства пациентов стартовая АГТ — комбинация, предпочтительно фиксированная: иРААС (ИАПФ/БРА) + АК или диуретик; учитывать противопоказания и клиническую ситуацию."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "3.4.1. Общие принципы медикаментозной терапии",
+        "note": "Стр. 43–45"
+      }
+    },
+    {
+      "id": "treatment.triple_if_uncontrolled",
+      "when": {
+        "op": "all",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.antihypertensive_current"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "therapy.target_achieved"
+            },
+            "right": {
+              "value": "not_achieved"
+            }
+          },
+          {
+            "op": "gte",
+            "left": {
+              "var": "therapy.drug_count"
+            },
+            "right": {
+              "value": 2
+            }
+          },
+          {
+            "op": "lt",
+            "left": {
+              "var": "therapy.drug_count"
+            },
+            "right": {
+              "value": 3
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "При недостижении целевого АД на двойной терапии КР рекомендуют тройную комбинацию: иРААС + АК + тиазидный/тиазидоподобный диуретик, предпочтительно фиксированную."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "3.4.1",
+        "note": "Стр. 46"
+      }
+    },
+    {
+      "id": "plan.echo",
+      "when": {
+        "op": "any",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "hmod.lvh_ecg"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "acs.heart_failure"
+            },
+            "right": {
+              "value": true
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "Провести/актуализировать ЭхоКГ при изменениях на ЭКГ или симптомах/признаках дисфункции ЛЖ."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.8. Инструментальные исследования",
+        "note": "Стр. 34"
+      }
+    },
+    {
+      "id": "plan.kidney_ultrasound",
+      "when": {
+        "op": "any",
+        "conditions": [
+          {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "exists",
+                "var": "renal.egfr"
+              },
+              {
+                "op": "lt",
+                "left": {
+                  "var": "renal.egfr"
+                },
+                "right": {
+                  "value": 60
+                }
+              }
+            ]
+          },
+          {
+            "op": "all",
+            "conditions": [
+              {
+                "op": "exists",
+                "var": "renal.acr_mg_g"
+              },
+              {
+                "op": "gte",
+                "left": {
+                  "var": "renal.acr_mg_g"
+                },
+                "right": {
+                  "value": 30
+                }
+              }
+            ]
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "diagnosis.secondary_htn_red_flag"
+            },
+            "right": {
+              "value": true
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "При нарушении функции почек, альбуминурии или подозрении на вторичную АГ рассмотреть УЗИ почек и дуплекс почечных артерий."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.8",
+        "note": "Стр. 35"
+      }
+    },
+    {
+      "id": "plan.ophthalmology",
+      "when": {
+        "op": "any",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "2"
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "bp.grade"
+            },
+            "right": {
+              "value": "3"
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "diabetes.present"
+            },
+            "right": {
+              "value": true
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "При АГ 2–3-й степени, а также при СД + АГ — офтальмолог/офтальмоскопия для выявления гипертонической ретинопатии."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.8",
+        "note": "Стр. 35–36"
+      }
+    },
+    {
+      "id": "plan.brain_imaging",
+      "when": {
+        "op": "any",
+        "conditions": [
+          {
+            "op": "eq",
+            "left": {
+              "var": "visit.neurologic_symptoms"
+            },
+            "right": {
+              "value": true
+            }
+          },
+          {
+            "op": "eq",
+            "left": {
+              "var": "visit.cognitive_impairment"
+            },
+            "right": {
+              "value": true
+            }
+          }
+        ]
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "При неврологических симптомах и/или когнитивных нарушениях рассмотреть КТ/МРТ головного мозга."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "2.8",
+        "note": "Стр. 36"
+      }
+    },
+    {
+      "id": "lifestyle.all",
+      "when": {
+        "op": "exists",
+        "var": "patient.age"
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "Немедикаментозно: ограничение соли <5 г/сут."
+        },
+        {
+          "type": "recommendation",
+          "message": "Регулярная аэробная нагрузка умеренной интенсивности не менее 30 мин 5–7 дней/нед при отсутствии противопоказаний."
+        },
+        {
+          "type": "recommendation",
+          "message": "Отказ от курения; коррекция массы тела; рацион с овощами, фруктами, рыбой, орехами и ненасыщенными жирами."
+        }
+      ],
+      "source": {
+        "document": "Клинические рекомендации «Артериальная гипертензия у взрослых», 2024",
+        "section": "3.3. Немедикаментозное лечение",
+        "note": "Стр. 40–42"
+      }
+    }
+  ],
+  "sections": {
+    "diagnosis": "{{diagnosis.icd10}}. Гипертоническая болезнь {{diagnosis.stage}} стадии. {{diagnosis.bp_status}}. СС-риск: {{cv.risk_category}}.",
+    "complaints": "{{visit.complaints}}",
+    "history": "АГ/ССЗ в семейном анамнезе: {{visit.family_history}}. Получает антигипертензивную терапию: {{therapy.antihypertensive_current}}. Приверженность подтверждена: {{therapy.adherence_confirmed}}.",
+    "objective_status": "АД {{bp.sbp}}/{{bp.dbp}} мм рт. ст., ЧСС {{bp.hr}}/мин. Категория офисного АД: {{bp.office_category}}, степень: {{bp.grade}}, профиль: {{bp.pattern}}. Пульсовое АД {{bp.pulse_pressure}} мм рт. ст. Рост {{vitals.height_cm}} см, масса {{vitals.weight_kg}} кг, ИМТ {{vitals.bmi}} кг/м², окружность талии {{vitals.waist_cm}} см.",
+    "risk_status": "ФР: {{cv.risk_factor_count}}. ПОМ: {{hmod.any}}. АКС: {{acs.any}}. СД: {{diabetes.present}}. ХБП подтверждена: {{renal.ckd_confirmed}}. Категория СС риска: {{cv.risk_category}}; SCORE2/SCORE2-OP: {{cv.score2_percent}}%.",
+    "laboratory": "Глюкоза {{labs.glucose_fasting}} ммоль/л; HbA1c {{labs.hba1c}}%; ОХС {{labs.total_cholesterol}}, ЛНП {{labs.ldl}}, ЛВП {{labs.hdl}}, ТГ {{labs.triglycerides}} ммоль/л; мочевая кислота {{labs.uric_acid}} мкмоль/л; K {{labs.potassium}}, Na {{labs.sodium}} ммоль/л; креатинин {{labs.creatinine_umol_l}} мкмоль/л, рСКФ {{renal.egfr}} мл/мин/1,73 м²; альбумин/креатинин мочи {{renal.acr_mg_g}} мг/г.",
+    "examination_plan": "Рутинное обследование при АГ: ОАК/гемоглобин-гематокрит; глюкоза крови ± HbA1c; липидный профиль (ОХС, ЛНП, ЛВП, не-ЛВП, ТГ); общий белок, билирубин, АСТ, АЛТ; калий, натрий; мочевая кислота; креатинин с расчетом рСКФ; ОАМ с микроскопией осадка, оценкой протеинурии и предпочтительно отношением альбумин/креатинин; ЭКГ в 12 отведениях. Базовый скрининг ПОМ: ЭКГ, альбумин/креатинин мочи/протеинурия, креатинин+рСКФ, фундоскопия по клинической ситуации. Расширенное обследование — по показаниям.",
+    "treatment": "Целевой диапазон: {{bp.target_text}}. Текущий индивидуальный контроль АД: {{therapy.target_achieved}}.",
+    "recommendations": ""
+  }
+}
