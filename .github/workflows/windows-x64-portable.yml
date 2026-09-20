@@ -11,6 +11,10 @@ on:
     paths:
       - '.github/workflows/windows-x64-portable.yml'
       - 'scripts/build_windows_native_portable_with_studio.ps1'
+      - 'scripts/embed_windows_icon.ps1'
+      - 'assets/respanso.ico'
+      - 'docs/respanso/**'
+      - 'LICENSE'
       - 'espanso-ai/**'
       - 'espanso-clipboard/**'
       - 'espanso-config/**'
