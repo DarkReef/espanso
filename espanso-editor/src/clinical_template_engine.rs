@@ -287,7 +287,7 @@ impl TemplatePackage {
                     if calculation
                         .expression
                         .as_deref()
-                        .is_none_or(|expression| expression.trim().is_empty())
+                        .map_or(true, |expression| expression.trim().is_empty())
                     {
                         return Err(format!("Пустая формула в {}", calculation.id));
                     }
@@ -447,7 +447,7 @@ impl TemplatePackage {
             let missing = result
                 .values
                 .get(field)
-                .is_none_or(|value| value.is_null() || value.as_str().is_some_and(str::is_empty));
+                .map_or(true, |value| value.is_null() || value.as_str().is_some_and(str::is_empty));
             if missing {
                 push_unique_message(
                     &mut result.errors,
@@ -534,7 +534,7 @@ impl TemplatePackage {
                         let changed = result
                             .values
                             .get(&calculation.output)
-                            .is_none_or(|current| current != &value);
+                            .map_or(true, |current| current != &value);
                         if changed {
                             result.values.insert(calculation.output.clone(), value);
                         }
@@ -762,17 +762,20 @@ fn dynamic_to_json(value: Dynamic) -> Result<Value, String> {
     if value.is_unit() {
         return Ok(Value::Null);
     }
-    if value.is::<bool>() {
+    if value.is_bool() {
         return Ok(Value::Bool(value.cast::<bool>()));
     }
-    if value.is::<rhai::INT>() {
+    if value.is_int() {
         return Ok(Value::from(value.cast::<rhai::INT>()));
     }
-    if value.is::<rhai::FLOAT>() {
+    if value.is_float() {
         return number_value(value.cast::<rhai::FLOAT>());
     }
-    if value.is::<String>() {
-        return Ok(Value::String(value.cast::<String>()));
+    if value.is_string() {
+        return value
+            .into_string()
+            .map(Value::String)
+            .map_err(|actual| format!("Не удалось преобразовать Rhai string: {actual}"));
     }
     Err(format!(
         "Rhai вернул неподдерживаемый тип {}",
