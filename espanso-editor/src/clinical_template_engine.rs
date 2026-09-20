@@ -441,6 +441,8 @@ impl TemplatePackage {
             }
         }
 
+        self.report_unresolved_calculations(&mut result);
+
         for field in &required {
             let missing = result
                 .values
@@ -479,6 +481,33 @@ impl TemplatePackage {
         }
 
         result
+    }
+
+    fn report_unresolved_calculations(&self, result: &mut EvaluationResult) {
+        for calculation in &self.calculations {
+            if result.values.contains_key(&calculation.output) {
+                continue;
+            }
+            let missing = calculation
+                .inputs
+                .values()
+                .filter(|field| !result.values.contains_key(*field))
+                .cloned()
+                .collect::<Vec<_>>();
+            if !missing.is_empty() {
+                push_unique_message(
+                    &mut result.errors,
+                    EngineMessage {
+                        code: format!("dependency:{}", calculation.id),
+                        message: format!(
+                            "Не удалось вычислить {}: отсутствуют зависимости {}",
+                            calculation.output,
+                            missing.join(", ")
+                        ),
+                    },
+                );
+            }
+        }
     }
 
     fn evaluate_calculations(&self, result: &mut EvaluationResult) {
@@ -522,25 +551,6 @@ impl TemplatePackage {
             }
 
             if !progressed {
-                for calculation in next {
-                    let missing = calculation
-                        .inputs
-                        .values()
-                        .filter(|field| !result.values.contains_key(*field))
-                        .cloned()
-                        .collect::<Vec<_>>();
-                    push_unique_message(
-                        &mut result.errors,
-                        EngineMessage {
-                            code: format!("dependency:{}", calculation.id),
-                            message: format!(
-                                "Не удалось вычислить {}: отсутствуют зависимости {}",
-                                calculation.output,
-                                missing.join(", ")
-                            ),
-                        },
-                    );
-                }
                 return;
             }
             pending = next;
@@ -921,16 +931,19 @@ fn apply_action(
             hidden.insert(field.clone());
         }
         Action::Warning { message, level } => {
-            let code = format!("warning:{}", stable_message_key(message));
-            warnings.entry(code.clone()).or_insert_with(|| EngineMessage {
-                code,
-                message: match level {
-                    Some(level) if !level.trim().is_empty() => {
-                        format!("[{level}] {}", render_text(message, values))
-                    }
-                    _ => render_text(message, values),
-                },
-            });
+            let rendered = match level {
+                Some(level) if !level.trim().is_empty() => {
+                    format!("[{level}] {}", render_text(message, values))
+                }
+                _ => render_text(message, values),
+            };
+            let code = format!(
+                "warning:{}",
+                level.as_deref().filter(|value| !value.trim().is_empty()).unwrap_or("general")
+            );
+            warnings
+                .entry(rendered.clone())
+                .or_insert(EngineMessage { code, message: rendered });
         }
         Action::Recommendation { message } => {
             recommendations.insert(render_text(message, values));
@@ -946,14 +959,6 @@ fn apply_action(
             activated_modules.insert(id.clone());
         }
     }
-}
-
-fn stable_message_key(message: &str) -> String {
-    message
-        .chars()
-        .filter(|character| character.is_ascii_alphanumeric())
-        .take(48)
-        .collect::<String>()
 }
 
 fn render_text(template: &str, values: &BTreeMap<String, Value>) -> String {
