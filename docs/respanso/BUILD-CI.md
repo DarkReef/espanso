@@ -39,19 +39,30 @@ checks, tests and release builds.
 
 ## Cache design
 
-The Astra workflow uses two independent caches with explicit restore/save steps.
-Cache persistence is treated as a tested part of the pipeline rather than a
-best-effort post-job side effect.
+The Astra workflow uses three independent cache layers with explicit
+restore/save steps. Cache persistence is treated as a tested part of the
+pipeline rather than a best-effort post-job side effect.
 
-### Toolchain and Cargo registry
+### Rust toolchain
 
 Cached paths:
 
-- `.ci-cache/cargo`
+- `.ci-cache/cargo/bin`
 - `.ci-cache/rustup`
 
-The key includes the Rust version and `Cargo.lock`. This cache changes only
-when the compiler or dependency graph changes.
+The key contains only the pinned Rust version. Dependency changes therefore do
+not force the compiler itself to be downloaded again.
+
+### Cargo registry
+
+Cached paths:
+
+- `.ci-cache/cargo/registry`
+- `.ci-cache/cargo/git`
+
+The primary key follows `Cargo.lock`, with a broad restore prefix so an updated
+lockfile can still reuse already-downloaded crates from the previous dependency
+graph.
 
 The Debian container runs as root, but GitHub cache actions run as the normal
 runner user. The workflow therefore normalizes ownership on container exit,
@@ -69,9 +80,11 @@ Only reusable Cargo artifacts are cached:
 - `target/.rustc_info.json`
 
 The portable archive, runtime state and generated package directory are not
-cached. A source-SHA suffix creates a fresh cache snapshot for each validated
-revision, while restore prefixes allow the next revision to reuse the previous
-compiled dependency graph.
+cached. The compiled-cache key follows the pinned Rust version, `Cargo.lock`, and a
+hash of actual compiler inputs (workspace/crate manifests, build scripts and
+crate source trees). Documentation-only and CI-only commits therefore reuse the
+same exact cache instead of storing another ~GB-scale archive. Restore prefixes
+still allow a nearby source revision to reuse unchanged dependencies.
 
 `CARGO_INCREMENTAL=0` is deliberate in hosted CI. Incremental directories are
 large, contain transient lock files and are poor cache material across ephemeral
