@@ -91,6 +91,8 @@ jobs:
           restore-keys: |
             astra-buster-target-v3-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
             astra-buster-target-v3-${{ env.RESPANSO_RUST_TOOLCHAIN }}-
+            # One-time migration path from the previous SHA-keyed cache.
+            astra-buster-target-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
 
       - name: Prepare build identity
         shell: bash
