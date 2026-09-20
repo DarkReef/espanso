@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "package": {
+    "id": "ru.respanso.demo.dynamic-exam",
+    "name": "Демонстрационный динамический осмотр",
+    "version": "0.1.0",
+    "status": "draft",
+    "description": "Рост/вес → ИМТ; креатинин/возраст/пол → рСКФ; правила по результатам."
+  },
+  "fields": [
+    {
+      "id": "patient.age",
+      "label": "Возраст",
+      "kind": "integer",
+      "required": true
+    },
+    {
+      "id": "patient.sex",
+      "label": "Пол",
+      "kind": "choice",
+      "required": true,
+      "choices": ["male", "female"]
+    },
+    {
+      "id": "vitals.height_cm",
+      "label": "Рост",
+      "kind": "decimal",
+      "unit": "cm",
+      "required": true
+    },
+    {
+      "id": "vitals.weight_kg",
+      "label": "Вес",
+      "kind": "decimal",
+      "unit": "kg",
+      "required": true
+    },
+    {
+      "id": "vitals.bmi",
+      "label": "ИМТ",
+      "kind": "computed",
+      "unit": "kg/m2"
+    },
+    {
+      "id": "labs.creatinine_umol_l",
+      "label": "Креатинин",
+      "kind": "decimal",
+      "unit": "umol/L",
+      "required": true
+    },
+    {
+      "id": "renal.egfr",
+      "label": "рСКФ CKD-EPI 2021",
+      "kind": "computed",
+      "unit": "mL/min/1.73m2"
+    },
+    {
+      "id": "renal.review_flag",
+      "label": "Нужна клиническая проверка почечного блока",
+      "kind": "boolean"
+    }
+  ],
+  "calculations": [
+    {
+      "id": "calc.bmi",
+      "output": "vitals.bmi",
+      "kind": "builtin",
+      "builtin": "bmi",
+      "inputs": {
+        "height_cm": "vitals.height_cm",
+        "weight_kg": "vitals.weight_kg"
+      },
+      "precision": 1
+    },
+    {
+      "id": "calc.egfr",
+      "output": "renal.egfr",
+      "kind": "builtin",
+      "builtin": "ckd_epi2021",
+      "inputs": {
+        "creatinine_umol_l": "labs.creatinine_umol_l",
+        "age": "patient.age",
+        "sex": "patient.sex"
+      },
+      "precision": 0,
+      "source": {
+        "document": "DEMO ONLY — replace with current order/clinical guideline",
+        "note": "Перед клиническим применением правило должно быть сверено с актуальным источником."
+      }
+    }
+  ],
+  "rules": [
+    {
+      "id": "demo.egfr_lt_60",
+      "when": {
+        "op": "lt",
+        "left": {"var": "renal.egfr"},
+        "right": {"value": 60}
+      },
+      "actions": [
+        {
+          "type": "set",
+          "field": "renal.review_flag",
+          "value": {"value": true}
+        },
+        {
+          "type": "warning",
+          "message": "рСКФ {{renal.egfr}}: проверить почечный блок по актуальному нормативному источнику.",
+          "level": "review"
+        }
+      ],
+      "source": {
+        "document": "DEMO ONLY — replace with current order/clinical guideline",
+        "note": "Пример демонстрирует механику, а не готовое клиническое правило."
+      }
+    },
+    {
+      "id": "demo.egfr_lt_30",
+      "when": {
+        "op": "lt",
+        "left": {"var": "renal.egfr"},
+        "right": {"value": 30}
+      },
+      "actions": [
+        {
+          "type": "recommendation",
+          "message": "Проверить показания к консультации нефролога по актуальной версии рекомендаций."
+        }
+      ],
+      "source": {
+        "document": "DEMO ONLY — replace with current order/clinical guideline"
+      }
+    }
+  ],
+  "sections": {
+    "objective_status": "Рост {{vitals.height_cm}} см, вес {{vitals.weight_kg}} кг, ИМТ {{vitals.bmi}} кг/м².",
+    "investigations": "Креатинин {{labs.creatinine_umol_l}} мкмоль/л, рСКФ {{renal.egfr}} мл/мин/1,73 м².",
+    "recommendations": ""
+  }
+}
