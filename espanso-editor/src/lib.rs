@@ -2,6 +2,7 @@ pub mod ai;
 pub mod app;
 pub mod clinical_extender;
 pub mod clinical_template_engine;
+pub mod clinical_template_workspace;
 pub mod config_transfer;
 pub mod diagnostics;
 pub mod dynamic_variables;
