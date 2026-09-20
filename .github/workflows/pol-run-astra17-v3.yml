@@ -44,22 +44,40 @@ jobs:
     timeout-minutes: 240
     env:
       RESPANSO_RUST_TOOLCHAIN: '1.98.1'
+      # Cargo incremental directories are large and poor cross-run cache material.
+      # Fingerprints + compiled deps give more predictable hosted-runner reuse.
+      CARGO_INCREMENTAL: '0'
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Restore Astra Rust/Cargo cache
+      - name: Restore Astra toolchain and Cargo registry
         uses: actions/cache@v4
         with:
           path: |
             .ci-cache/cargo
             .ci-cache/rustup
-            target
-          key: astra-buster-rust-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
+          key: astra-buster-toolchain-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            astra-buster-rust-${{ env.RESPANSO_RUST_TOOLCHAIN }}-
+            astra-buster-toolchain-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-
+
+      - name: Restore Astra compiled dependency cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            target/.rustc_info.json
+            target/debug/.fingerprint
+            target/debug/build
+            target/debug/deps
+            target/release/.fingerprint
+            target/release/build
+            target/release/deps
+          key: astra-buster-target-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            astra-buster-target-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
+            astra-buster-target-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-
 
       - name: Prepare build identity
         shell: bash
@@ -96,17 +114,28 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p .ci-cache/cargo .ci-cache/rustup
+          HOST_UID="$(id -u)"
+          HOST_GID="$(id -g)"
           docker run --rm \
             -e RESPANSO_BUILD_DATE \
             -e RESPANSO_VERSION \
             -e RESPANSO_BUILD_SHA \
             -e RESPANSO_RUST_TOOLCHAIN \
+            -e CARGO_INCREMENTAL \
+            -e HOST_UID \
+            -e HOST_GID \
             -v "$GITHUB_WORKSPACE:/work" \
             -v "$GITHUB_WORKSPACE/.ci-cache/cargo:/root/.cargo" \
             -v "$GITHUB_WORKSPACE/.ci-cache/rustup:/root/.rustup" \
             -w /work \
             debian:buster-slim \
-            bash -lc 'bash scripts/build_pol_run_astra17.sh'
+            bash -lc '
+              normalize_cache_ownership() {
+                chown -R "$HOST_UID:$HOST_GID" /work/.ci-cache /work/target 2>/dev/null || true
+              }
+              trap normalize_cache_ownership EXIT
+              bash scripts/build_pol_run_astra17.sh
+            '
 
       - name: Verify full package
         shell: bash
@@ -158,6 +187,20 @@ jobs:
           echo '=== archive ==='
           tar -tzf "$OUT/$PACKAGE.tar.gz" > "$RUNNER_TEMP/package-files.txt"
           head -n 180 "$RUNNER_TEMP/package-files.txt"
+
+      - name: Save Astra compiled dependency cache
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            target/.rustc_info.json
+            target/debug/.fingerprint
+            target/debug/build
+            target/debug/deps
+            target/release/.fingerprint
+            target/release/build
+            target/release/deps
+          key: astra-buster-target-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
 
       - name: Upload full Astra portable artifact
         uses: actions/upload-artifact@v4
