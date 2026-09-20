@@ -4,6 +4,7 @@ enum ShellTab {
     Settings,
     Rhai,
     Clinical,
+    Templates,
     Ai,
 }
 
@@ -22,6 +23,7 @@ fn respanso_build_sha() -> &'static str {
 struct StudioShell {
     studio: MatchStudioApp,
     clinical: crate::clinical_extender::ClinicalExtender,
+    template_engine: crate::clinical_template_engine::ClinicalTemplateWorkspace,
     active_tab: ShellTab,
     theme: crate::theme::StudioTheme,
 }
@@ -31,7 +33,8 @@ impl StudioShell {
         let theme = crate::theme::StudioTheme::load(&config_root);
         Self {
             studio: MatchStudioApp::new(config_root.clone()),
-            clinical: crate::clinical_extender::ClinicalExtender::load_seeded(config_root),
+            clinical: crate::clinical_extender::ClinicalExtender::load_seeded(config_root.clone()),
+            template_engine: crate::clinical_template_engine::ClinicalTemplateWorkspace::new(&config_root),
             active_tab: ShellTab::Rules,
             theme,
         }
@@ -43,7 +46,7 @@ impl StudioShell {
             ShellTab::Settings => MainTab::Settings,
             ShellTab::Rhai => MainTab::Rhai,
             ShellTab::Ai => MainTab::Ai,
-            ShellTab::Clinical => return,
+            ShellTab::Clinical | ShellTab::Templates => return,
         };
     }
 
@@ -117,6 +120,11 @@ impl StudioShell {
                     ShellTab::Clinical,
                     "Клинический редактор",
                 );
+                ui.selectable_value(
+                    &mut self.active_tab,
+                    ShellTab::Templates,
+                    "Template Engine",
+                );
                 ui.selectable_value(&mut self.active_tab, ShellTab::Ai, "Вспомогательная");
                 ui.separator();
 
@@ -141,6 +149,13 @@ impl StudioShell {
                             ui.label(
                                 egui::RichText::new("Локальная клиническая библиотека").weak(),
                             );
+                        }
+                    }
+                    ShellTab::Templates => {
+                        if self.template_engine.dirty() {
+                            ui.colored_label(self.theme.warning(), "JSON-пакет не сохранён");
+                        } else {
+                            ui.label(egui::RichText::new("JSON / Rules Engine").weak());
                         }
                     }
                     ShellTab::Ai => {}
@@ -274,6 +289,8 @@ impl StudioShell {
                     } else {
                         "Клинический редактор: готов к работе"
                     });
+                } else if self.active_tab == ShellTab::Templates {
+                    ui.label(self.template_engine.status());
                 } else {
                     ui.label(self.studio.status.as_str());
                 }
@@ -391,7 +408,7 @@ impl eframe::App for StudioShell {
         ui.ctx().request_repaint_after(Duration::from_millis(500));
         self.studio.check_external_file_changes(ui.ctx());
 
-        if self.active_tab != ShellTab::Clinical {
+        if !matches!(self.active_tab, ShellTab::Clinical | ShellTab::Templates) {
             self.sync_legacy_tab();
             self.studio.handle_shortcuts(ui.ctx());
         }
@@ -422,6 +439,7 @@ impl eframe::App for StudioShell {
             egui::Layout::top_down(egui::Align::Min),
             |body| match self.active_tab {
                 ShellTab::Clinical => self.clinical.ui_localized(body),
+                ShellTab::Templates => self.template_engine.ui(body),
                 ShellTab::Ai => self.studio.ai.ui(body),
                 ShellTab::Rules => {
                     self.studio.rules_panel(body);
