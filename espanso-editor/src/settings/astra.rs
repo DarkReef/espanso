@@ -1,3 +1,8 @@
+//! Match Studio controls for Astra/Linux X11 injector safety.
+//!
+//! Profile defaults live in `espanso-config`; this module only renders and
+//! persists user overrides. Do not duplicate runtime preset values here.
+
 use eframe::egui;
 use espanso_config::config::{X11InjectorProfile, X11SafeInjectorConfig};
 
