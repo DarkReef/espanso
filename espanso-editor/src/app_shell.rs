@@ -23,7 +23,7 @@ fn respanso_build_sha() -> &'static str {
 struct StudioShell {
     studio: MatchStudioApp,
     clinical: crate::clinical_extender::ClinicalExtender,
-    template_engine: crate::clinical_template_engine::ClinicalTemplateWorkspace,
+    template_engine: crate::clinical_template_workspace::ClinicalTemplateWorkspace,
     active_tab: ShellTab,
     theme: crate::theme::StudioTheme,
 }
@@ -34,7 +34,7 @@ impl StudioShell {
         Self {
             studio: MatchStudioApp::new(config_root.clone()),
             clinical: crate::clinical_extender::ClinicalExtender::load_seeded(config_root.clone()),
-            template_engine: crate::clinical_template_engine::ClinicalTemplateWorkspace::new(&config_root),
+            template_engine: crate::clinical_template_workspace::ClinicalTemplateWorkspace::new(&config_root),
             active_tab: ShellTab::Rules,
             theme,
         }
