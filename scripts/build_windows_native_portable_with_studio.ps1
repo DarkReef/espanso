@@ -78,6 +78,9 @@ if (Test-Path "LICENSE") {
 }
 Copy-Item "docs/respanso/*" $docsDir -Recurse -Force
 Copy-Item "espanso-editor/examples/clinical-template-package.example.json" (Join-Path $clinicalDir "template-engine.example.json")
+$clinicalTemplatesDir = Join-Path $clinicalDir "templates"
+New-Item -Path $clinicalTemplatesDir -ItemType Directory -Force | Out-Null
+Copy-Item "clinical_templates/ru/arterial-hypertension-2024.json" (Join-Path $clinicalTemplatesDir "arterial-hypertension-2024.json")
 
 Copy-Item "espanso/src/res/config/default.yml" (Join-Path $configDir "default.yml")
 Copy-Item "espanso/src/res/config/base.yml" (Join-Path $matchDir "base.yml")
@@ -112,6 +115,7 @@ rEspanso Portable + Match Studio
   packages\
   scripts\example.rhai
   clinical_extender\template-engine.example.json
+  clinical_extender\templates\arterial-hypertension-2024.json
   docs\README.ru.md
 
 Все каталоги находятся непосредственно рядом с rEspanso.exe.
@@ -132,6 +136,7 @@ $required = @(
     $packagesDir,
     (Join-Path $scriptsDir "example.rhai"),
     (Join-Path $clinicalDir "template-engine.example.json"),
+    (Join-Path $clinicalTemplatesDir "arterial-hypertension-2024.json"),
     (Join-Path $docsDir "README.ru.md"),
     (Join-Path $docsDir "RHAI_PROMPT.ru.md")
 )
