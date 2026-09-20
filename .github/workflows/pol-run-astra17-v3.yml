@@ -135,7 +135,7 @@ jobs:
               }
               trap normalize_cache_ownership EXIT
               bash scripts/build_pol_run_astra17.sh
-            '
+            ' | tee target/astra-ci-build.log
 
       - name: Verify full package
         shell: bash
@@ -187,6 +187,33 @@ jobs:
           echo '=== archive ==='
           tar -tzf "$OUT/$PACKAGE.tar.gz" > "$RUNNER_TEMP/package-files.txt"
           head -n 180 "$RUNNER_TEMP/package-files.txt"
+
+      - name: Publish Astra build timings
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### Astra build timings'
+            echo
+            echo '| Phase | Seconds |'
+            echo '|---|---:|'
+            if [[ -f target/astra-ci-build.log ]]; then
+              grep -F '[rESP-CI-TIMING]' target/astra-ci-build.log \
+                | sed -E 's/.*phase=([^ ]+) seconds=([0-9]+).*/| `\1` | \2 |/' \
+                || true
+            else
+              echo '| build log unavailable | — |'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Astra build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Astra-build-failure-log
+          path: target/astra-ci-build.log
+          if-no-files-found: warn
+          retention-days: 5
 
       - name: Save Astra compiled dependency cache
         if: success()
