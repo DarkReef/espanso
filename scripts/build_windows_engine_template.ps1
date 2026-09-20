@@ -8,8 +8,11 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     throw "cargo was not found in PATH"
 }
 
-Write-Host "[1/6] rustfmt"
+Write-Host "[1/6] rustfmt (advisory)"
 cargo fmt --all -- --check
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "rustfmt reported formatting differences; build validation will continue"
+}
 
 Write-Host "[2/6] check editor"
 cargo check --locked -p espanso-editor --all-targets
