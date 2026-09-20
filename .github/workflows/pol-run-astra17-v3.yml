@@ -44,6 +44,9 @@ jobs:
     timeout-minutes: 240
     env:
       RESPANSO_RUST_TOOLCHAIN: '1.98.1'
+      # This hash follows compiler inputs, not the commit SHA. Documentation or
+      # CI-only edits can therefore reuse the exact compiled dependency cache.
+      RESPANSO_COMPILE_INPUT_HASH: ${{ hashFiles('Cargo.toml', 'Cargo.lock', 'espanso*/Cargo.toml', 'espanso*/build.rs', 'espanso*/src/**', 'scripts/build_pol_run_astra17.sh') }}
       # Cargo incremental directories are large and poor cross-run cache material.
       # Fingerprints + compiled deps give more predictable hosted-runner reuse.
       CARGO_INCREMENTAL: '0'
@@ -75,10 +78,10 @@ jobs:
             target/release/.fingerprint
             target/release/build
             target/release/deps
-          key: astra-buster-target-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          key: astra-buster-target-v3-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-${{ env.RESPANSO_COMPILE_INPUT_HASH }}
           restore-keys: |
-            astra-buster-target-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
-            astra-buster-target-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-
+            astra-buster-target-v3-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
+            astra-buster-target-v3-${{ env.RESPANSO_RUST_TOOLCHAIN }}-
 
       - name: Prepare build identity
         shell: bash
@@ -117,6 +120,10 @@ jobs:
           mkdir -p .ci-cache/cargo .ci-cache/rustup
           HOST_UID="$(id -u)"
           HOST_GID="$(id -g)"
+          # Preserve the container status while always normalizing bind-mount
+          # ownership on the host. Nested bind mounts (/root/.cargo, /root/.rustup)
+          # are not reliably traversed by chown on /work/.ci-cache.
+          set +e
           docker run --rm \
             -e RESPANSO_BUILD_DATE \
             -e RESPANSO_VERSION \
@@ -132,11 +139,18 @@ jobs:
             debian:buster-slim \
             bash -lc '
               normalize_cache_ownership() {
-                chown -R "$HOST_UID:$HOST_GID" /work/.ci-cache /work/target 2>/dev/null || true
+                chown -R "$HOST_UID:$HOST_GID" /root/.cargo /root/.rustup /work/target 2>/dev/null || true
               }
               trap normalize_cache_ownership EXIT
               bash scripts/build_pol_run_astra17.sh
             ' | tee target/astra-ci-build.log
+          build_status=${PIPESTATUS[0]}
+          set -e
+
+          # Belt-and-suspenders normalization on the runner also covers files
+          # restored by cache actions before the container started.
+          sudo chown -R "$(id -u):$(id -g)" .ci-cache target
+          exit "$build_status"
 
       - name: Verify full package
         shell: bash
@@ -260,7 +274,7 @@ jobs:
             target/release/.fingerprint
             target/release/build
             target/release/deps
-          key: astra-buster-target-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          key: astra-buster-target-v3-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-${{ env.RESPANSO_COMPILE_INPUT_HASH }}
 
       - name: Upload full Astra portable artifact
         uses: actions/upload-artifact@v4
