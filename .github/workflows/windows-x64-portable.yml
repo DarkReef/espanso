@@ -6,8 +6,7 @@ on:
     branches:
       - build/windows-latest
       - build/windows-4f8e369
-    # Avoid rebuilding Windows for Astra-only docs/workflow changes. Keep this
-    # list aligned with code and packaging inputs that can change the artifact.
+    # Rebuild only when source or an input copied into the portable archive changes.
     paths:
       - '.github/workflows/windows-x64-portable.yml'
       - 'scripts/build_windows_native_portable_with_studio.ps1'
@@ -39,8 +38,56 @@ concurrency:
   group: windows-x64-portable-${{ github.ref }}
   cancel-in-progress: true
 
+# Quality and packaging intentionally run in parallel. cargo check --all-targets
+# validates a wider target surface, while the package job compiles the exact
+# optimized binaries that are shipped. Serializing the two roughly doubled the
+# cold workflow wall time without adding a dependency between the guarantees.
 jobs:
-  build-and-package:
+  quality:
+    name: Windows quality gates
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Restore quality Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-quality
+          cache-on-failure: true
+
+      - name: Check formatting (advisory)
+        continue-on-error: true
+        run: cargo fmt --all -- --check
+
+      - name: Check Windows components
+        run: cargo check --locked -p espanso -p espanso-inject -p espanso-detect -p espanso-editor --all-targets
+
+      - name: Test Match Studio
+        run: cargo test --locked -p espanso-editor --lib
+
+      - name: Lint Match Studio (advisory)
+        continue-on-error: true
+        run: cargo clippy --locked -p espanso-editor --all-targets -- --deny warnings
+
+  package:
     name: Build and package rEspanso portable
     runs-on: windows-2022
     timeout-minutes: 90
@@ -85,27 +132,12 @@ jobs:
         with:
           toolchain: 1.98.1
           targets: x86_64-pc-windows-msvc
-          components: rustfmt, clippy
 
-      - name: Restore Cargo cache
+      - name: Restore release Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: windows-x64-portable
+          shared-key: windows-x64-release
           cache-on-failure: true
-
-      - name: Check formatting (advisory)
-        continue-on-error: true
-        run: cargo fmt --all -- --check
-
-      - name: Check Windows components
-        run: cargo check --locked -p espanso -p espanso-inject -p espanso-detect -p espanso-editor --all-targets
-
-      - name: Test Match Studio
-        run: cargo test --locked -p espanso-editor --lib
-
-      - name: Lint Match Studio (advisory)
-        continue-on-error: true
-        run: cargo clippy --locked -p espanso-editor --all-targets -- --deny warnings
 
       - name: Build release binaries
         shell: pwsh
