@@ -56,16 +56,25 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Restore Astra toolchain and Cargo registry
-        id: astra-toolchain-cache
+      - name: Restore Astra Rust toolchain
+        id: astra-rust-cache
         uses: actions/cache/restore@v4
         with:
           path: |
-            .ci-cache/cargo
+            .ci-cache/cargo/bin
             .ci-cache/rustup
-          key: astra-buster-toolchain-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
+          key: astra-buster-rust-v1-${{ env.RESPANSO_RUST_TOOLCHAIN }}
+
+      - name: Restore Astra Cargo registry
+        id: astra-registry-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .ci-cache/cargo/registry
+            .ci-cache/cargo/git
+          key: astra-buster-registry-v1-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            astra-buster-toolchain-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-
+            astra-buster-registry-v1-
 
       - name: Restore Astra compiled dependency cache
         uses: actions/cache/restore@v4
@@ -249,18 +258,33 @@ jobs:
             echo '### Astra cache footprint'
             echo
             echo '```text'
-            du -sh .ci-cache/cargo .ci-cache/rustup target/debug/deps target/release/deps 2>/dev/null || true
+            du -sh \
+              .ci-cache/cargo/bin \
+              .ci-cache/cargo/registry \
+              .ci-cache/cargo/git \
+              .ci-cache/rustup \
+              target/debug/deps \
+              target/release/deps 2>/dev/null || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Save Astra toolchain and Cargo registry
-        if: success() && steps.astra-toolchain-cache.outputs.cache-hit != 'true'
+      - name: Save Astra Rust toolchain
+        if: success() && steps.astra-rust-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
-            .ci-cache/cargo
+            .ci-cache/cargo/bin
             .ci-cache/rustup
-          key: astra-buster-toolchain-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
+          key: astra-buster-rust-v1-${{ env.RESPANSO_RUST_TOOLCHAIN }}
+
+      - name: Save Astra Cargo registry
+        if: success() && steps.astra-registry-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .ci-cache/cargo/registry
+            .ci-cache/cargo/git
+          key: astra-buster-registry-v1-${{ hashFiles('Cargo.lock') }}
 
       - name: Save Astra compiled dependency cache
         if: success()
