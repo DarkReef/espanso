@@ -39,7 +39,9 @@ checks, tests and release builds.
 
 ## Cache design
 
-The Astra workflow uses two independent caches.
+The Astra workflow uses two independent caches with explicit restore/save steps.
+Cache persistence is treated as a tested part of the pipeline rather than a
+best-effort post-job side effect.
 
 ### Toolchain and Cargo registry
 
@@ -53,8 +55,9 @@ when the compiler or dependency graph changes.
 
 The Debian container runs as root, but GitHub cache actions run as the normal
 runner user. The workflow therefore normalizes ownership on container exit,
-including failure paths. Without this step the cache appears to restore
-successfully but cannot be saved because tar cannot read root-owned files.
+including failure paths, then verifies that cache files are readable before
+saving. Without this step the cache can appear to restore successfully but fail
+during persistence because tar cannot read root-owned files.
 
 ### Compiled dependencies
 
@@ -118,10 +121,17 @@ eliminating duplicated work.
 
 ## Windows pipeline
 
-Windows uses a pinned Rust toolchain and `Swatinem/rust-cache`. Core, portable
-launcher and Match Studio are built in one release Cargo invocation. The final
-portable archive is validated for required executables and receives a SHA-256
-sidecar file before upload.
+Windows uses a pinned Rust toolchain and `Swatinem/rust-cache`. The workflow
+has two independent jobs that run in parallel:
+
+- `quality` — formatting, `cargo check --all-targets`, Match Studio tests and
+  advisory Clippy;
+- `package` — one optimized Cargo build for core, portable launcher and Match
+  Studio, followed by portable archive validation and SHA-256 generation.
+
+The jobs provide different guarantees and therefore do not serialize each
+other. A workflow is successful only when both finish successfully, while the
+critical wall time is close to the slower job instead of the sum of both.
 
 ## Measuring optimization
 
