@@ -83,8 +83,13 @@ pub struct SourceReference {
 pub struct Calculation {
     pub id: String,
     pub output: String,
-    #[serde(flatten)]
     pub kind: CalculationKind,
+    #[serde(default)]
+    pub builtin: Option<BuiltinCalculator>,
+    #[serde(default)]
+    pub expression: Option<String>,
+    #[serde(default)]
+    pub script: Option<String>,
     #[serde(default)]
     pub inputs: BTreeMap<String, String>,
     #[serde(default)]
@@ -93,12 +98,12 @@ pub struct Calculation {
     pub source: Option<SourceReference>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum CalculationKind {
-    Builtin { builtin: BuiltinCalculator },
-    Formula { expression: String },
-    Script { script: String },
+    Builtin,
+    Formula,
+    Script,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -269,20 +274,38 @@ impl TemplatePackage {
                     ));
                 }
             }
-            match &calculation.kind {
-                CalculationKind::Formula { expression } if expression.trim().is_empty() => {
-                    return Err(format!("Пустая формула в {}", calculation.id));
+            match calculation.kind {
+                CalculationKind::Builtin => {
+                    if calculation.builtin.is_none() {
+                        return Err(format!(
+                            "Вычисление {} имеет kind=builtin, но builtin не задан",
+                            calculation.id
+                        ));
+                    }
                 }
-                CalculationKind::Script { script } if script.trim().is_empty() => {
-                    return Err(format!("Пустой Rhai-скрипт в {}", calculation.id));
+                CalculationKind::Formula => {
+                    if calculation
+                        .expression
+                        .as_deref()
+                        .is_none_or(|expression| expression.trim().is_empty())
+                    {
+                        return Err(format!("Пустая формула в {}", calculation.id));
+                    }
                 }
-                CalculationKind::Script { script } if script.len() > 32_768 => {
-                    return Err(format!(
-                        "Rhai-скрипт {} превышает лимит 32 KiB",
-                        calculation.id
-                    ));
+                CalculationKind::Script => {
+                    let Some(script) = calculation.script.as_deref() else {
+                        return Err(format!("Пустой Rhai-скрипт в {}", calculation.id));
+                    };
+                    if script.trim().is_empty() {
+                        return Err(format!("Пустой Rhai-скрипт в {}", calculation.id));
+                    }
+                    if script.len() > 32_768 {
+                        return Err(format!(
+                            "Rhai-скрипт {} превышает лимит 32 KiB",
+                            calculation.id
+                        ));
+                    }
                 }
-                _ => {}
             }
         }
 
@@ -582,15 +605,30 @@ fn evaluate_calculation(
         inputs.insert(alias.clone(), value.clone());
     }
 
-    let value = match &calculation.kind {
-        CalculationKind::Builtin { builtin } => match builtin {
+    let value = match calculation.kind {
+        CalculationKind::Builtin => match calculation
+            .builtin
+            .ok_or_else(|| format!("В {} не задан builtin", calculation.id))?
+        {
             BuiltinCalculator::Bmi => calculate_bmi(&inputs)?,
             BuiltinCalculator::CkdEpi2021 => calculate_ckd_epi_2021(&inputs)?,
         },
-        CalculationKind::Formula { expression } => {
-            evaluate_rhai(expression, &inputs, true)?
-        }
-        CalculationKind::Script { script } => evaluate_rhai(script, &inputs, false)?,
+        CalculationKind::Formula => evaluate_rhai(
+            calculation
+                .expression
+                .as_deref()
+                .ok_or_else(|| format!("В {} не задан expression", calculation.id))?,
+            &inputs,
+            true,
+        )?,
+        CalculationKind::Script => evaluate_rhai(
+            calculation
+                .script
+                .as_deref()
+                .ok_or_else(|| format!("В {} не задан script", calculation.id))?,
+            &inputs,
+            false,
+        )?,
     };
 
     Ok(round_json_number(value, calculation.precision))
@@ -1297,9 +1335,10 @@ fn example_package() -> TemplatePackage {
             Calculation {
                 id: "calc.bmi".to_owned(),
                 output: "vitals.bmi".to_owned(),
-                kind: CalculationKind::Builtin {
-                    builtin: BuiltinCalculator::Bmi,
-                },
+                kind: CalculationKind::Builtin,
+                builtin: Some(BuiltinCalculator::Bmi),
+                expression: None,
+                script: None,
                 inputs: BTreeMap::from([
                     ("height_cm".to_owned(), "vitals.height_cm".to_owned()),
                     ("weight_kg".to_owned(), "vitals.weight_kg".to_owned()),
@@ -1310,9 +1349,10 @@ fn example_package() -> TemplatePackage {
             Calculation {
                 id: "calc.egfr".to_owned(),
                 output: "renal.egfr".to_owned(),
-                kind: CalculationKind::Builtin {
-                    builtin: BuiltinCalculator::CkdEpi2021,
-                },
+                kind: CalculationKind::Builtin,
+                builtin: Some(BuiltinCalculator::CkdEpi2021),
+                expression: None,
+                script: None,
                 inputs: BTreeMap::from([
                     (
                         "creatinine_umol_l".to_owned(),
@@ -1478,9 +1518,10 @@ mod tests {
         let calculation = Calculation {
             id: "calc.test".to_owned(),
             output: "out".to_owned(),
-            kind: CalculationKind::Formula {
-                expression: "a * 2 + b".to_owned(),
-            },
+            kind: CalculationKind::Formula,
+            builtin: None,
+            expression: Some("a * 2 + b".to_owned()),
+            script: None,
             inputs: BTreeMap::from([
                 ("a".to_owned(), "a".to_owned()),
                 ("b".to_owned(), "b".to_owned()),
