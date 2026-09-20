@@ -91,6 +91,13 @@ fn check_xdo_status(operation: &str, status: libc::c_int) -> Result<()> {
     Ok(())
 }
 
+/// libxdo-backed X11 injector with a fast XSendEvent-style path and an XTest
+/// compatibility path.
+///
+/// Safe/Balanced profiles never release ordinary physical keys. A circuit
+/// breaker may disable the fast path for the current worker after repeated
+/// failures, and backend reinitialization only affects subsequent operations;
+/// the current text is never blindly replayed after a partial failure.
 pub struct X11XDOToolInjector {
     xdo: AtomicPtr<xdo_t>,
     fast_failures: AtomicU32,
