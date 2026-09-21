@@ -1,0 +1,106 @@
+# Фибрилляция предсердий: единая реактивная форма rEspanso v1.0 Unstable.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/espanso/espanso/dev/schemas/match.schema.json
+
+matches:
+  - trigger: ".фп"
+    replace: "{{af_form.diagnosis__text}}; {{af_form.hasbled__text}}; {{af_form.cha2ds2__text}}; {{af_form.ehra__text}}."
+    vars:
+      - name: af_form
+        type: form
+        params:
+          title: "Фибрилляция предсердий"
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 300
+          preview_layout: |
+            {{diagnosis.text}}
+            {{hasbled.text}}
+            {{cha2ds2.text}}
+            {{ehra.text}}
+          layout: |
+            Общие данные
+            Возраст: [[age]]
+            Пол: [[sex]]
+
+            Формулировка ФП
+            Форма / тип течения: [[af_type]]
+            Вариант по ЧЖС: [[rate_variant]]
+
+            HAS-BLED
+            САД >160 мм рт. ст.: [[hasbled_hypertension]]
+            Нарушение функции почек: [[renal_dysfunction]]
+            Нарушение функции печени: [[liver_dysfunction]]
+            Инсульт в анамнезе: [[stroke_history]]
+            Кровотечение / предрасположенность: [[bleeding_history]]
+            Лабильное МНО / TTR <60%: [[labile_inr]]
+            Антиагреганты / НПВП: [[drugs]]
+            Злоупотребление алкоголем: [[alcohol]]
+
+            CHA₂DS₂-VASc / CHA₂DS₂-VA
+            Сердечная недостаточность / ФВ ЛЖ ≤40%: [[heart_failure]]
+            Артериальная гипертензия: [[hypertension]]
+            Сахарный диабет: [[diabetes]]
+            Инсульт / ТИА / системная тромбоэмболия: [[stroke_tia]]
+            Сосудистое заболевание: [[vascular_disease]]
+
+            EHRA: [[ehra_class]]
+          fields:
+            age: { type: text, default: "65" }
+            sex: { type: choice, values: ["Мужчина", "Женщина"], default: "Мужчина" }
+            af_type:
+              type: choice
+              values:
+                - "Впервые диагностированная"
+                - "Пароксизмальная"
+                - "Персистирующая"
+                - "Ранняя персистирующая"
+                - "Длительно персистирующая"
+                - "Постоянная"
+              default: "Постоянная"
+            rate_variant:
+              type: choice
+              values: ["Не указывать", "Нормосистолический вариант", "Тахисистолический вариант", "Брадисистолический вариант"]
+              default: "Нормосистолический вариант"
+            hasbled_hypertension: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            renal_dysfunction: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            liver_dysfunction: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            stroke_history: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            bleeding_history: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            labile_inr: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            drugs: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            alcohol: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            heart_failure: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            hypertension: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            diabetes: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            stroke_tia: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            vascular_disease: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            ehra_class:
+              type: choice
+              values:
+                - "I — симптомов нет"
+                - "IIa — лёгкие симптомы, повседневная активность не нарушена"
+                - "IIb — симптомы беспокоят, повседневная активность не нарушена"
+                - "III — выраженные симптомы, повседневная активность нарушена"
+                - "IV — инвалидизирующие симптомы, повседневная активность невозможна"
+              default: "I — симптомов нет"
+          computed:
+            diagnosis:
+              type: rhai
+              path: "%CONFIG%/scripts/af-diagnosis.rhai"
+              function: calculate
+              depends_on: []
+            hasbled:
+              type: rhai
+              path: "%CONFIG%/scripts/af-has-bled.rhai"
+              function: calculate
+              depends_on: []
+            cha2ds2:
+              type: rhai
+              path: "%CONFIG%/scripts/cha2ds2-vasc.rhai"
+              function: calculate
+              depends_on: []
+            ehra:
+              type: rhai
+              path: "%CONFIG%/scripts/ehra.rhai"
+              function: calculate
+              depends_on: []

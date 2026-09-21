@@ -1,0 +1,49 @@
+# ОКС и GRACE 1.0 с reactive preview unstable.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/espanso/espanso/dev/schemas/match.schema.json
+
+matches:
+  - trigger: ".окс"
+    replace: "{{acs_form.result__text}}"
+    vars:
+      - name: acs_form
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 300
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            Острый коронарный синдром
+            ЭКГ-вариант: [[ecg_type]]
+            Возраст, лет: [[age]]
+            ЧСС, /мин: [[heart_rate]]
+            САД, мм рт. ст.: [[systolic_bp]]
+            Креатинин, мкмоль/л: [[creatinine]]
+            Класс Killip: [[killip]]
+            Остановка кровообращения при поступлении: [[cardiac_arrest]]
+            Девиация сегмента ST: [[st_deviation]]
+            Повышение кардиоспецифического тропонина: [[troponin]]
+            ИМ без подъёма ST подтверждён: [[confirmed_nstemi]]
+            Критерии очень высокого риска: [[very_high_risk]]
+          fields:
+            ecg_type:
+              type: choice
+              values: ["ОКС без подъёма ST", "Подъём ST или эквивалент"]
+              default: "ОКС без подъёма ST"
+            age: { type: text, default: "65" }
+            heart_rate: { type: text, default: "80" }
+            systolic_bp: { type: text, default: "130" }
+            creatinine: { type: text, default: "100" }
+            killip: { type: choice, values: ["I", "II", "III", "IV"], default: "I" }
+            cardiac_arrest: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            st_deviation: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            troponin: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            confirmed_nstemi: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            very_high_risk: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/grace.rhai"
+              function: calculate
+              depends_on: []

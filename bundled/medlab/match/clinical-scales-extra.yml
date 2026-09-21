@@ -1,0 +1,63 @@
+# EHRA и CRB-65 с реактивным предпросмотром rEspanso v1.0 Unstable.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/espanso/espanso/dev/schemas/match.schema.json
+
+matches:
+  - trigger: ":ehra"
+    replace: "{{ehra_form.result__text}}"
+    vars:
+      - name: ehra_form
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 200
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            Модифицированная шкала EHRA
+            Выраженность симптомов, связанных с ФП: [[ehra_class]]
+          fields:
+            ehra_class:
+              type: choice
+              values:
+                - "I — симптомов нет"
+                - "IIa — лёгкие симптомы, повседневная активность не нарушена"
+                - "IIb — симптомы беспокоят, повседневная активность не нарушена"
+                - "III — выраженные симптомы, повседневная активность нарушена"
+                - "IV — инвалидизирующие симптомы, повседневная активность невозможна"
+              default: "I — симптомов нет"
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/ehra.rhai"
+              function: calculate
+              depends_on: []
+
+  - trigger: ":crb65"
+    replace: "{{crb65_form.result__text}}"
+    vars:
+      - name: crb65_form
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 250
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            CRB-65: внебольничная пневмония
+            Нарушение сознания: [[confusion]]
+            Частота дыхания ≥30/мин: [[respiratory_rate]]
+            САД <90 или ДАД ≤60 мм рт. ст.: [[low_blood_pressure]]
+            Возраст: [[age]]
+          fields:
+            confusion: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            respiratory_rate: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            low_blood_pressure: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            age: { type: text, default: "65" }
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/crb65.rhai"
+              function: calculate
+              depends_on: []
