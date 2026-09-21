@@ -11,14 +11,13 @@ ci_phase() {
   echo "[rESP-CI-TIMING] phase=$name seconds=$elapsed"
 }
 
-# Full rEspanso portable build for Astra Linux 1.7 / KDE / X11.
-# Run this script inside an amd64 Debian 10 (buster) build environment whose
-# glibc is 2.28. Nothing is installed on the target Astra workstation: the
-# resulting archive is unpacked in the user's home directory and started with
-# run.sh.
+# Full rEspanso portable build for Astra Linux / KDE / X11.
+# The ABI baseline is selected explicitly by CI. The regular build uses Debian
+# 10 / glibc 2.28; the compatibility build uses Debian 9 / glibc 2.24 for older
+# Astra workstations. Nothing is installed on the target workstation.
 
 if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-  echo 'ERROR: build_pol_run_astra17.sh must run as root inside the Debian 10 build container.' >&2
+  echo 'ERROR: build_pol_run_astra17.sh must run as root inside the Debian build container.' >&2
   exit 1
 fi
 
@@ -28,8 +27,10 @@ if [[ ! -r /etc/os-release ]]; then
 fi
 # shellcheck disable=SC1091
 . /etc/os-release
-if [[ "${ID:-}" != 'debian' || "${VERSION_ID:-}" != 10* ]]; then
-  echo "ERROR: this portable ABI build must run on Debian 10/buster, got ${PRETTY_NAME:-unknown}." >&2
+BUILD_DEBIAN_MAJOR="${RESPANSO_BUILD_DEBIAN_MAJOR:-10}"
+GLIBC_MAX="${RESPANSO_GLIBC_MAX:-2.28}"
+if [[ "${ID:-}" != 'debian' || "${VERSION_ID:-}" != "${BUILD_DEBIAN_MAJOR}"* ]]; then
+  echo "ERROR: expected Debian ${BUILD_DEBIAN_MAJOR}, got ${PRETTY_NAME:-unknown}." >&2
   exit 1
 fi
 if [[ "$(dpkg --print-architecture)" != 'amd64' ]]; then
@@ -37,14 +38,35 @@ if [[ "$(dpkg --print-architecture)" != 'amd64' ]]; then
   exit 1
 fi
 
-cat >/etc/apt/sources.list <<'APT'
+case "$BUILD_DEBIAN_MAJOR" in
+  9)
+    cat >/etc/apt/sources.list <<'APT'
+deb http://archive.debian.org/debian stretch main
+deb http://archive.debian.org/debian stretch-updates main
+deb http://archive.debian.org/debian-security stretch/updates main
+APT
+    ;;
+  10)
+    cat >/etc/apt/sources.list <<'APT'
 deb http://archive.debian.org/debian buster main
 deb http://archive.debian.org/debian buster-updates main
 deb http://archive.debian.org/debian-security buster/updates main
 APT
+    ;;
+  *)
+    echo "ERROR: unsupported Debian ABI baseline: $BUILD_DEBIAN_MAJOR" >&2
+    exit 1
+    ;;
+esac
 printf 'Acquire::Check-Valid-Until false;\n' >/etc/apt/apt.conf.d/99archive
 
 apt-get update
+
+WX_DEV_PACKAGE=libwxgtk3.0-dev
+if apt-cache show libwxgtk3.0-gtk3-dev >/dev/null 2>&1; then
+  WX_DEV_PACKAGE=libwxgtk3.0-gtk3-dev
+fi
+
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   build-essential \
   binutils \
@@ -55,7 +77,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   libdbus-1-dev \
   libgl1-mesa-dev \
   libssl-dev \
-  libwxgtk3.0-gtk3-dev \
+  "$WX_DEV_PACKAGE" \
   libx11-dev \
   libxcursor-dev \
   libxi-dev \
@@ -92,6 +114,7 @@ bash -n \
 bash scripts/test_astra_x11.sh
 
 echo "Build host: $(ldd --version | head -n1)"
+echo "ABI ceiling: GLIBC_$GLIBC_MAX"
 rustc --version
 cargo --version
 
@@ -164,6 +187,18 @@ cp /usr/bin/xdotool "$ROOT/bin/xdotool"
 cp -L /usr/lib/x86_64-linux-gnu/libxdo.so.3 "$ROOT/lib/libxdo.so.3"
 cp espanso/src/res/config/default.yml "$ROOT/config/default.yml"
 cp espanso/src/res/config/base.yml "$ROOT/match/base.yml"
+
+# Embed the pinned rEspanso-medlab snapshot. It intentionally replaces the
+# demonstration base.yml and adds its Rhai modules under %CONFIG%/scripts.
+if [[ -d bundled/medlab/match ]]; then
+  cp -R bundled/medlab/match/. "$ROOT/match/"
+fi
+if [[ -d bundled/medlab/scripts ]]; then
+  cp -R bundled/medlab/scripts/. "$ROOT/scripts/"
+fi
+if [[ -f bundled/medlab/SNAPSHOT.txt ]]; then
+  cp bundled/medlab/SNAPSHOT.txt "$ROOT/MEDLAB-SNAPSHOT.txt"
+fi
 cp LICENSE "$ROOT/LICENSE.txt"
 if [[ -d docs/respanso ]]; then
   cp -R docs/respanso/. "$ROOT/docs/"
@@ -448,7 +483,7 @@ MCP agent connection:
   ./mcp.sh
 
 Compatibility design:
-  - binaries are built in Debian 10 / glibc 2.28;
+  - binaries are built against the selected compatibility ABI baseline;
   - core and Studio use X11; Studio uses OpenGL/glow, not WGPU;
   - native X11 detection uses XInput2 instead of the legacy RECORD extension;
   - wxWidgets 3.0 and selected ABI-sensitive runtimes are bundled in ./lib;
@@ -489,8 +524,8 @@ for pair in "core:$CORE" "studio:$STUDIO" "tray:$TRAY" "xdotool:$ROOT/bin/xdotoo
 
   max_glibc="$(sed 's/GLIBC_//' "$ROOT/${label}-glibc-required.txt" | sort -V | tail -n1)"
   echo "$label maximum required GLIBC: ${max_glibc:-none}"
-  if [[ -n "$max_glibc" && "$(printf '%s\n%s\n' "$max_glibc" '2.28' | sort -V | tail -n1)" != '2.28' ]]; then
-    echo "ERROR: $label requires GLIBC newer than 2.28" >&2
+  if [[ -n "$max_glibc" && "$(printf '%s\n%s\n' "$max_glibc" "$GLIBC_MAX" | sort -V | tail -n1)" != "$GLIBC_MAX" ]]; then
+    echo "ERROR: $label requires GLIBC newer than $GLIBC_MAX" >&2
     exit 1
   fi
 done
