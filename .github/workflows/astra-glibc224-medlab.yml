@@ -1,0 +1,232 @@
+name: Astra X11 glibc 2.24 + medlab portable
+
+on:
+  push:
+    branches:
+      - build/astra-glibc224-medlab
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: astra-glibc224-medlab-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Astra compatibility portable (glibc 2.24 + medlab)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      RESPANSO_RUST_TOOLCHAIN: '1.98.1'
+      RESPANSO_BUILD_DEBIAN_MAJOR: '9'
+      RESPANSO_GLIBC_MAX: '2.24'
+      CARGO_INCREMENTAL: '0'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Verify pinned medlab snapshot
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -f bundled/medlab/SNAPSHOT.txt
+          grep -F 'commit: 9eb1c20e0b0b510450714077e8de957eb78193a5' bundled/medlab/SNAPSHOT.txt
+          test -f bundled/medlab/match/base.yml
+          test -f bundled/medlab/match/atrial-fibrillation.yml
+          test -f bundled/medlab/scripts/score2.rhai
+          test -f bundled/medlab/scripts/egfr.rhai
+
+      - name: Restore Stretch Rust toolchain
+        id: rust-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .ci-cache/stretch/cargo/bin
+            .ci-cache/stretch/rustup
+          key: astra-stretch-rust-v1-${{ env.RESPANSO_RUST_TOOLCHAIN }}
+
+      - name: Restore Stretch Cargo registry
+        id: registry-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .ci-cache/stretch/cargo/registry
+            .ci-cache/stretch/cargo/git
+          key: astra-stretch-registry-v1-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            astra-stretch-registry-v1-
+
+      - name: Restore Stretch compiled dependencies
+        id: target-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            target/.rustc_info.json
+            target/debug/.fingerprint
+            target/debug/build
+            target/debug/deps
+            target/release/.fingerprint
+            target/release/build
+            target/release/deps
+          key: astra-stretch-target-v1-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Normalize restored cache ownership
+        shell: bash
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" .ci-cache target 2>/dev/null || true
+          chmod -R u+rwX .ci-cache target 2>/dev/null || true
+
+      - name: Prepare build identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "RESPANSO_BUILD_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_ENV"
+          echo "RESPANSO_VERSION=$(awk -F'\"' '/^version =/ {print $2; exit}' espanso/Cargo.toml)" >> "$GITHUB_ENV"
+          echo "RESPANSO_BUILD_SHA=${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
+
+      - name: Verify release contracts and shell scripts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -F 'DEFAULT_SELECTION_MATCH_SHORTCUT: &str = "CTRL+ALT+M"' espanso/src/cli/worker/builtin/selection.rs
+          grep -F 'FALLBACK_SELECTION_MATCH_SHORTCUT: &str = "CTRL+ALT+SHIFT+M"' espanso/src/cli/worker/builtin/selection.rs
+          grep -F 'x11_injector_profile: safe' espanso/src/res/config/default.yml
+          bash -n scripts/build_pol_run_astra17.sh scripts/test_astra_x11.sh scripts/test_astra_worker.sh scripts/test_astra_restart.sh scripts/test_astra_search_enter.sh scripts/test_astra_injector_stress.sh
+
+      - name: Build and validate in Debian 9 / glibc 2.24
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p .ci-cache/stretch/cargo .ci-cache/stretch/rustup target
+          HOST_UID="$(id -u)"
+          HOST_GID="$(id -g)"
+          set +e
+          docker run --rm \
+            -e RESPANSO_BUILD_DATE \
+            -e RESPANSO_VERSION \
+            -e RESPANSO_BUILD_SHA \
+            -e RESPANSO_RUST_TOOLCHAIN \
+            -e RESPANSO_BUILD_DEBIAN_MAJOR \
+            -e RESPANSO_GLIBC_MAX \
+            -e CARGO_INCREMENTAL \
+            -e HOST_UID \
+            -e HOST_GID \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -v "$GITHUB_WORKSPACE/.ci-cache/stretch/cargo:/root/.cargo" \
+            -v "$GITHUB_WORKSPACE/.ci-cache/stretch/rustup:/root/.rustup" \
+            -w /work \
+            debian:stretch-slim \
+            bash -lc '
+              normalize_ownership() {
+                chown -R "$HOST_UID:$HOST_GID" /root/.cargo /root/.rustup /work/target 2>/dev/null || true
+              }
+              trap normalize_ownership EXIT
+              bash scripts/build_pol_run_astra17.sh
+            ' | tee target/astra-glibc224-build.log
+          status=${PIPESTATUS[0]}
+          set -e
+          sudo chown -R "$(id -u):$(id -g)" .ci-cache target
+          exit "$status"
+
+      - name: Verify glibc 2.24 package and medlab payload
+        shell: bash
+        run: |
+          set -euxo pipefail
+          OUT=target/pol-run-astra-full
+          PACKAGE=rEspanso-pol_run-Astra17-X11-Full-x86_64
+          ROOT="$OUT/$PACKAGE"
+
+          sha256sum -c "$OUT/$PACKAGE.sha256"
+          test -x "$ROOT/rEspanso-core"
+          test -x "$ROOT/rEspanso-Match-Studio"
+          test -x "$ROOT/rEspanso-Tray"
+          test -x "$ROOT/bin/xdotool"
+
+          for f in core studio tray xdotool; do
+            max="$(sed 's/GLIBC_//' "$ROOT/${f}-glibc-required.txt" | sort -V | tail -n1)"
+            echo "$f max GLIBC=$max"
+            if [[ -n "$max" && "$(printf '%s\n%s\n' "$max" '2.24' | sort -V | tail -n1)" != '2.24' ]]; then
+              echo "ERROR: $f requires GLIBC newer than 2.24" >&2
+              exit 1
+            fi
+          done
+
+          grep -F '9eb1c20e0b0b510450714077e8de957eb78193a5' "$ROOT/MEDLAB-SNAPSHOT.txt"
+          cmp bundled/medlab/match/base.yml "$ROOT/match/base.yml"
+          cmp bundled/medlab/match/atrial-fibrillation.yml "$ROOT/match/atrial-fibrillation.yml"
+          cmp bundled/medlab/scripts/score2.rhai "$ROOT/scripts/score2.rhai"
+          cmp bundled/medlab/scripts/egfr.rhai "$ROOT/scripts/egfr.rhai"
+
+          echo "Embedded medlab YAML: $(find "$ROOT/match" -maxdepth 1 -type f -name '*.yml' | wc -l)"
+          echo "Embedded medlab Rhai: $(find "$ROOT/scripts" -maxdepth 1 -type f -name '*.rhai' | wc -l)"
+
+      - name: Publish compatibility timings
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### Astra glibc 2.24 build timings'
+            echo
+            echo '| Phase | Seconds |'
+            echo '|---|---:|'
+            if [[ -f target/astra-glibc224-build.log ]]; then
+              grep -F '[rESP-CI-TIMING]' target/astra-glibc224-build.log \
+                | sed -E 's/.*phase=([^ ]+) seconds=([0-9]+).*/| `\1` | \2 |/' || true
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save Stretch Rust toolchain
+        if: success() && steps.rust-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .ci-cache/stretch/cargo/bin
+            .ci-cache/stretch/rustup
+          key: astra-stretch-rust-v1-${{ env.RESPANSO_RUST_TOOLCHAIN }}
+
+      - name: Save Stretch Cargo registry
+        if: success() && steps.registry-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .ci-cache/stretch/cargo/registry
+            .ci-cache/stretch/cargo/git
+          key: astra-stretch-registry-v1-${{ hashFiles('Cargo.lock') }}
+
+      - name: Save Stretch compiled dependencies
+        if: success() && steps.target-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            target/.rustc_info.json
+            target/debug/.fingerprint
+            target/debug/build
+            target/debug/deps
+            target/release/.fingerprint
+            target/release/build
+            target/release/deps
+          key: astra-stretch-target-v1-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Upload compatibility portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Astra-glibc224-medlab-x86_64
+          path: |
+            target/pol-run-astra-full/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz
+            target/pol-run-astra-full/rEspanso-pol_run-Astra17-X11-Full-x86_64.sha256
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Astra-glibc224-build-log
+          path: target/astra-glibc224-build.log
+          if-no-files-found: warn
+          retention-days: 7
