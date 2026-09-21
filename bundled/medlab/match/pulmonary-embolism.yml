@@ -1,0 +1,58 @@
+# ТЭЛА: Wells, revised Geneva и sPESI с reactive preview unstable.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/espanso/espanso/dev/schemas/match.schema.json
+
+matches:
+  - trigger: ".тэла"
+    replace: "{{pe_form.result__text}}"
+    vars:
+      - name: pe_form
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 300
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            ТЭЛА: клиническая вероятность и прогноз
+            ТЭЛА уже подтверждена: [[confirmed_pe]]
+            Беременность / послеродовый период: [[pregnancy]]
+            Возраст, лет: [[age]]
+            ЧСС, /мин: [[heart_rate]]
+            САД, мм рт. ст.: [[systolic_bp]]
+            SpO₂, %: [[oxygen_saturation]]
+            Клинические признаки ТГВ: [[dvt_signs]]
+            ТЭЛА вероятнее альтернативного диагноза: [[pe_more_likely]]
+            Иммобилизация ≥3 суток или операция ≤4 недель: [[immobilization_surgery]]
+            ТГВ / ТЭЛА в анамнезе: [[previous_vte]]
+            Кровохарканье: [[hemoptysis]]
+            Активное ЗНО: [[active_cancer]]
+            Односторонняя боль в нижней конечности: [[unilateral_leg_pain]]
+            Боль по ходу глубоких вен и односторонний отёк: [[deep_vein_pain_edema]]
+            Операция или перелом ≤1 месяца: [[surgery_fracture_month]]
+            Хроническая сердечная недостаточность: [[chronic_hf]]
+            Хроническое заболевание лёгких: [[chronic_lung_disease]]
+          fields:
+            confirmed_pe: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            pregnancy: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            age: { type: text, default: "65" }
+            heart_rate: { type: text, default: "90" }
+            systolic_bp: { type: text, default: "120" }
+            oxygen_saturation: { type: text, default: "96" }
+            dvt_signs: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            pe_more_likely: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            immobilization_surgery: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            previous_vte: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            hemoptysis: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            active_cancer: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            unilateral_leg_pain: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            deep_vein_pain_edema: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            surgery_fracture_month: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            chronic_hf: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            chronic_lung_disease: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/pulmonary-embolism.rhai"
+              function: calculate
+              depends_on: []
