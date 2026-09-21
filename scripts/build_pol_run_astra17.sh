@@ -42,7 +42,6 @@ case "$BUILD_DEBIAN_MAJOR" in
   9)
     cat >/etc/apt/sources.list <<'APT'
 deb http://archive.debian.org/debian stretch main
-deb http://archive.debian.org/debian stretch-updates main
 deb http://archive.debian.org/debian-security stretch/updates main
 APT
     ;;
