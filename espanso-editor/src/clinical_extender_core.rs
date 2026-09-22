@@ -1323,7 +1323,7 @@ fn compose(db: &ClinicalDatabase, tokens: &[String]) -> (VisitDocument, Vec<Stri
             .map(|template| &template.sections.objective_status),
     );
     let treatment = join_unique(templates.iter().map(|template| &template.sections.treatment));
-    let recommendations = join_unique(
+    let recommendations = join_unique_sentences(
         templates
             .iter()
             .map(|template| &template.sections.recommendations),
@@ -1385,6 +1385,122 @@ fn join_unique<'a>(parts: impl Iterator<Item = &'a String>) -> String {
         .map(ToOwned::to_owned)
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+/// Merge recommendation fragments while removing repeated complete sentences.
+///
+/// This deliberately performs only conservative textual de-duplication:
+/// case, repeated whitespace and terminal sentence punctuation are ignored,
+/// but wording, dosage, frequency and other clinical content must still match.
+/// The first occurrence wins, so template order and the clinician-authored
+/// wording of that occurrence are preserved.
+fn join_unique_sentences<'a>(parts: impl Iterator<Item = &'a String>) -> String {
+    let mut seen = HashSet::new();
+    let mut paragraphs = Vec::new();
+
+    for part in parts {
+        let mut unique_sentences = Vec::new();
+        for sentence in split_recommendation_sentences(part) {
+            let key = normalize_sentence_for_dedupe(&sentence);
+            if !key.is_empty() && seen.insert(key) {
+                unique_sentences.push(sentence);
+            }
+        }
+        if !unique_sentences.is_empty() {
+            paragraphs.push(unique_sentences.join(" "));
+        }
+    }
+
+    paragraphs.join("\n\n")
+}
+
+/// Split on sentence-ending punctuation only when the following non-whitespace
+/// character looks like the start of a new sentence. This avoids turning common
+/// clinical abbreviations such as "мг. по 1 таблетке" into separate sentences.
+fn split_recommendation_sentences(text: &str) -> Vec<String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Vec::new();
+    }
+
+    let chars = text.char_indices().collect::<Vec<_>>();
+    let mut result = Vec::new();
+    let mut start = 0usize;
+
+    for (position, &(byte_index, ch)) in chars.iter().enumerate() {
+        if !matches!(ch, '.' | '!' | '?') {
+            continue;
+        }
+
+        let end = byte_index + ch.len_utf8();
+        let mut next_non_whitespace = None;
+        for &(_, next) in chars.iter().skip(position + 1) {
+            if !next.is_whitespace() {
+                next_non_whitespace = Some(next);
+                break;
+            }
+        }
+
+        let is_boundary = match next_non_whitespace {
+            None => true,
+            Some(next) => {
+                next.is_uppercase()
+                    || next.is_numeric()
+                    || matches!(next, '-' | '—' | '•' | '▪' | '◦')
+            }
+        };
+
+        if is_boundary {
+            let sentence = text[start..end].trim();
+            if !sentence.is_empty() {
+                result.push(sentence.to_owned());
+            }
+            start = end;
+            while start < text.len() {
+                let Some(next) = text[start..].chars().next() else {
+                    break;
+                };
+                if next.is_whitespace() {
+                    start += next.len_utf8();
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    if start < text.len() {
+        let tail = text[start..].trim();
+        if !tail.is_empty() {
+            result.push(tail.to_owned());
+        }
+    }
+
+    result
+}
+
+fn normalize_sentence_for_dedupe(sentence: &str) -> String {
+    let trimmed = sentence
+        .trim()
+        .trim_start_matches(|ch: char| matches!(ch, '-' | '—' | '•' | '▪' | '◦'))
+        .trim()
+        .trim_end_matches(|ch: char| matches!(ch, '.' | '!' | '?' | ';' | ':'))
+        .trim();
+
+    let mut normalized = String::with_capacity(trimmed.len());
+    let mut previous_was_whitespace = false;
+    for ch in trimmed.chars().flat_map(char::to_lowercase) {
+        if ch.is_whitespace() {
+            if !previous_was_whitespace && !normalized.is_empty() {
+                normalized.push(' ');
+            }
+            previous_was_whitespace = true;
+        } else {
+            normalized.push(ch);
+            previous_was_whitespace = false;
+        }
+    }
+    normalized.trim().to_owned()
 }
 
 fn match_score(template: &NosologyTemplate, token: &str) -> Option<usize> {
@@ -1658,6 +1774,69 @@ mod tests {
         assert_eq!(
             render_dynamic_text("Контроль {{missing_date + 3d}}", &BTreeMap::new(), &[]),
             "Контроль {{missing_date + 3d}}"
+        );
+    }
+
+    #[test]
+    fn recommendation_sentences_are_deduplicated_across_templates() {
+        let mut db = ClinicalDatabase::default();
+        db.templates[1].sections.recommendations =
+            "Прием антигипертензивной терапии. Бисопролол 5 мг по 1 таблетке утром."
+                .to_owned();
+        db.templates[2].sections.recommendations =
+            "Прием антиангинальной терапии. Бисопролол 5 мг по 1 таблетке утром."
+                .to_owned();
+
+        let tokens = parse_diagnosis_input("I11.9, I50.9");
+        let (document, _, _) = compose(&db, &tokens);
+
+        assert_eq!(
+            document
+                .recommendations
+                .matches("Бисопролол 5 мг по 1 таблетке утром.")
+                .count(),
+            1
+        );
+        assert!(document
+            .recommendations
+            .contains("Прием антигипертензивной терапии."));
+        assert!(document
+            .recommendations
+            .contains("Прием антиангинальной терапии."));
+    }
+
+    #[test]
+    fn recommendation_sentence_normalization_is_conservative() {
+        let merged = join_unique_sentences(
+            [
+                "Охранительный ортопедический режим. Бисопролол 5 мг. по 1 таблетке утром."
+                    .to_owned(),
+                "  охранительный   ортопедический режим!  Бисопролол 10 мг по 1 таблетке утром."
+                    .to_owned(),
+            ]
+            .iter(),
+        );
+
+        assert_eq!(
+            normalize_sentence_for_dedupe("Охранительный ортопедический режим."),
+            normalize_sentence_for_dedupe(" охранительный   ортопедический режим! ")
+        );
+        assert_eq!(merged.matches("охранительный").count(), 0);
+        assert_eq!(merged.matches("Охранительный ортопедический режим.").count(), 1);
+        assert!(merged.contains("Бисопролол 5 мг. по 1 таблетке утром."));
+        assert!(merged.contains("Бисопролол 10 мг по 1 таблетке утром."));
+    }
+
+    #[test]
+    fn clinical_abbreviation_does_not_split_sentence() {
+        assert_eq!(
+            split_recommendation_sentences(
+                "Бисопролол 5 мг. по 1 таблетке утром. Контроль ЧСС ежедневно."
+            ),
+            vec![
+                "Бисопролол 5 мг. по 1 таблетке утром.".to_owned(),
+                "Контроль ЧСС ежедневно.".to_owned(),
+            ]
         );
     }
 
