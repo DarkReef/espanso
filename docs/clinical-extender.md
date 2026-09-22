@@ -22,6 +22,8 @@ A visit is assembled in this order:
 
 Structured investigations use stable IDs and are de-duplicated before rendering. Free-text sections are appended in deterministic order while exact duplicate fragments are removed.
 
+The `recommendations` section additionally de-duplicates repeated complete sentences across matched templates. Comparison is intentionally conservative: case, repeated whitespace and terminal sentence punctuation are normalized, while wording, medication dose, frequency and other clinical content must still match. The first occurrence and template order are preserved; fuzzy/semantic merging is not performed.
+
 ## Main workflow
 
 Open the top-level `Clinical Extender` section and use:
