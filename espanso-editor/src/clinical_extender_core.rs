@@ -1396,22 +1396,40 @@ fn join_unique<'a>(parts: impl Iterator<Item = &'a String>) -> String {
 /// wording of that occurrence are preserved.
 fn join_unique_sentences<'a>(parts: impl Iterator<Item = &'a String>) -> String {
     let mut seen = HashSet::new();
-    let mut paragraphs = Vec::new();
+    let mut fragments = Vec::new();
 
     for part in parts {
-        let mut unique_sentences = Vec::new();
-        for sentence in split_recommendation_sentences(part) {
-            let key = normalize_sentence_for_dedupe(&sentence);
-            if !key.is_empty() && seen.insert(key) {
-                unique_sentences.push(sentence);
+        let mut lines = Vec::new();
+        for raw_line in part.lines() {
+            let line = raw_line.trim();
+            if line.is_empty() {
+                if lines.last().is_some_and(|previous: &String| !previous.is_empty()) {
+                    lines.push(String::new());
+                }
+                continue;
+            }
+
+            let mut unique_sentences = Vec::new();
+            for sentence in split_recommendation_sentences(line) {
+                let key = normalize_sentence_for_dedupe(&sentence);
+                if !key.is_empty() && seen.insert(key) {
+                    unique_sentences.push(sentence);
+                }
+            }
+            if !unique_sentences.is_empty() {
+                lines.push(unique_sentences.join(" "));
             }
         }
-        if !unique_sentences.is_empty() {
-            paragraphs.push(unique_sentences.join(" "));
+
+        while lines.last().is_some_and(String::is_empty) {
+            lines.pop();
+        }
+        if !lines.is_empty() {
+            fragments.push(lines.join("\n"));
         }
     }
 
-    paragraphs.join("\n\n")
+    fragments.join("\n\n")
 }
 
 /// Split on sentence-ending punctuation only when the following non-whitespace
@@ -1874,6 +1892,22 @@ mod tests {
                 "1. Контроль АД ежедневно.".to_owned(),
                 "2. Вести дневник давления.".to_owned(),
             ]
+        );
+    }
+
+    #[test]
+    fn recommendation_line_breaks_are_preserved() {
+        let merged = join_unique_sentences(
+            [
+                "Контроль АД ежедневно.\nВести дневник давления.".to_owned(),
+                "Контроль АД ежедневно.\nОграничить соль.".to_owned(),
+            ]
+            .iter(),
+        );
+
+        assert_eq!(
+            merged,
+            "Контроль АД ежедневно.\nВести дневник давления.\n\nОграничить соль."
         );
     }
 
