@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - build/astra-glibc224-medlab
+      - build/astra224-sentence-dedupe
   workflow_dispatch:
 
 permissions:
@@ -214,7 +215,7 @@ jobs:
       - name: Upload compatibility portable
         uses: actions/upload-artifact@v4
         with:
-          name: rEspanso-Astra-glibc224-medlab-x86_64
+          name: rEspanso-Astra-glibc224-medlab-sentence-dedupe-x86_64
           path: |
             target/pol-run-astra-full/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz
             target/pol-run-astra-full/rEspanso-pol_run-Astra17-X11-Full-x86_64.sha256
