@@ -1434,19 +1434,29 @@ fn split_recommendation_sentences(text: &str) -> Vec<String> {
 
         let end = byte_index + ch.len_utf8();
         let mut next_non_whitespace = None;
+        let mut has_whitespace_after_punctuation = false;
         for &(_, next) in chars.iter().skip(position + 1) {
-            if !next.is_whitespace() {
-                next_non_whitespace = Some(next);
-                break;
+            if next.is_whitespace() {
+                has_whitespace_after_punctuation = true;
+                continue;
             }
+            next_non_whitespace = Some(next);
+            break;
         }
+
+        let candidate = text[start..end].trim();
+        let numeric_marker = candidate
+            .trim_end_matches(|mark: char| matches!(mark, '.' | '!' | '?'))
+            .chars()
+            .all(|item| item.is_ascii_digit());
 
         let is_boundary = match next_non_whitespace {
             None => true,
             Some(next) => {
-                next.is_uppercase()
-                    || next.is_numeric()
-                    || matches!(next, '-' | '—' | '•' | '▪' | '◦')
+                has_whitespace_after_punctuation
+                    && !numeric_marker
+                    && (next.is_uppercase()
+                        || matches!(next, '-' | '—' | '•' | '▪' | '◦'))
             }
         };
 
@@ -1836,6 +1846,32 @@ mod tests {
             vec![
                 "Бисопролол 5 мг. по 1 таблетке утром.".to_owned(),
                 "Контроль ЧСС ежедневно.".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn decimal_dose_is_not_treated_as_sentence_boundary() {
+        assert_eq!(
+            split_recommendation_sentences(
+                "Амлодипин 2.5 мг утром. Контроль АД ежедневно."
+            ),
+            vec![
+                "Амлодипин 2.5 мг утром.".to_owned(),
+                "Контроль АД ежедневно.".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn numbered_recommendation_stays_with_its_text() {
+        assert_eq!(
+            split_recommendation_sentences(
+                "1. Контроль АД ежедневно. 2. Вести дневник давления."
+            ),
+            vec![
+                "1. Контроль АД ежедневно.".to_owned(),
+                "2. Вести дневник давления.".to_owned(),
             ]
         );
     }
