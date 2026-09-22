@@ -1456,6 +1456,7 @@ fn split_recommendation_sentences(text: &str) -> Vec<String> {
                 has_whitespace_after_punctuation
                     && !numeric_marker
                     && (next.is_uppercase()
+                        || next.is_numeric()
                         || matches!(next, '-' | '—' | '•' | '▪' | '◦'))
             }
         };
