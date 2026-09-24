@@ -53,6 +53,9 @@ const long DEFAULT_STYLE = wxSTAY_ON_TOP | wxRESIZE_BORDER;
 #endif
 
 const int HELP_TEXT_FONT_SIZE = 10;
+const wxString SEARCH_TAB_TRIGGERS = wxT("triggers");
+const wxString SEARCH_TAB_CODES = wxT("codes");
+const wxString SEARCH_TAB_QUERY_PREFIX = wxT("__RESPANSO_TAB__:");
 
 const wxColour SELECTION_LIGHT_BG = wxColour(164, 210, 253);
 const wxColour SELECTION_DARK_BG = wxColour(49, 88, 126);
@@ -164,6 +167,8 @@ class SearchFrame : public wxFrame {
     wxStaticBitmap *iconPanel = nullptr;
     wxStaticText *helpText = nullptr;
     ResultListBox *resultBox = nullptr;
+    wxButton *triggersTabButton = nullptr;
+    wxButton *codesTabButton = nullptr;
     void SetItems(SearchItem *items, int itemSize);
 
   private:
@@ -171,6 +176,12 @@ class SearchFrame : public wxFrame {
     void OnQueryChange(wxCommandEvent &event);
     void OnItemClickEvent(wxCommandEvent &event);
     void OnActivate(wxActivateEvent &event);
+    void OnTriggersTab(wxCommandEvent &event);
+    void OnCodesTab(wxCommandEvent &event);
+    void SetActiveCategory(const wxString &category);
+    void RefreshQuery();
+    void RefreshTabButtons();
+    wxString activeCategory = SEARCH_TAB_TRIGGERS;
 
     // Mouse events
     void OnMouseCaptureLost(wxMouseCaptureLostEvent &event);
@@ -219,6 +230,21 @@ SearchFrame::SearchFrame(const wxString &title, const wxPoint &pos,
     panel = new wxPanel(this, wxID_ANY);
     wxBoxSizer *vbox = new wxBoxSizer(wxVERTICAL);
     panel->SetSizer(vbox);
+
+    if (searchMetadata->tabsEnabled) {
+        wxBoxSizer *tabsBox = new wxBoxSizer(wxHORIZONTAL);
+        int triggersTabId = NewControlId();
+        int codesTabId = NewControlId();
+        triggersTabButton =
+            new wxButton(panel, triggersTabId, wxT("Триггеры"));
+        codesTabButton = new wxButton(panel, codesTabId, wxT("Коды"));
+        tabsBox->Add(triggersTabButton, 1, wxEXPAND | wxLEFT | wxTOP, 10);
+        tabsBox->Add(codesTabButton, 1, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 10);
+        vbox->Add(tabsBox, 0, wxEXPAND);
+        Bind(wxEVT_BUTTON, &SearchFrame::OnTriggersTab, this, triggersTabId);
+        Bind(wxEVT_BUTTON, &SearchFrame::OnCodesTab, this, codesTabId);
+        RefreshTabButtons();
+    }
 
     wxBoxSizer *topBox = new wxBoxSizer(wxHORIZONTAL);
 
@@ -290,13 +316,18 @@ SearchFrame::SearchFrame(const wxString &title, const wxPoint &pos,
     this->SetSizeHints(MIN_WIDTH, MIN_HEIGHT);
     this->CentreOnScreen();
 
-    // Trigger the first data update
-    queryCallback("", (void *)this, data);
+    // Trigger the first data update in the default "Триггеры" tab.
+    RefreshQuery();
 }
 
 void SearchFrame::OnCharEvent(wxKeyEvent &event) {
     if (event.GetKeyCode() == WXK_ESCAPE) {
         Close(true);
+    } else if (event.GetKeyCode() == WXK_TAB && event.RawControlDown() &&
+               searchMetadata->tabsEnabled) {
+        SetActiveCategory(activeCategory == SEARCH_TAB_TRIGGERS
+                              ? SEARCH_TAB_CODES
+                              : SEARCH_TAB_TRIGGERS);
     } else if (event.GetKeyCode() == WXK_TAB) {
         if (wxGetKeyState(WXK_SHIFT)) {
             SelectPrevious();
@@ -349,9 +380,46 @@ void SearchFrame::OnQueryChange(wxCommandEvent &event) {
         helpText = nullptr;
     }
 
+    RefreshQuery();
+}
+
+void SearchFrame::RefreshQuery() {
     wxString queryString = searchBar->GetValue();
-    const char *query = queryString.ToUTF8();
-    queryCallback(query, (void *)this, data);
+    if (searchMetadata->tabsEnabled) {
+        queryString = SEARCH_TAB_QUERY_PREFIX + activeCategory + wxT(":") +
+                      queryString;
+    }
+    wxCharBuffer queryUtf8 = queryString.ToUTF8();
+    queryCallback(queryUtf8.data(), (void *)this, data);
+}
+
+void SearchFrame::RefreshTabButtons() {
+    if (!searchMetadata->tabsEnabled || triggersTabButton == nullptr ||
+        codesTabButton == nullptr) {
+        return;
+    }
+
+    const bool triggersActive = activeCategory == SEARCH_TAB_TRIGGERS;
+    triggersTabButton->Enable(!triggersActive);
+    codesTabButton->Enable(triggersActive);
+}
+
+void SearchFrame::SetActiveCategory(const wxString &category) {
+    if (!searchMetadata->tabsEnabled || activeCategory == category) {
+        return;
+    }
+    activeCategory = category;
+    RefreshTabButtons();
+    RefreshQuery();
+    searchBar->SetFocus();
+}
+
+void SearchFrame::OnTriggersTab(wxCommandEvent &event) {
+    SetActiveCategory(SEARCH_TAB_TRIGGERS);
+}
+
+void SearchFrame::OnCodesTab(wxCommandEvent &event) {
+    SetActiveCategory(SEARCH_TAB_CODES);
 }
 
 void SearchFrame::OnItemClickEvent(wxCommandEvent &event) {
