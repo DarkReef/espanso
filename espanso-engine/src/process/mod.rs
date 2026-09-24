@@ -39,7 +39,7 @@ pub use middleware::delay_modifiers::ModifierStatusProvider;
 pub use middleware::disable::DisableOptions;
 pub use middleware::image_resolve::PathProvider;
 pub use middleware::match_exec::MatchResolver;
-pub use middleware::match_select::{MatchFilter, MatchSelector};
+pub use middleware::match_select::{MatchFilter, MatchSelection, MatchSelector};
 pub use middleware::matcher::{
     MatchResult, Matcher, MatcherEvent, MatcherMiddlewareConfigProvider, ModifierState,
     ModifierStateProvider,
