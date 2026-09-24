@@ -28,6 +28,7 @@ pub mod types {
         pub trigger: Option<String>,
         pub search_terms: Vec<String>,
         pub is_builtin: bool,
+        pub category: String,
     }
 
     #[derive(Debug)]
@@ -36,6 +37,7 @@ pub mod types {
         pub icon: Option<String>,
         pub hint: Option<String>,
         pub items: Vec<SearchItem>,
+        pub tabs_enabled: bool,
     }
 }
 
@@ -107,6 +109,7 @@ mod interop {
                 iconPath: icon_path_ptr,
                 windowTitle: title.as_ptr(),
                 hintText: hint_ptr,
+                tabsEnabled: i32::from(search.tabs_enabled),
             });
 
             Self {
