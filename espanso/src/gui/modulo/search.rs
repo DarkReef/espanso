@@ -21,7 +21,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{collections::HashMap, convert::TryInto};
 
-use crate::gui::{SearchItem, SearchUI};
+use crate::gui::{SearchCategory, SearchItem, SearchUI};
 
 use super::manager::ModuloManager;
 
@@ -49,8 +49,11 @@ impl<'a> ModuloSearchUI<'a> {
 impl SearchUI for ModuloSearchUI<'_> {
     fn show(&self, items: &[SearchItem], hint: Option<&str>) -> anyhow::Result<Option<String>> {
         let modulo_config = ModuloSearchConfig {
-            title: "espanso",
+            title: "rEspanso",
             hint,
+            tabs_enabled: items
+                .iter()
+                .any(|item| item.category == SearchCategory::Codes),
             items: convert_items(items),
         };
 
@@ -85,6 +88,7 @@ impl SearchUI for ModuloSearchUI<'_> {
 struct ModuloSearchConfig<'a> {
     title: &'a str,
     hint: Option<&'a str>,
+    tabs_enabled: bool,
     items: Vec<ModuloSearchItemConfig<'a>>,
 }
 
@@ -95,6 +99,7 @@ struct ModuloSearchItemConfig<'a> {
     trigger: Option<&'a str>,
     search_terms: Vec<&'a str>,
     is_builtin: bool,
+    category: &'a str,
 }
 
 fn convert_items(items: &'_ [SearchItem]) -> Vec<ModuloSearchItemConfig<'_>> {
@@ -113,6 +118,7 @@ fn convert_items(items: &'_ [SearchItem]) -> Vec<ModuloSearchItemConfig<'_>> {
                     .collect()
             },
             is_builtin: item.is_builtin,
+            category: item.category.as_str(),
         })
         .collect()
 }
