@@ -27,13 +27,29 @@ pub trait SearchUI {
     fn show(&self, items: &[SearchItem], hint: Option<&str>) -> Result<Option<String>>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchCategory {
+    Triggers,
+    Codes,
+}
+
+impl SearchCategory {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Triggers => "triggers",
+            Self::Codes => "codes",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SearchItem {
     pub id: String,
     pub label: String,
     pub tag: Option<String>,
     pub additional_search_terms: Vec<String>,
     pub is_builtin: bool,
+    pub category: SearchCategory,
 }
 
 #[derive(Debug, Clone)]
