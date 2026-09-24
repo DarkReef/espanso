@@ -1,0 +1,10 @@
+rEspanso ICD-10 Russian snapshot
+source repository: ak4nv/mkb10
+source commit: 519b65e608d7f15beb947cb0d7bc14071018a710
+source file: resources/1.2.643.5.1.13.13.11.1005_2.27.csv
+source blob: 0f15ca440d1555e6ea630d6ac5916d898d7d162b
+source description: Международная статистическая классификация болезней и проблем, связанных со здоровьем (10-й пересмотр)
+upstream README states data source: Минздрав РФ / https://nsi.rosminzdrav.ru
+upstream repository license: MIT
+snapshot transform: ACTUAL=1; codes matching ^[A-Z][0-9]{2}(\.[0-9A-Z]+)?$; columns MKB_CODE + MKB_NAME
+entries: 14641
