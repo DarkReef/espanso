@@ -94,6 +94,7 @@ typedef struct SearchMetadata {
     const char *windowTitle;
     const char *iconPath;
     const char *hintText;
+    const int tabsEnabled;
 } SearchMetadata;
 
 // WIZARD
