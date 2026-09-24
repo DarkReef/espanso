@@ -23,6 +23,8 @@ use crate::sys::search::types::SearchItem;
 
 type FilterCallback = dyn Fn(&str, &[SearchItem]) -> Vec<usize>;
 
+const TAB_QUERY_PREFIX: &str = "__RESPANSO_TAB__:";
+
 pub fn get_algorithm(name: &str, use_command_filter: bool) -> Box<FilterCallback> {
     let search_algorithm: Box<FilterCallback> = match name {
         "exact" => Box::new(exact_match),
@@ -31,11 +33,13 @@ pub fn get_algorithm(name: &str, use_command_filter: bool) -> Box<FilterCallback
         _ => panic!("unknown search algorithm: {name}"),
     };
 
-    if use_command_filter {
+    let search_algorithm = if use_command_filter {
         command_filter(search_algorithm)
     } else {
         search_algorithm
-    }
+    };
+
+    category_filter(search_algorithm)
 }
 
 fn exact_match(query: &str, items: &[SearchItem]) -> Vec<usize> {
@@ -99,6 +103,26 @@ fn case_insensitive_keyword(query: &str, items: &[SearchItem]) -> Vec<usize> {
         .collect()
 }
 
+fn category_filter(search_algorithm: Box<FilterCallback>) -> Box<FilterCallback> {
+    Box::new(move |query, items| {
+        let Some(scoped) = query.strip_prefix(TAB_QUERY_PREFIX) else {
+            return search_algorithm(query, items);
+        };
+        let Some((category, inner_query)) = scoped.split_once(':') else {
+            return search_algorithm(query, items);
+        };
+
+        search_algorithm(inner_query, items)
+            .into_iter()
+            .filter(|index| {
+                items
+                    .get(*index)
+                    .is_some_and(|item| item.category == category)
+            })
+            .collect()
+    })
+}
+
 fn command_filter(search_algorithm: Box<FilterCallback>) -> Box<FilterCallback> {
     Box::new(move |query, items| {
         let (valid_ids, trimmed_query) = if query.starts_with('>') {
@@ -130,4 +154,65 @@ fn command_filter(search_algorithm: Box<FilterCallback>) -> Box<FilterCallback> 
             .filter(|id| valid_ids.contains(id))
             .collect()
     })
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(label: &str, category: &str, is_builtin: bool) -> SearchItem {
+        SearchItem {
+            id: label.to_owned(),
+            label: label.to_owned(),
+            trigger: None,
+            search_terms: Vec::new(),
+            is_builtin,
+            category: category.to_owned(),
+        }
+    }
+
+    #[test]
+    fn scoped_query_only_returns_active_tab_items() {
+        let items = vec![
+            item("гипертензия trigger", "triggers", false),
+            item("Эссенциальная гипертензия", "codes", false),
+        ];
+        let algorithm = get_algorithm("ikey", true);
+
+        assert_eq!(
+            algorithm("__RESPANSO_TAB__:codes:гипертензия", &items),
+            vec![1]
+        );
+        assert_eq!(
+            algorithm("__RESPANSO_TAB__:triggers:гипертензия", &items),
+            vec![0]
+        );
+    }
+
+    #[test]
+    fn command_prefix_still_works_inside_trigger_tab() {
+        let items = vec![
+            item("ordinary", "triggers", false),
+            item("restart respanso", "triggers", true),
+            item("restart diagnosis", "codes", false),
+        ];
+        let algorithm = get_algorithm("ikey", true);
+
+        assert_eq!(
+            algorithm("__RESPANSO_TAB__:triggers:>restart", &items),
+            vec![1]
+        );
+    }
+
+    #[test]
+    fn unscoped_search_keeps_legacy_behavior() {
+        let items = vec![
+            item("one", "triggers", false),
+            item("two", "codes", false),
+        ];
+        let algorithm = get_algorithm("ikey", false);
+
+        assert_eq!(algorithm("", &items), vec![0, 1]);
+    }
 }
