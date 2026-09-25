@@ -125,11 +125,12 @@ fn selection_from_id(selected_id: &str) -> Option<MatchSelection> {
 }
 
 fn icd_search_item(entry: &IcdEntry) -> SearchItem {
+    let name: String = entry.name.chars().take(MAX_ICD_LABEL_LEN).collect();
     SearchItem {
         id: format!("{ICD_RESULT_PREFIX}{}", entry.code),
-        label: entry.name.chars().take(MAX_ICD_LABEL_LEN).collect(),
-        tag: Some(entry.code.clone()),
-        additional_search_terms: vec![entry.code.clone()],
+        label: format!("{} — {name}", entry.code),
+        tag: None,
+        additional_search_terms: vec![entry.code.clone(), entry.name.clone()],
         is_builtin: false,
         category: SearchCategory::Codes,
     }
@@ -240,7 +241,8 @@ mod icd_tests {
             name: "Эссенциальная гипертензия".to_owned(),
         });
         assert_eq!(item.id, "icd:I10");
-        assert_eq!(item.tag.as_deref(), Some("I10"));
+        assert_eq!(item.label, "I10 — Эссенциальная гипертензия");
+        assert!(item.tag.is_none());
         assert_eq!(item.category, SearchCategory::Codes);
     }
 }
