@@ -112,6 +112,14 @@ fn category_filter(search_algorithm: Box<FilterCallback>) -> Box<FilterCallback>
             return search_algorithm(query, items);
         };
 
+        // Do not push the entire ICD catalogue through the native list when
+        // the Codes tab is empty. Once the user types, cap results to keep live
+        // search responsive even for very broad queries such as "I".
+        if category == "codes" && inner_query.trim().is_empty() {
+            return Vec::new();
+        }
+        let limit = if category == "codes" { 100 } else { usize::MAX };
+
         search_algorithm(inner_query, items)
             .into_iter()
             .filter(|index| {
@@ -119,6 +127,7 @@ fn category_filter(search_algorithm: Box<FilterCallback>) -> Box<FilterCallback>
                     .get(*index)
                     .is_some_and(|item| item.category == category)
             })
+            .take(limit)
             .collect()
     })
 }
@@ -188,6 +197,17 @@ mod tests {
             algorithm("__RESPANSO_TAB__:triggers:гипертензия", &items),
             vec![0]
         );
+    }
+
+    #[test]
+    fn empty_codes_query_does_not_render_the_full_catalogue() {
+        let items = vec![
+            item("I10 — hypertension", "codes", false),
+            item("I11 — hypertensive heart disease", "codes", false),
+        ];
+        let algorithm = get_algorithm("ikey", true);
+
+        assert!(algorithm("__RESPANSO_TAB__:codes:", &items).is_empty());
     }
 
     #[test]
