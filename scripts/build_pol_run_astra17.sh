@@ -139,6 +139,8 @@ ci_phase x11-restart-smoke \
   timeout 70s xvfb-run -a bash scripts/test_astra_restart.sh target/release/espanso
 ci_phase x11-search-smoke \
   timeout 30s xvfb-run -a bash scripts/test_astra_search_enter.sh target/release/espanso
+ci_phase x11-search-tabs-smoke \
+  timeout 30s xvfb-run -a bash scripts/test_astra_search_tabs.sh target/release/espanso
 ci_phase x11-injector-stress \
   timeout 180s xvfb-run -a env RESPANSO_ASTRA_STRESS_ITERATIONS=12 \
     bash scripts/test_astra_injector_stress.sh target/release/espanso
@@ -173,6 +175,7 @@ mkdir -p \
   "$ROOT/lib" \
   "$ROOT/bin" \
   "$ROOT/config" \
+  "$ROOT/data" \
   "$ROOT/match" \
   "$ROOT/packages" \
   "$ROOT/runtime" \
@@ -186,6 +189,14 @@ cp /usr/bin/xdotool "$ROOT/bin/xdotool"
 cp -L /usr/lib/x86_64-linux-gnu/libxdo.so.3 "$ROOT/lib/libxdo.so.3"
 cp espanso/src/res/config/default.yml "$ROOT/config/default.yml"
 cp espanso/src/res/config/base.yml "$ROOT/match/base.yml"
+
+# The Ctrl+Space "Коды" tab is fully offline. Keep the generated Russian
+# ICD-10 snapshot beside the executable and fail the release build if it is
+# accidentally omitted.
+test -s bundled/icd10/icd10-ru.tsv
+cp bundled/icd10/icd10-ru.tsv "$ROOT/data/icd10-ru.tsv"
+cp bundled/icd10/SNAPSHOT.txt "$ROOT/data/ICD10-SNAPSHOT.txt"
+cp bundled/icd10/LICENSE.upstream.txt "$ROOT/data/ICD10-LICENSE.txt"
 
 # Embed the pinned rEspanso-medlab snapshot. It intentionally replaces the
 # demonstration base.yml and adds its Rhai modules under %CONFIG%/scripts.
@@ -472,6 +483,12 @@ Useful commands:
   ./diagnose.sh      ABI/library/display/tray diagnostics
   ./export-logs.sh    create a privacy-aware diagnostics archive in diagnostics/
   ./mcp.sh           MCP stdio server (agent credentials come from environment)
+
+SEARCH PALETTE
+  Ctrl+Space          open rEspanso palette
+  Триггеры            default tab
+  Коды                offline Russian ICD-10 lookup; Enter inserts the code
+  Ctrl+Tab            switch palette tabs
 
 Diagnostics archives intentionally exclude configuration and match contents.
 Selected-text and clipboard contents are not intentionally logged.
