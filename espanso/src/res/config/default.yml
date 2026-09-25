@@ -33,6 +33,11 @@
 # Enable/disable the config auto-reload after a file change is detected.
 # auto_restart: false
 
+# --- Search palette
+# Ctrl+Space opens the rEspanso palette. The default tab contains triggers;
+# the Codes tab provides offline ICD-10 lookup by code or Russian title.
+search_shortcut: CTRL+SPACE
+
 # --- Clipboard threshold
 
 # Because injecting long texts char-by-char is a slow operation, espanso automatically
