@@ -109,7 +109,7 @@ mod interop {
                 iconPath: icon_path_ptr,
                 windowTitle: title.as_ptr(),
                 hintText: hint_ptr,
-                tabsEnabled: i32::from(search.tabs_enabled),
+                tabsEnabled: if search.tabs_enabled { 1 } else { 0 },
             });
 
             Self {
