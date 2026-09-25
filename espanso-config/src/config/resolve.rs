@@ -287,7 +287,7 @@ impl Config for ResolvedConfig {
         match self.parsed.search_shortcut.as_deref() {
             Some("OFF" | "off") => None,
             Some(x) => Some(x.to_string()),
-            None => Some("CTRL+ALT+SPACE".to_string()),
+            None => Some("CTRL+SPACE".to_string()),
         }
     }
 
