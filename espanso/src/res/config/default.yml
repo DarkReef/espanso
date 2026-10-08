@@ -13,10 +13,10 @@
 
 # --- Astra/KDE search ---
 
-# Alt+Space is commonly owned by KDE/KWin. The Astra portable build therefore
-# uses a less conflict-prone search chord by default. If passive X11 grabs are
-# denied, rEspanso transparently falls back to its XQueryKeymap hotkey backend.
-search_shortcut: CTRL+ALT+SPACE
+# Ctrl+Space opens the rEspanso search window ("Коды").
+# If the desktop/input-method reserves this shortcut, release it in the
+# desktop keyboard settings. The config option may be overridden locally.
+search_shortcut: CTRL+SPACE
 search_trigger: ":search"
 
 # --- Astra / legacy application injection safety ---
