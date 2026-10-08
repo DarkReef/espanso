@@ -12,7 +12,7 @@ if [[ ! -f "$CFG" ]]; then
   exit 1
 fi
 
-if grep -Eq '^[[:space:]]*search_shortcut[[:space:]]*:[[:space:]]*CTRL\\+SPACE([[:space:]#]|$)' "$CFG"; then
+if grep -Eq '^[[:space:]]*search_shortcut[[:space:]]*:[[:space:]]*CTRL\+SPACE([[:space:]#]|$)' "$CFG"; then
   printf 'Already configured: CTRL+SPACE (%s)\n' "$CFG"
   exit 0
 fi
