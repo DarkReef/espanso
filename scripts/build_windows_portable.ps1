@@ -1,71 +1,146 @@
 #!/usr/bin/env pwsh
 
-# Stop on any error
 $ErrorActionPreference = "Stop"
 
-# Enable verbose output
-# Set-PSDebug -Strict -Trace 1
+$PACKAGE_DIR = "target/windows/respanso-portable-with-studio"
+$ARCHIVE_PATH = "target/windows/rEspanso-Win-Portable-with-Studio-x86_64.zip"
 
-$TARGET_DIR = "target/windows/portable"
-$RESOURCE_DIR = "target/windows/resources"
+function Resolve-RequiredBinary {
+    param(
+        [Parameter(Mandatory = $true)][string]$EnvironmentName,
+        [Parameter(Mandatory = $true)][string]$FallbackPath
+    )
 
-# Check if the resources were previously built
-if (-not (Test-Path $RESOURCE_DIR)) {
-    Write-Error "You need to build the windows resources first.`nPlease run scripts/build_windows_resources.ps1"
-    exit 1
+    $configured = [Environment]::GetEnvironmentVariable($EnvironmentName)
+    $candidate = if ([string]::IsNullOrWhiteSpace($configured)) { $FallbackPath } else { $configured }
+    if (-not (Test-Path -Path $candidate -PathType Leaf)) {
+        throw "Required binary was not found ($EnvironmentName): $candidate"
+    }
+    return (Resolve-Path $candidate).Path
+}
+
+function Resolve-VcRuntimeDirectory {
+    if (-not [string]::IsNullOrWhiteSpace($env:VCToolsRedistDir)) {
+        $crtRoot = Join-Path $env:VCToolsRedistDir "x64"
+        if (Test-Path $crtRoot) {
+            $crtDir = Get-ChildItem -Path $crtRoot -Directory |
+                Where-Object { $_.Name -like "Microsoft.VC*.CRT" } |
+                Sort-Object Name -Descending |
+                Select-Object -First 1
+            if ($crtDir) {
+                return $crtDir.FullName
+            }
+        }
+    }
+
+    $runtimeDll = Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio" -Recurse -Filter "vcruntime140_1.dll" -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -like "*\VC\Redist\MSVC\*" -and $_.FullName -like "*\x64\*" } |
+        Select-Object -First 1
+    if ($runtimeDll) {
+        return $runtimeDll.Directory.FullName
+    }
+
+    throw "Unable to locate the Microsoft Visual C++ x64 redistributable runtime"
 }
 
 function Main {
-    # Clean the target directory
-    if (Test-Path $TARGET_DIR) {
-        Remove-Item $TARGET_DIR -Recurse -Force
+    $corePath = Resolve-RequiredBinary -EnvironmentName "EXEC_PATH" -FallbackPath "target/release/espanso.exe"
+    $launcherPath = Resolve-RequiredBinary -EnvironmentName "LAUNCHER_PATH" -FallbackPath "target/release/respanso-portable.exe"
+    $editorPath = Resolve-RequiredBinary -EnvironmentName "EDITOR_PATH" -FallbackPath "target/release/espanso-editor.exe"
+
+    foreach ($path in @($PACKAGE_DIR, $ARCHIVE_PATH)) {
+        if (Test-Path $path) {
+            Remove-Item $path -Recurse -Force
+        }
     }
 
-    # Remove the portable folder if found
-    if (Test-Path "target/windows/espanso-portable") {
-        Remove-Item "target/windows/espanso-portable" -Recurse -Force
+    $matchDir = Join-Path $PACKAGE_DIR "portable/config/match"
+    $calculatorDir = Join-Path $PACKAGE_DIR "portable/config/medical-calculators"
+    $runtimeDir = Join-Path $PACKAGE_DIR "portable/runtime"
+    $packagesDir = Join-Path $PACKAGE_DIR "portable/packages"
+    New-Item -Path $PACKAGE_DIR, $matchDir, $calculatorDir, $runtimeDir, $packagesDir -ItemType Directory -Force | Out-Null
+
+    Copy-Item $launcherPath (Join-Path $PACKAGE_DIR "rEspanso.exe")
+    Copy-Item $corePath (Join-Path $PACKAGE_DIR "rEspanso-core.exe")
+    Copy-Item $editorPath (Join-Path $PACKAGE_DIR "rEspanso Match Studio.exe")
+
+    $vcRuntimeDir = Resolve-VcRuntimeDirectory
+    Get-ChildItem -Path $vcRuntimeDir -Filter "*.dll" | Copy-Item -Destination $PACKAGE_DIR
+
+    if (Test-Path "LICENSE") {
+        Copy-Item "LICENSE" (Join-Path $PACKAGE_DIR "LICENSE.txt")
+    }
+    foreach ($doc in @(
+        @{ Source = "docs/respanso-dynamic-dialog.md"; Destination = "DYNAMIC-DIALOG.md" },
+        @{ Source = "docs/respanso-selection-match.md"; Destination = "SELECTION-MATCH.md" },
+        @{ Source = "docs/respanso-medical-calculators.md"; Destination = "MEDICAL-CALCULATORS.md" }
+    )) {
+        if (Test-Path $doc.Source) {
+            Copy-Item $doc.Source (Join-Path $PACKAGE_DIR $doc.Destination)
+        }
     }
 
-    # Copy the resources directory
-    Copy-Item -Path $RESOURCE_DIR -Destination $TARGET_DIR -Recurse -Force
+    $baseMatch = Join-Path $matchDir "respanso-test.yml"
+    @'
+matches:
+  - label: "rEspanso Portable готов"
+    trigger: ":respanso_example"
+    replace: "rEspanso и Match Studio работают из единого portable-комплекта"
+    disabled: true
+'@ | Set-Content -Path $baseMatch -Encoding UTF8
 
-    # Create the launcher script
-    $launcherContent = 'start espansod.exe launcher'
-    $launcherContent | Out-File "$TARGET_DIR/START_ESPANSO.bat" -Encoding ASCII
+    if (Test-Path "examples/medical-calculators/medical-calculators.yml") {
+        Copy-Item "examples/medical-calculators/medical-calculators.yml" (Join-Path $matchDir "medical-calculators.yml")
+    }
+    if (Test-Path "examples/medical-calculators/modules") {
+        Copy-Item "examples/medical-calculators/modules" (Join-Path $calculatorDir "modules") -Recurse
+    }
 
-    New-Item -Path "$TARGET_DIR/.espanso" -ItemType Directory -Force | Out-Null
-    New-Item -Path "$TARGET_DIR/.espanso-runtime" -ItemType Directory -Force | Out-Null
+    @"
+rEspanso Portable + Match Studio
 
-    $readmeContent = @"
-Welcome to Espanso (Portable edition)!
+ЗАПУСК
+1. Полностью распакуйте ZIP-архив.
+2. Запустите rEspanso.exe — это нативный portable-launcher без BAT/CMD.
+3. Откройте меню значка rEspanso в трее и выберите «Открыть rEspanso Studio».
+4. Studio также можно открыть напрямую: «rEspanso Match Studio.exe».
 
-To start espanso, you can double click on "START_ESPANSO.bat"
+Все компоненты используют одни каталоги:
+  portable\config
+  portable\runtime
+  portable\packages
 
-After the first run, you will see some files in the ".espanso" directory.
-This is where your snippets and configurations should be defined.
+Правила находятся в:
+  portable\config\match
 
-For more information, please visit the official documentation:
-https://espanso.org/docs/
+Командная строка через тот же нативный launcher:
+  rEspanso.exe --help
+  rEspanso.exe edit --gui
+  rEspanso.exe service stop
 
-IMPORTANT: Don't delete any file or directory, otherwise espanso won't work.
+rEspanso-core.exe — внутренний движок. Он должен оставаться рядом с rEspanso.exe.
+Файлы .bat и .cmd для запуска portable-комплекта не используются и в архив не входят.
+"@ | Set-Content (Join-Path $PACKAGE_DIR "README-FIRST.txt") -Encoding UTF8
 
+    $forbiddenLaunchers = Get-ChildItem -Path $PACKAGE_DIR -Recurse -File |
+        Where-Object { $_.Extension -in @(".bat", ".cmd") }
+    if ($forbiddenLaunchers) {
+        $names = ($forbiddenLaunchers | ForEach-Object FullName) -join ", "
+        throw "Portable package unexpectedly contains BAT/CMD launchers: $names"
+    }
 
-FOR ADVANCED USERS:
+    $verification = Start-Process `
+        -FilePath (Join-Path $PACKAGE_DIR "rEspanso.exe") `
+        -ArgumentList "--version" `
+        -WorkingDirectory $PACKAGE_DIR `
+        -Wait `
+        -PassThru
+    if ($verification.ExitCode -ne 0) {
+        throw "Native portable launcher verification failed with exit code $($verification.ExitCode)"
+    }
 
-Espanso also offers a rich CLI interface. To start it from the terminal, cd into the
-current directory and run "espanso start". You can also run "espanso --help" for more information.
-
-You might have noticed that the directory contains both an "espansod.exe" and an "espanso.cmd" file.
-You should generally avoid running "espansod.exe" directly, and instead use the "espanso.cmd"
-wrapper (which can simply be run as "espanso" in the terminal). This is needed to correctly manage
-STD console handles on Windows.
-"@
-    $readmeContent | Out-File "$TARGET_DIR/README.txt" -Encoding UTF8
-
-    Rename-Item -Path $TARGET_DIR -NewName espanso-portable
-    Compress-Archive target/windows/espanso-portable target/windows/Espanso-Win-Portable-x86_64.zip -Force
-
-    Write-Output "Espanso Portable created!"
+    Compress-Archive -Path $PACKAGE_DIR -DestinationPath $ARCHIVE_PATH -Force
+    Write-Output "Unified native rEspanso Portable + Match Studio created: $ARCHIVE_PATH"
 }
 
 Main @PSBoundParameters

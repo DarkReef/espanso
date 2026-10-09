@@ -65,7 +65,7 @@ impl UIRemote for LinuxRemote {
 
     fn show_notification(&self, message: &str) {
         if let Err(error) = Notification::new()
-            .summary("Espanso")
+            .summary("rEspanso")
             .body(message)
             .icon(&self.notification_icon_path)
             .show()

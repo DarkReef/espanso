@@ -91,7 +91,7 @@ rustPlatform.buildRustPackage {
       --replace-fail /bin/echo ${coreutils}/bin/echo
     patchShebangs scripts/create_bundle.sh
     substituteInPlace espanso/src/res/macos/Info.plist \
-      --replace-fail "<string>espanso</string>" "<string>${placeholder "out"}/Applications/Espanso.app/Contents/MacOS/espanso</string>"
+      --replace-fail "<string>espanso</string>" "<string>${placeholder "out"}/Applications/rEspanso.app/Contents/MacOS/espanso</string>"
     substituteInPlace espanso/src/path/macos.rs  espanso/src/path/linux.rs \
       --replace-fail '"/usr/local/bin/espanso"' '"${placeholder "out"}/bin/espanso"'
   '';

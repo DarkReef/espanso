@@ -1,0 +1,135 @@
+name: Build reactive preview with clean YAML and UTF-8
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+    paths:
+      - .github/workflows/reactive-preview-native-yaml-utf8.yml
+      - espanso-modulo/build.rs
+      - espanso-modulo/src/form/**
+      - espanso-modulo/src/sys/form/**
+      - espanso-modulo/src/sys/interop/**
+      - espanso-render/src/extension/form.rs
+      - espanso-render/src/renderer/**
+      - espanso/src/cli/modulo/**
+      - espanso/src/cli/worker/engine/process/middleware/render/extension/form.rs
+      - espanso/src/gui/**
+      - docs/respanso/FORM_PREVIEW.ru.md
+      - docs/respanso/REACTIVE_RHAI_PREVIEW.ru.md
+      - examples/medical-calculators/medical-calculators.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reactive-preview-native-yaml-utf8-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout PR source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: reactive-preview-native-yaml-utf8
+          cache-on-failure: true
+
+      - name: Validate source formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test renderer and reactive forms
+        shell: pwsh
+        run: |
+          cargo test --locked -p espanso-render --lib
+          cargo test --locked -p espanso-modulo --lib
+          cargo test --locked -p espanso reactive_preview
+          cargo check --locked -p espanso --all-targets
+
+      - name: Build release binaries
+        shell: pwsh
+        run: |
+          cargo build --locked --release -p espanso --bin espanso --bin respanso-portable
+          cargo build --locked --release -p espanso-editor --bin espanso-editor
+
+          $core = (Resolve-Path "target/release/espanso.exe").Path
+          $launcher = (Resolve-Path "target/release/respanso-portable.exe").Path
+          $studio = (Resolve-Path "target/release/espanso-editor.exe").Path
+
+          "EXEC_PATH=$core" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "LAUNCHER_PATH=$launcher" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "EDITOR_PATH=$studio" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Assemble and verify portable package
+        shell: pwsh
+        run: |
+          & "./scripts/build_windows_native_portable_with_studio.ps1"
+
+          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+          if (-not (Test-Path $archive -PathType Leaf)) {
+            throw "Portable archive was not created: $archive"
+          }
+
+          $entries = tar -tf $archive
+          if ($LASTEXITCODE -ne 0) {
+            throw "Portable archive could not be listed"
+          }
+
+          foreach ($required in @(
+            "rEspanso.exe",
+            "rEspanso-core.exe",
+            "rEspanso Match Studio.exe"
+          )) {
+            if (-not ($entries -match [regex]::Escape($required))) {
+              throw "Portable archive is missing $required"
+            }
+          }
+
+          Get-FileHash $archive -Algorithm SHA256 |
+            Format-List |
+            Out-File "target/windows/reactive-preview-native-yaml-utf8.sha256.txt"
+
+      - name: Upload verified portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-reactive-preview-native-yaml-utf8
+          path: |
+            target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+            target/windows/reactive-preview-native-yaml-utf8.sha256.txt
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reactive-preview-native-yaml-utf8-failure
+          path: |
+            espanso-render/src/renderer/mod.rs
+            espanso-render/src/renderer/util.rs
+            espanso-modulo/build.rs
+            espanso-modulo/src/sys/form/form.cpp
+            espanso-modulo/src/sys/form/mod.rs
+            espanso/src/cli/modulo/reactive_preview.rs
+          if-no-files-found: warn
+          retention-days: 5

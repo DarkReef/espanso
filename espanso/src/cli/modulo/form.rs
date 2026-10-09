@@ -17,11 +17,13 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::icon::IconPaths;
+use crate::{icon::IconPaths, path::Paths};
 use clap::ArgMatches;
 use espanso_modulo::form::*;
 
-pub fn form_main(matches: &ArgMatches, _icon_paths: &IconPaths) -> i32 {
+use super::reactive_preview::RhaiFormPreviewEvaluator;
+
+pub fn form_main(matches: &ArgMatches, paths: &Paths, _icon_paths: &IconPaths) -> i32 {
     let as_json: bool = matches.is_present("json");
 
     let input_file = matches
@@ -50,8 +52,14 @@ pub fn form_main(matches: &ArgMatches, _icon_paths: &IconPaths) -> i32 {
         .as_deref()
         .map(|path| path.to_string_lossy().to_string());
 
+    let mut evaluator = RhaiFormPreviewEvaluator::new(&config, paths)
+        .expect("unable to initialize reactive Rhai preview");
     let form = generator::generate(config);
-    let values = show(form);
+    let values = if let Some(evaluator) = evaluator.as_mut() {
+        show_with_preview(form, evaluator)
+    } else {
+        show(form)
+    };
 
     let output = serde_json::to_string(&values).expect("unable to encode values as JSON");
     println!("{output}");

@@ -17,7 +17,6 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-//use log::error;
 use std::{collections::HashMap, sync::LazyLock};
 use thiserror::Error;
 
@@ -67,7 +66,26 @@ impl Extension for FormExtension<'_> {
             Params::new()
         };
 
-        match self.provider.show(layout, &fields, &EMPTY_PARAMS) {
+        let mut options = Params::new();
+        for key in [
+            "preview",
+            "preview_layout",
+            "preview_mode",
+            "preview_debounce_ms",
+            "computed",
+        ] {
+            if let Some(value) = params.get(key) {
+                options.insert(key.to_owned(), value.clone());
+            }
+        }
+
+        let options = if options.is_empty() {
+            &EMPTY_PARAMS
+        } else {
+            &options
+        };
+
+        match self.provider.show(layout, &fields, options) {
             FormProviderResult::Success(values) => {
                 ExtensionResult::Success(ExtensionOutput::Multiple(values))
             }

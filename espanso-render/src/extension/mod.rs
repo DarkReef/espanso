@@ -24,6 +24,7 @@ pub mod echo;
 mod exec_util;
 pub mod form;
 pub mod random;
+pub mod rhai;
 pub mod script;
 pub mod shell;
 mod util;

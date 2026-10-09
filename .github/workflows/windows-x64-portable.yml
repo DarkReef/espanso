@@ -1,0 +1,261 @@
+name: Windows x64 portable
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - build/windows-latest
+      - build/windows-4f8e369
+    # Rebuild only when source or an input copied into the portable archive changes.
+    paths:
+      - '.github/workflows/windows-x64-portable.yml'
+      - 'scripts/build_windows_native_portable_with_studio.ps1'
+      - 'scripts/embed_windows_icon.ps1'
+      - 'assets/respanso.ico'
+      - 'docs/respanso/**'
+      - 'LICENSE'
+      - 'espanso-ai/**'
+      - 'espanso-clipboard/**'
+      - 'espanso-config/**'
+      - 'espanso-engine/**'
+      - 'espanso-editor/**'
+      - 'espanso-modulo/**'
+      - 'espanso/**'
+      - 'espanso-detect/**'
+      - 'espanso-ipc/**'
+      - 'espanso-inject/**'
+      - 'espanso-info/**'
+      - 'espanso-package/**'
+      - 'espanso-render/**'
+      - 'espanso-ui/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-x64-portable-${{ github.ref }}
+  cancel-in-progress: true
+
+# Quality and packaging intentionally run in parallel. cargo check --all-targets
+# validates a wider target surface, while the package job compiles the exact
+# optimized binaries that are shipped. Serializing the two roughly doubled the
+# cold workflow wall time without adding a dependency between the guarantees.
+jobs:
+  quality:
+    name: Windows quality gates
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Restore quality Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-quality
+          cache-on-failure: true
+
+      - name: Check formatting (advisory)
+        continue-on-error: true
+        run: cargo fmt --all -- --check
+
+      - name: Check Windows components
+        run: cargo check --locked -p espanso -p espanso-inject -p espanso-detect -p espanso-editor --all-targets
+
+      - name: Test Match Studio
+        run: cargo test --locked -p espanso-editor --lib
+
+      - name: Lint Match Studio (advisory)
+        continue-on-error: true
+        run: cargo clippy --locked -p espanso-editor --all-targets -- --deny warnings
+
+  package:
+    name: Build and package rEspanso portable
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare build identity
+        shell: pwsh
+        run: |
+          $date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'")
+          $versionMatch = Select-String -Path "espanso/Cargo.toml" -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
+          if (-not $versionMatch) { throw "Unable to resolve espanso version" }
+          $version = $versionMatch.Matches[0].Groups[1].Value
+          $shortSha = $env:GITHUB_SHA.Substring(0, 12)
+          "RESPANSO_BUILD_DATE=$date" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RESPANSO_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RESPANSO_BUILD_SHA=$shortSha" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Building rEspanso $version ($shortSha), $date"
+
+      - name: Verify synced product sources
+        shell: pwsh
+        run: |
+          if (-not (Select-String -Path "espanso-editor/src/app_shell.rs" -Pattern 'RESPANSO_BUILD_SHA' -Quiet)) { throw "Build identity UI missing" }
+          if (-not (Test-Path "espanso-editor/src/theme.rs")) { throw "Theme module missing" }
+          if (-not (Select-String -Path "espanso-editor/src/clinical_extender_core.rs" -Pattern 'NT-proBNP' -Quiet)) { throw "Clinical Editor heart-failure profile missing" }
+          if (-not (Select-String -Path "espanso-editor/src/clinical_extender_core.rs" -Pattern 'I50.9' -Quiet)) { throw "Clinical Editor I50.9 profile missing" }
+          if (-not (Select-String -Path "espanso-editor/src/app_shell.rs" -Pattern 'Клинический редактор' -Quiet)) { throw "Clinical Editor tab missing" }
+          if (-not (Select-String -Path "espanso-editor/src/app_shell.rs" -Pattern 'Вспомогательная' -Quiet)) { throw "AI/MCP tab missing" }
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+          targets: x86_64-pc-windows-msvc
+
+      - name: Restore release Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-release
+          cache-on-failure: true
+
+      - name: Build release binaries
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/build-logs" | Out-Null
+          $log = "target/build-logs/windows-x64-release-build.jsonl"
+          $previousColor = $env:CARGO_TERM_COLOR
+          $env:CARGO_TERM_COLOR = "never"
+          try {
+            & cargo build --locked --release -p espanso --bin espanso --bin respanso-portable -p espanso-editor --bin espanso-editor --message-format=json-diagnostic-rendered-ansi *>&1 |
+              Tee-Object -FilePath $log
+            $exitCode = $LASTEXITCODE
+            $messages = @(Get-Content -Path $log)
+            if ($exitCode -ne 0) {
+              throw "Windows release build failed with exit code $exitCode"
+            }
+
+            function Get-CargoExecutable([string]$binary) {
+              $paths = foreach ($line in $messages) {
+                try {
+                  $message = $line | ConvertFrom-Json -ErrorAction Stop
+                } catch {
+                  continue
+                }
+                if (
+                  $message.reason -eq "compiler-artifact" -and
+                  $message.target.name -eq $binary -and
+                  -not [string]::IsNullOrWhiteSpace([string]$message.executable)
+                ) {
+                  [string]$message.executable
+                }
+              }
+              $path = @($paths) | Select-Object -Last 1
+              if ([string]::IsNullOrWhiteSpace([string]$path) -or -not (Test-Path -Path $path -PathType Leaf)) {
+                throw "Cargo did not report an existing executable for $binary"
+              }
+              return (Resolve-Path $path).Path
+            }
+
+            $binaries = @{
+              EXEC_PATH = "espanso"
+              LAUNCHER_PATH = "respanso-portable"
+              EDITOR_PATH = "espanso-editor"
+            }
+            foreach ($entry in $binaries.GetEnumerator()) {
+              "$($entry.Key)=$(Get-CargoExecutable $entry.Value)" |
+                Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            }
+          } finally {
+            $env:CARGO_TERM_COLOR = $previousColor
+          }
+
+      - name: Assemble and verify portable archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "target/package-logs" | Out-Null
+          $log = "target/package-logs/windows-x64-package.log"
+
+          $requiredBinaries = @($env:EXEC_PATH, $env:LAUNCHER_PATH, $env:EDITOR_PATH)
+          foreach ($binary in $requiredBinaries) {
+            if ([string]::IsNullOrWhiteSpace([string]$binary) -or -not (Test-Path -Path $binary -PathType Leaf)) {
+              throw "Release binary path is missing or invalid: $binary"
+            }
+          }
+
+          "EXEC_PATH=$env:EXEC_PATH" | Tee-Object -FilePath $log -Append
+          "LAUNCHER_PATH=$env:LAUNCHER_PATH" | Tee-Object -FilePath $log -Append
+          "EDITOR_PATH=$env:EDITOR_PATH" | Tee-Object -FilePath $log -Append
+          "BUILD_VERSION=$env:RESPANSO_VERSION" | Tee-Object -FilePath $log -Append
+          "BUILD_DATE=$env:RESPANSO_BUILD_DATE" | Tee-Object -FilePath $log -Append
+          "BUILD_SHA=$env:RESPANSO_BUILD_SHA" | Tee-Object -FilePath $log -Append
+
+          & "./scripts/build_windows_native_portable_with_studio.ps1" *>&1 |
+            Tee-Object -FilePath $log -Append
+
+          $archive = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+          if (-not (Test-Path -Path $archive -PathType Leaf)) {
+            throw "Portable archive was not created"
+          }
+
+          $entries = tar -tf $archive
+          if ($LASTEXITCODE -ne 0) {
+            throw "Portable archive could not be listed"
+          }
+          $entries | Tee-Object -FilePath $log -Append
+
+          if ($entries -match '\.(bat|cmd)$') {
+            throw "Portable archive contains BAT/CMD launchers"
+          }
+          foreach ($file in @("rEspanso.exe", "rEspanso-core.exe", "rEspanso Match Studio.exe")) {
+            if (-not ($entries -match [regex]::Escape($file))) {
+              throw "Portable archive is missing $file"
+            }
+          }
+
+          $hash = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+          "$hash  rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip" |
+            Out-File -FilePath "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.sha256" -Encoding ascii
+          Write-Host "SHA256=$hash"
+
+      - name: Upload diagnostic logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-final-build-failure
+          path: |
+            target/build-logs/
+            target/package-logs/
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Upload portable archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Windows-x64-portable
+          path: |
+            target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip
+            target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

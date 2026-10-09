@@ -68,8 +68,8 @@ pub fn resolve_imports(
                 } else {
                     // Best effort imports
                     non_fatal_errors.push(ErrorRecord::error(anyhow!(
-                        "unable to resolve import at path: {:?}",
-                        canonical_path
+                        "unable to resolve import at path: {}",
+                        canonical_path.display()
                     )));
                 }
             }

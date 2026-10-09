@@ -142,6 +142,36 @@ pub struct YAMLConfig {
     #[serde(default)]
     pub x11_use_xdotool_backend: Option<bool>,
 
+    #[serde(default)]
+    pub x11_injector_profile: Option<String>,
+
+    #[serde(default)]
+    pub x11_wait_for_modifiers: Option<bool>,
+
+    #[serde(default)]
+    pub x11_modifier_release_timeout: Option<usize>,
+
+    #[serde(default)]
+    pub x11_focus_guard: Option<bool>,
+
+    #[serde(default)]
+    pub x11_focus_retry_count: Option<usize>,
+
+    #[serde(default)]
+    pub x11_focus_retry_delay: Option<usize>,
+
+    #[serde(default)]
+    pub x11_circuit_breaker: Option<bool>,
+
+    #[serde(default)]
+    pub x11_fast_failure_threshold: Option<usize>,
+
+    #[serde(default)]
+    pub x11_reinitialize_on_failure: Option<bool>,
+
+    #[serde(default)]
+    pub x11_safe_clipboard_threshold: Option<usize>,
+
     // Include/Exclude
     #[serde(default)]
     pub includes: Option<Vec<String>>,
@@ -248,6 +278,16 @@ impl TryFrom<YAMLConfig> for ParsedConfig {
             win32_keyboard_layout_cache_interval: yaml_config.win32_keyboard_layout_cache_interval,
             x11_use_xclip_backend: yaml_config.x11_use_xclip_backend,
             x11_use_xdotool_backend: yaml_config.x11_use_xdotool_backend,
+            x11_injector_profile: yaml_config.x11_injector_profile,
+            x11_wait_for_modifiers: yaml_config.x11_wait_for_modifiers,
+            x11_modifier_release_timeout: yaml_config.x11_modifier_release_timeout,
+            x11_focus_guard: yaml_config.x11_focus_guard,
+            x11_focus_retry_count: yaml_config.x11_focus_retry_count,
+            x11_focus_retry_delay: yaml_config.x11_focus_retry_delay,
+            x11_circuit_breaker: yaml_config.x11_circuit_breaker,
+            x11_fast_failure_threshold: yaml_config.x11_fast_failure_threshold,
+            x11_reinitialize_on_failure: yaml_config.x11_reinitialize_on_failure,
+            x11_safe_clipboard_threshold: yaml_config.x11_safe_clipboard_threshold,
 
             use_standard_includes: yaml_config.use_standard_includes,
             includes: yaml_config.includes,
@@ -378,6 +418,16 @@ mod tests {
                 win32_keyboard_layout_cache_interval: Some(300),
                 x11_use_xclip_backend: Some(true),
                 x11_use_xdotool_backend: Some(true),
+                x11_injector_profile: None,
+                x11_wait_for_modifiers: None,
+                x11_modifier_release_timeout: None,
+                x11_focus_guard: None,
+                x11_focus_retry_count: None,
+                x11_focus_retry_delay: None,
+                x11_circuit_breaker: None,
+                x11_fast_failure_threshold: None,
+                x11_reinitialize_on_failure: None,
+                x11_safe_clipboard_threshold: None,
 
                 pre_paste_delay: Some(300),
                 evdev_modifier_delay: Some(40),
@@ -397,5 +447,31 @@ mod tests {
                 filter_title: Some("test8".to_string()),
             }
         );
+    }
+
+    #[test]
+    fn parses_astra_safe_injector_options() {
+        let parsed: ParsedConfig = YAMLConfig::parse_from_str(
+            r#"
+            x11_injector_profile: safe
+            x11_wait_for_modifiers: true
+            x11_modifier_release_timeout: 175
+            x11_focus_guard: true
+            x11_focus_retry_count: 4
+            x11_focus_retry_delay: 20
+            x11_circuit_breaker: true
+            x11_fast_failure_threshold: 2
+            x11_reinitialize_on_failure: true
+            x11_safe_clipboard_threshold: 64
+            "#,
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
+        assert_eq!(parsed.x11_injector_profile.as_deref(), Some("safe"));
+        assert_eq!(parsed.x11_modifier_release_timeout, Some(175));
+        assert_eq!(parsed.x11_focus_retry_count, Some(4));
+        assert_eq!(parsed.x11_safe_clipboard_threshold, Some(64));
     }
 }

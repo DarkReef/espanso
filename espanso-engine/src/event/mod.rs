@@ -67,6 +67,8 @@ pub enum EventType {
     MatchesDetected(internal::MatchesDetectedEvent),
     MatchSelected(internal::MatchSelectedEvent),
     CauseCompensatedMatch(internal::CauseCompensatedMatchEvent),
+    SelectionMatchRequested,
+    AiRewriteRequested,
 
     RenderingRequested(internal::RenderingRequestedEvent),
     ImageRequested(internal::ImageRequestedEvent),
@@ -101,6 +103,7 @@ pub enum EventType {
     IconStatusChange(ui::IconStatusChangeEvent),
     DisplaySecureInputTroubleshoot,
     ShowConfigFolder,
+    ShowMatchStudio,
     ShowSearchBar,
     ShowText(ui::ShowTextEvent),
     ShowLogs,

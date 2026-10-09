@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 # Set-PSDebug -Strict -Trace 1
 
 # Define constants
-$INSTALLER_NAME = "Espanso-Win-Installer"
+$INSTALLER_NAME = "rEspanso-Win-Installer"
 $ARCH = "x86_64"
 $RESOURCE_DIR = "target/windows/resources"
 

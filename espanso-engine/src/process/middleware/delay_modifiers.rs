@@ -81,5 +81,7 @@ fn is_injection_event(event_type: &EventType) -> bool {
             | EventType::ImageInject(_)
             | EventType::HtmlInject(_)
             | EventType::MarkdownInject(_)
+            | EventType::SelectionMatchRequested
+            | EventType::AiRewriteRequested
     )
 }

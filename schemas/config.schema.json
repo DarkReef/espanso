@@ -239,8 +239,55 @@
     },
     "x11_use_xdotool_backend": {
       "type": "boolean",
-      "description": "If true, use the xdotool command to implement the clipboard.",
-      "default": "false"
+      "description": "If true, use the xdotool/libxdo injection backend on X11.",
+      "default": false
+    },
+    "x11_injector_profile": {
+      "type": "string",
+      "enum": ["safe", "balanced", "fast", "legacy"],
+      "default": "balanced",
+      "description": "rEspanso X11 injection safety preset. Portable Astra builds ship with safe."
+    },
+    "x11_wait_for_modifiers": {
+      "type": "boolean",
+      "description": "Wait for physical Ctrl/Alt/Shift/Meta release before synthetic X11 injection."
+    },
+    "x11_modifier_release_timeout": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Maximum modifier release wait in milliseconds."
+    },
+    "x11_focus_guard": {
+      "type": "boolean",
+      "description": "Abort injection if the pinned X11 target window cannot be verified as focused."
+    },
+    "x11_focus_retry_count": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Additional focus restoration attempts before aborting guarded injection."
+    },
+    "x11_focus_retry_delay": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Delay in milliseconds between focus restoration attempts."
+    },
+    "x11_circuit_breaker": {
+      "type": "boolean",
+      "description": "Disable the fast X11 path for the worker session after repeated backend errors."
+    },
+    "x11_fast_failure_threshold": {
+      "type": "number",
+      "minimum": 1,
+      "description": "Consecutive fast-backend failures required to trip the circuit breaker."
+    },
+    "x11_reinitialize_on_failure": {
+      "type": "boolean",
+      "description": "Recreate the libxdo context after an injection backend error for subsequent operations."
+    },
+    "x11_safe_clipboard_threshold": {
+      "type": "number",
+      "minimum": 1,
+      "description": "When backend is auto on X11, use clipboard for ASCII text longer than this safety threshold."
     }
   },
   "additionalProperties": false,

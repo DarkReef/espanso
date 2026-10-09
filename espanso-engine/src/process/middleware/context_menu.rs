@@ -1,7 +1,7 @@
 /*
  * This file is part of espanso.
  *
- * Copyright  id: (), label: () id: (), label: () id: (), label: ()(C) 2019-2021 Federico Terzi
+ * Copyright (C) 2019-2021 Federico Terzi
  *
  * espanso is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,6 +34,7 @@ const CONTEXT_ITEM_SECURE_INPUT_TRIGGER_WORKAROUND: u32 = 5;
 const CONTEXT_ITEM_OPEN_SEARCH: u32 = 6;
 const CONTEXT_ITEM_SHOW_LOGS: u32 = 7;
 const CONTEXT_ITEM_OPEN_CONFIG_FOLDER: u32 = 8;
+const CONTEXT_ITEM_OPEN_MATCH_STUDIO: u32 = 9;
 
 pub struct ContextMenuMiddleware {
     is_enabled: RefCell<bool>,
@@ -66,35 +67,39 @@ impl Middleware for ContextMenuMiddleware {
                     MenuItem::Simple(if *is_enabled {
                         SimpleMenuItem {
                             id: CONTEXT_ITEM_DISABLE,
-                            label: "Disable".to_string(),
+                            label: "Отключить подстановки".to_string(),
                         }
                     } else {
                         SimpleMenuItem {
                             id: CONTEXT_ITEM_ENABLE,
-                            label: "Enable".to_string(),
+                            label: "Включить подстановки".to_string(),
                         }
                     }),
                     MenuItem::Simple(SimpleMenuItem {
                         id: CONTEXT_ITEM_OPEN_SEARCH,
-                        label: "Open search bar".to_string(),
+                        label: "Открыть поиск".to_string(),
                     }),
                     MenuItem::Separator,
                     MenuItem::Simple(SimpleMenuItem {
                         id: CONTEXT_ITEM_RELOAD,
-                        label: "Reload config".to_string(),
+                        label: "Перезагрузить конфигурацию".to_string(),
+                    }),
+                    MenuItem::Simple(SimpleMenuItem {
+                        id: CONTEXT_ITEM_OPEN_MATCH_STUDIO,
+                        label: "Открыть студию rEspanso".to_string(),
                     }),
                     MenuItem::Simple(SimpleMenuItem {
                         id: CONTEXT_ITEM_OPEN_CONFIG_FOLDER,
-                        label: "Open config folder".to_string(),
+                        label: "Открыть папку конфигурации".to_string(),
                     }),
                     MenuItem::Simple(SimpleMenuItem {
                         id: CONTEXT_ITEM_SHOW_LOGS,
-                        label: "Show logs".to_string(),
+                        label: "Показать журнал".to_string(),
                     }),
                     MenuItem::Separator,
                     MenuItem::Simple(SimpleMenuItem {
                         id: CONTEXT_ITEM_EXIT,
-                        label: "Exit espanso".to_string(),
+                        label: "Выйти из rEspanso".to_string(),
                     }),
                 ];
 
@@ -103,14 +108,14 @@ impl Middleware for ContextMenuMiddleware {
                         0,
                         MenuItem::Simple(SimpleMenuItem {
                             id: CONTEXT_ITEM_SECURE_INPUT_EXPLAIN,
-                            label: "Why is Espanso not working?".to_string(),
+                            label: "Почему rEspanso не работает?".to_string(),
                         }),
                     );
                     items.insert(
                         1,
                         MenuItem::Simple(SimpleMenuItem {
                             id: CONTEXT_ITEM_SECURE_INPUT_TRIGGER_WORKAROUND,
-                            label: "Launch SecureInput auto-fix".to_string(),
+                            label: "Запустить автоисправление SecureInput".to_string(),
                         }),
                     );
                     items.insert(2, MenuItem::Separator);
@@ -175,7 +180,14 @@ impl Middleware for ContextMenuMiddleware {
                         ));
                         Event::caused_by(event.source_id, EventType::NOOP)
                     }
-                    9_u32..=u32::MAX => {
+                    CONTEXT_ITEM_OPEN_MATCH_STUDIO => {
+                        dispatch(Event::caused_by(
+                            event.source_id,
+                            EventType::ShowMatchStudio,
+                        ));
+                        Event::caused_by(event.source_id, EventType::NOOP)
+                    }
+                    10_u32..=u32::MAX => {
                         // Should be unreachable, given there are no other options
                         unreachable!()
                     }

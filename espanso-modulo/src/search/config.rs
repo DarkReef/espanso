@@ -35,6 +35,10 @@ fn default_algorithm() -> String {
     "ikey".to_owned()
 }
 
+fn default_category() -> String {
+    "triggers".to_owned()
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SearchConfig {
     #[serde(default = "default_title")]
@@ -51,6 +55,9 @@ pub struct SearchConfig {
 
     #[serde(default)]
     pub hint: Option<String>,
+
+    #[serde(default)]
+    pub tabs_enabled: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -62,4 +69,7 @@ pub struct SearchItem {
 
     #[serde(default)]
     pub is_builtin: bool,
+
+    #[serde(default = "default_category")]
+    pub category: String,
 }

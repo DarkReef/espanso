@@ -22,6 +22,8 @@ use super::{CliModule, CliModuleArgs};
 #[cfg(feature = "modulo")]
 mod form;
 #[cfg(feature = "modulo")]
+mod reactive_preview;
+#[cfg(feature = "modulo")]
 mod search;
 #[cfg(feature = "modulo")]
 mod textview;
@@ -49,7 +51,7 @@ fn modulo_main(args: CliModuleArgs) -> i32 {
         crate::icon::load_icon_paths(&paths.runtime).expect("unable to load icon paths");
 
     if let Some(matches) = cli_args.subcommand_matches("form") {
-        return form::form_main(matches, &icon_paths);
+        return form::form_main(matches, &paths, &icon_paths);
     }
 
     if let Some(matches) = cli_args.subcommand_matches("search") {

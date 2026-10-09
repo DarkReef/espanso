@@ -56,6 +56,9 @@ fn edit_main(args: CliModuleArgs) -> i32 {
 
     // Determine which is the file to edit
     let target_file = cli_args.value_of("target_file");
+    if cli_args.is_present("gui") || target_file == Some("gui") {
+        return open_match_studio(&paths.config);
+    }
     let target_path = determine_target_path(&paths.config, target_file);
 
     println!("Editing file: {}", target_path.to_string_lossy());
@@ -130,6 +133,56 @@ fn edit_main(args: CliModuleArgs) -> i32 {
     // }
 
     0
+}
+
+fn open_match_studio(config_root: &Path) -> i32 {
+    let mut candidates = Vec::new();
+    if let Some(explicit) = std::env::var_os("ESPANSO_EDITOR_BIN") {
+        candidates.push(PathBuf::from(explicit));
+    }
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(directory) = executable.parent() {
+            for name in editor_binary_names() {
+                candidates.push(directory.join(name));
+            }
+        }
+    }
+    candidates.extend(editor_binary_names().iter().map(PathBuf::from));
+
+    let mut last_error = None;
+    for candidate in candidates {
+        match Command::new(&candidate)
+            .arg("--config-dir")
+            .arg(config_root)
+            .spawn()
+        {
+            Ok(_) => {
+                println!("Opened rEspanso Match Studio for {}", config_root.display());
+                return 0;
+            }
+            Err(error) => last_error = Some((candidate, error)),
+        }
+    }
+
+    if let Some((candidate, error)) = last_error {
+        eprintln!(
+            "Unable to start rEspanso Match Studio using '{}': {error}",
+            candidate.display()
+        );
+    } else {
+        eprintln!("Unable to locate the rEspanso Match Studio executable");
+    }
+    1
+}
+
+#[cfg(target_os = "windows")]
+fn editor_binary_names() -> &'static [&'static str] {
+    &["rEspanso Match Studio.exe", "espanso-editor.exe"]
+}
+
+#[cfg(not(target_os = "windows"))]
+fn editor_binary_names() -> &'static [&'static str] {
+    &["rEspanso-Match-Studio", "espanso-editor"]
 }
 
 fn determine_target_path(config_path: &Path, target_file: Option<&str>) -> PathBuf {

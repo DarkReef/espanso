@@ -36,7 +36,7 @@ pub fn create_match_exit() -> BuiltInMatch {
 pub fn create_match_restart() -> BuiltInMatch {
     BuiltInMatch {
         id: generate_next_builtin_id(),
-        label: "Restart espanso",
+        label: "Restart rEspanso",
         triggers: Vec::new(),
         action: |_| EventType::ExitRequested(ExitMode::RestartWorker),
         ..Default::default()

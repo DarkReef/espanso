@@ -38,6 +38,19 @@ mod linux;
 #[cfg(target_os = "macos")]
 mod mac;
 
+// Capture the X11 text target immediately before rendering. Render extensions
+// such as forms can temporarily take focus; the X11 proxy injector restores
+// this one-shot target before the rendered text/paste is sent.
+#[cfg(all(target_os = "linux", not(feature = "wayland")))]
+pub fn pin_x11_target_window() -> Option<u64> {
+    x11::pin_target_window()
+}
+
+#[cfg(not(all(target_os = "linux", not(feature = "wayland"))))]
+pub fn pin_x11_target_window() -> Option<u64> {
+    None
+}
+
 pub trait Injector {
     fn send_string(&self, string: &str, options: InjectionOptions) -> Result<()>;
     fn send_keys(&self, keys: &[keys::Key], options: InjectionOptions) -> Result<()>;
@@ -62,6 +75,32 @@ pub struct InjectionOptions {
     // If true, use the xdotool fallback to perform the expansions.
     // NOTE: Only relevant on Linux-X11 systems.
     pub x11_use_xdotool_fallback: bool,
+
+    // Astra/X11 hardening knobs. They are ignored by non-X11 injectors.
+
+    // Wait for physically held Ctrl/Alt/Shift/Meta keys to be released before
+    // injection. This avoids synthesizing key-up events for the user's keys.
+    pub x11_wait_for_modifiers: bool,
+    pub x11_modifier_release_timeout_ms: u32,
+
+    // Abort guarded injection when the one-shot target window cannot be restored
+    // and verified. Retries are bounded to avoid typing into the wrong window.
+    pub x11_focus_guard: bool,
+    pub x11_focus_retry_count: u32,
+    pub x11_focus_retry_delay_ms: u32,
+
+    // After repeated fast-backend errors, route later operations through XTest
+    // for the rest of the worker session.
+    pub x11_circuit_breaker: bool,
+    pub x11_fast_failure_threshold: u32,
+
+    // Recreate the libxdo context after an injection error so later operations
+    // are not forced to reuse a possibly broken X11 connection.
+    pub x11_reinitialize_on_failure: bool,
+
+    // Compatibility escape hatch only: reproduce the historical behaviour that
+    // synthetically releases every currently pressed key before injection.
+    pub x11_legacy_release_all_keys: bool,
 }
 
 impl Default for InjectionOptions {
@@ -87,6 +126,15 @@ impl Default for InjectionOptions {
             disable_fast_inject: false,
             evdev_modifier_delay: 10,
             x11_use_xdotool_fallback: false,
+            x11_wait_for_modifiers: false,
+            x11_modifier_release_timeout_ms: 100,
+            x11_focus_guard: false,
+            x11_focus_retry_count: 0,
+            x11_focus_retry_delay_ms: 10,
+            x11_circuit_breaker: false,
+            x11_fast_failure_threshold: 2,
+            x11_reinitialize_on_failure: false,
+            x11_legacy_release_all_keys: false,
         }
     }
 }

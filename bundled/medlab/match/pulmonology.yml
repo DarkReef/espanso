@@ -1,0 +1,49 @@
+# ХОБЛ: спирометрия, симптомы и обострения с reactive preview unstable.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/espanso/espanso/dev/schemas/match.schema.json
+
+matches:
+  - trigger: ".хобл"
+    replace: "{{copd_form.result__text}}"
+    vars:
+      - name: copd_form
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 300
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            ХОБЛ: спирометрия, симптомы и риск обострений
+            ОФВ₁/ФЖЕЛ после бронходилататора: [[fev1_fvc]]
+            ОФВ₁, % от должного: [[fev1_percent]]
+            mMRC: [[mmrc]]
+            CAT, баллы: [[cat_score]]
+            Среднетяжёлые обострения за 12 месяцев: [[moderate_exacerbations]]
+            Госпитализации из-за обострения: [[hospitalizations]]
+            Дыхательная недостаточность: [[respiratory_failure]]
+          fields:
+            fev1_fvc: { type: text, default: "0,65" }
+            fev1_percent: { type: text, default: "65" }
+            mmrc:
+              type: choice
+              values:
+                - "0 — одышка только при очень интенсивной нагрузке"
+                - "1 — одышка при быстрой ходьбе или подъёме"
+                - "2 — идёт медленнее ровесников или останавливается"
+                - "3 — останавливается примерно через 100 м"
+                - "4 — не выходит из дома или одышка при одевании"
+              default: "1 — одышка при быстрой ходьбе или подъёме"
+            cat_score: { type: text, default: "8" }
+            moderate_exacerbations: { type: text, default: "0" }
+            hospitalizations: { type: text, default: "0" }
+            respiratory_failure:
+              type: choice
+              values: ["Не указывать", "ДН 0", "ДН I", "ДН II", "ДН III"]
+              default: "Не указывать"
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/copd.rhai"
+              function: calculate
+              depends_on: []

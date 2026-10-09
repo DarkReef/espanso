@@ -1,0 +1,116 @@
+# ЭЛН: реактивный расчёт ЧДН для rEspanso v1.0 Unstable.
+# ЧДН считается включительно.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/espanso/espanso/dev/schemas/match.schema.json
+
+matches:
+  - regex: ":openfeln_(?P<Enum>\\d{12})"
+    label: "Открыть первичный ЭЛН №..."
+    replace: |-
+      Нетрудоспособен.
+      Открыть ЭЛН №{{Enum}} с {{eln.from}} по {{eln.to}} с повторной явкой. Повторная явка {{eln.to}}. ЧДН {{eln.days__value}} дней.
+    vars:
+      - name: today
+        type: date
+        params: { format: "%d.%m.%Y" }
+      - name: eln
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 200
+          preview_layout: |
+            {{days.text}}
+          layout: |
+            Номер ЭЛН: {{Enum}}
+            С: [[from]]
+            По: [[to]]
+          fields:
+            from: { type: text, default: "{{today}}" }
+            to: { type: text, default: "{{today}}" }
+          computed:
+            days:
+              type: rhai
+              path: "%CONFIG%/scripts/diff-days.rhai"
+              function: calculate_form
+              depends_on: []
+
+  - regex: ":prodfeln_(?P<Enum>\\d{12})"
+    label: "Продлить первичный ЭЛН №..."
+    replace: |-
+      Нетрудоспособен.
+      Продлить первичный ЭЛН №{{Enum}} (дата выдачи: {{eln.primary_date}}) с {{eln.from}} по {{eln.to}} с повторной явкой. Повторная явка {{eln.to}}. ЧДН на момент осмотра {{eln.days__value}} дней.
+    vars:
+      - name: today
+        type: date
+        params: { format: "%d.%m.%Y" }
+      - name: tomorrow
+        type: date
+        params: { format: "%d.%m.%Y", offset: 86400 }
+      - name: eln
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 200
+          preview_layout: |
+            {{days.text}}
+          layout: |
+            Номер ЭЛН: {{Enum}}
+            Дата выдачи первичного ЭЛН: [[primary_date]]
+            Дата осмотра: [[today]]
+            Продлить с: [[from]]
+            Продлить по: [[to]]
+          fields:
+            primary_date: { type: text, default: "{{today}}" }
+            today: { type: text, default: "{{today}}" }
+            from: { type: text, default: "{{tomorrow}}" }
+            to: { type: text, default: "{{tomorrow}}" }
+          computed:
+            days:
+              type: rhai
+              path: "%CONFIG%/scripts/diff-days.rhai"
+              function: calculate_primary
+              depends_on: []
+
+  - trigger: ":conteln"
+    label: "Продолжение ЭЛН"
+    replace: |-
+      Нетрудоспособен.
+      Первичный ЭЛН №{{cont.eln1}} (дата выдачи: {{cont.primary_date}}).
+      ЭЛН №{{cont.eln2}} закрыть к оплате, открыть продолжение ЭЛН №{{cont.eln3}} с {{tomorrow}} по {{cont.to}}. Дата повторной явки {{cont.to}}.
+      ЧДН на момент осмотра {{cont.days__value}} дней.
+    vars:
+      - name: today
+        type: date
+        params: { format: "%d.%m.%Y" }
+      - name: tomorrow
+        type: date
+        params: { format: "%d.%m.%Y", offset: 86400 }
+      - name: cont
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 200
+          preview_layout: |
+            {{days.text}}
+          layout: |
+            Первичный ЭЛН №1: [[eln1]]
+            Дата открытия первичного ЭЛН: [[primary_date]]
+            Дата осмотра: [[today]]
+            ЭЛН №2, закрываемый к оплате: [[eln2]]
+            ЭЛН №3, продолжение: [[eln3]]
+            Продолжение по дату: [[to]]
+          fields:
+            eln1: { type: text }
+            primary_date: { type: text, default: "{{today}}" }
+            today: { type: text, default: "{{today}}" }
+            eln2: { type: text }
+            eln3: { type: text }
+            to: { type: text, default: "{{tomorrow}}" }
+          computed:
+            days:
+              type: rhai
+              path: "%CONFIG%/scripts/diff-days.rhai"
+              function: calculate_primary
+              depends_on: []

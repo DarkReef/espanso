@@ -1,5 +1,5 @@
 /*
- * This file is part of espanso id: (), trigger: (), trigger: (), left_separator: (), right_separator: (), args: () left_separator: (), right_separator: (), args: () id: (), trigger: (), left_separator: (), right_separator: (), args: ().
+ * This file is part of espanso.
  *
  * Copyright (C) 2019-2021 Federico Terzi
  *
@@ -22,6 +22,7 @@ use crate::event::{
     internal::{DetectedMatch, MatchesDetectedEvent},
     Event, EventType,
 };
+use log::info;
 
 pub struct HotKeyMiddleware {}
 
@@ -38,6 +39,11 @@ impl Middleware for HotKeyMiddleware {
 
     fn next(&self, event: Event, _: &mut dyn FnMut(Event)) -> Event {
         if let EventType::HotKey(m_event) = &event.etype {
+            info!(
+                "[rESP-HOTKEY] detected source_id={} hotkey_id={}",
+                event.source_id,
+                m_event.hotkey_id
+            );
             return Event::caused_by(
                 event.source_id,
                 EventType::MatchesDetected(MatchesDetectedEvent {

@@ -98,14 +98,27 @@ fn service_main(args: CliModuleArgs) -> i32 {
     } else if cli_args.subcommand_matches("status").is_some() {
         return status_main(&paths);
     } else if let Some(sub_args) = cli_args.subcommand_matches("restart") {
-        stop_main(&paths);
-        std::thread::sleep(std::time::Duration::from_millis(300));
-        return start_main(&paths, &paths_overrides, sub_args);
+        return restart_main(&paths, &paths_overrides, sub_args);
     } else {
-        eprintln!("Invalid usage, please run `espanso service --help` for more information.");
+        eprintln!("Invalid usage, please run `rEspanso service --help` for more information.");
     }
 
     SERVICE_SUCCESS
+}
+
+fn restart_main(paths: &Paths, paths_overrides: &PathsOverrides, args: &ArgMatches) -> i32 {
+    // stop_main already waits until the worker/daemon lock is released. A
+    // fixed delay here used to race slow X11/GTK shutdowns and, worse, a stop
+    // error was ignored before a second instance was started.
+    let stop_result = stop_main(paths);
+    if stop_result != SERVICE_SUCCESS && stop_result != SERVICE_NOT_RUNNING {
+        error_eprintln!(
+            "unable to restart rEspanso because the running instance did not stop cleanly"
+        );
+        return stop_result;
+    }
+
+    start_main(paths, paths_overrides, args)
 }
 
 fn start_main(paths: &Paths, _paths_overrides: &PathsOverrides, args: &ArgMatches) -> i32 {
@@ -120,7 +133,7 @@ fn start_main(paths: &Paths, _paths_overrides: &PathsOverrides, args: &ArgMatche
         // Unmanaged service
         #[cfg(unix)]
         {
-            if let Err(err) = fork_daemon(_paths_overrides) {
+            if let Err(err) = fork_daemon(_paths_overrides, &paths.runtime) {
                 error_eprintln!("unable to start service (unmanaged): {}", err);
                 return SERVICE_FAILURE;
             }
@@ -151,30 +164,42 @@ fn start_main(paths: &Paths, _paths_overrides: &PathsOverrides, args: &ArgMatche
 
     error_eprintln!("unable to start service: timed out");
 
-    error_eprintln!(
-    "Hint: sometimes this happens because another Espanso process is left running for some reason."
-  );
-    error_eprintln!(
-    "      Please try running 'espanso restart' or manually killing all Espanso processes, then try again."
-  );
+    error_eprintln!("See {} and {} for the startup failure.",
+        paths.runtime.join("startup.log").display(),
+        paths.runtime.join("espanso.log").display());
 
     SERVICE_TIMED_OUT
 }
 
 fn stop_main(paths: &Paths) -> i32 {
-    let lock_file = acquire_worker_lock(&paths.runtime);
-    if lock_file.is_some() {
-        error_eprintln!("espanso is not running!");
-        return SERVICE_NOT_RUNNING;
+    // In the healthy case the worker owns the lifecycle: ExitAllProcesses lets
+    // it shut down the X11/UI engine first and then asks the daemon to exit.
+    // Killing the daemon first makes the worker treat it as an unexpected
+    // crash and can leave the X11 event loop alive until the service timeout.
+    let worker_lock = acquire_worker_lock(&paths.runtime);
+    if worker_lock.is_none() {
+        if let Err(err) = stop::terminate_worker(&paths.runtime) {
+            error_eprintln!("unable to stop rEspanso: {}", err);
+            return SERVICE_FAILURE;
+        }
+        return SERVICE_SUCCESS;
     }
-    drop(lock_file);
+    drop(worker_lock);
 
-    if let Err(err) = stop::terminate_worker(&paths.runtime) {
-        error_eprintln!("unable to stop espanso: {}", err);
-        return SERVICE_FAILURE;
+    // Recovery path: if the worker has already crashed/released its lock but
+    // the owning daemon is still alive, terminate the daemon directly.
+    if crate::lock::acquire_daemon_lock(&paths.runtime).is_none() {
+        return match stop::terminate_daemon(&paths.runtime) {
+            Ok(()) => SERVICE_SUCCESS,
+            Err(err) => {
+                error_eprintln!("unable to stop rEspanso daemon: {}", err);
+                SERVICE_FAILURE
+            }
+        };
     }
 
-    SERVICE_SUCCESS
+    error_eprintln!("espanso is not running!");
+    SERVICE_NOT_RUNNING
 }
 
 fn status_main(paths: &Paths) -> i32 {

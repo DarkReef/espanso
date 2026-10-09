@@ -1,0 +1,182 @@
+# Клинические шкалы с реактивным Rhai-предпросмотром rEspanso v1.0 Unstable.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/espanso/espanso/dev/schemas/match.schema.json
+
+matches:
+  - trigger: ":осср"
+    replace: "{{ossr_form.result__text}}"
+    vars:
+      - name: ossr_form
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 250
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            ОССР: относительный суммарный сердечно-сосудистый риск
+            Возраст (21–39 лет): [[age]]
+            Курение: [[current_smoker]]
+            САД, мм рт. ст.: [[sbp]]
+            Общий холестерин, ммоль/л: [[total_cholesterol]]
+          fields:
+            age: { type: text, default: "35" }
+            current_smoker: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            sbp: { type: choice, values: ["120", "140", "160", "180"], default: "140" }
+            total_cholesterol: { type: choice, values: ["4", "5", "6", "7", "8"], default: "5" }
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/ossr.rhai"
+              function: calculate
+              depends_on: []
+
+  - trigger: ":findrisc"
+    replace: "{{findrisc_form.result__text}}"
+    vars:
+      - name: findrisc_form
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 300
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            FINDRISC: 10-летний риск сахарного диабета 2 типа
+            Возраст: [[age]]
+            Пол: [[sex]]
+            ИМТ: [[bmi]]
+            Окружность талии, см: [[waist]]
+            Физическая активность ≥30 минут ежедневно: [[physical_activity]]
+            Овощи, фрукты или ягоды ежедневно: [[vegetables_daily]]
+            Регулярный приём антигипертензивных препаратов: [[antihypertensive]]
+            Ранее выявлялась повышенная глюкоза крови: [[high_glucose]]
+            Сахарный диабет у родственников: [[family_diabetes]]
+          fields:
+            age: { type: text, default: "45" }
+            sex: { type: choice, values: ["Мужчина", "Женщина"], default: "Мужчина" }
+            bmi: { type: choice, values: ["<25", "25–30", ">30"], default: "25–30" }
+            waist: { type: text, default: "94" }
+            physical_activity: { type: choice, values: ["Да", "Нет"], default: "Да" }
+            vegetables_daily: { type: choice, values: ["Да", "Нет"], default: "Да" }
+            antihypertensive: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            high_glucose: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            family_diabetes:
+              type: choice
+              values:
+                - "Нет"
+                - "Да: дедушка/бабушка, тётя/дядя или двоюродные родственники"
+                - "Да: родитель, брат/сестра или ребёнок"
+              default: "Нет"
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/findrisc.rhai"
+              function: calculate
+              depends_on: []
+
+  - trigger: ":hasbled"
+    replace: "{{hasbled_form.result__text}}"
+    vars:
+      - name: hasbled_form
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 250
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            HAS-BLED: факторы риска кровотечения
+            САД >160 мм рт. ст.: [[hypertension]]
+            Нарушение функции почек: [[renal_dysfunction]]
+            Нарушение функции печени: [[liver_dysfunction]]
+            Инсульт в анамнезе: [[stroke_history]]
+            Кровотечение или предрасположенность: [[bleeding_history]]
+            Лабильное МНО / TTR <60%: [[labile_inr]]
+            Возраст: [[age]]
+            Антиагреганты / НПВП: [[drugs]]
+            Злоупотребление алкоголем: [[alcohol]]
+          fields:
+            hypertension: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            renal_dysfunction: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            liver_dysfunction: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            stroke_history: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            bleeding_history: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            labile_inr: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            age: { type: text, default: "65" }
+            drugs: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            alcohol: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/has-bled.rhai"
+              function: calculate
+              depends_on: []
+
+  - trigger: ":cha2ds2vasc"
+    replace: "{{cha2ds2_form.result__text}}"
+    vars:
+      - name: cha2ds2_form
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 250
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            CHA₂DS₂-VASc / CHA₂DS₂-VA при подтверждённой ФП
+            Хроническая сердечная недостаточность / ФВ ЛЖ ≤40%: [[heart_failure]]
+            Артериальная гипертензия: [[hypertension]]
+            Возраст: [[age]]
+            Сахарный диабет: [[diabetes]]
+            Инсульт / ТИА / системная тромбоэмболия: [[stroke_tia]]
+            Сосудистое заболевание: [[vascular_disease]]
+            Пол: [[sex]]
+          fields:
+            heart_failure: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            hypertension: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            age: { type: text, default: "65" }
+            diabetes: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            stroke_tia: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            vascular_disease: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            sex: { type: choice, values: ["Мужчина", "Женщина"], default: "Мужчина" }
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/cha2ds2-vasc.rhai"
+              function: calculate
+              depends_on: []
+
+  - trigger: ":curb65"
+    replace: "{{curb65_form.result__text}}"
+    vars:
+      - name: curb65_form
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 250
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            CURB-65: тяжесть внебольничной пневмонии
+            Нарушение сознания: [[confusion]]
+            Мочевина >7 ммоль/л: [[urea]]
+            Частота дыхания ≥30/мин: [[respiratory_rate]]
+            САД <90 или ДАД ≤60 мм рт. ст.: [[low_blood_pressure]]
+            Возраст: [[age]]
+          fields:
+            confusion: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            urea: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            respiratory_rate: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            low_blood_pressure: { type: choice, values: ["Нет", "Да"], default: "Нет" }
+            age: { type: text, default: "65" }
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/curb65.rhai"
+              function: calculate
+              depends_on: []

@@ -20,15 +20,42 @@
 use std::{collections::HashSet, sync::Arc};
 
 use espanso_config::{
-    config::{AppProperties, Config, ConfigStore},
+    config::{AppProperties, Config, ConfigStore, X11InjectorProfile},
     matches::store::{MatchSet, MatchStore},
 };
 use espanso_info::{AppInfo, AppInfoProvider};
 
 use super::{
     builtin::is_builtin_match,
-    engine::process::middleware::render::extension::clipboard::ClipboardOperationOptionsProvider,
+    engine::{
+        dispatch::executor::X11InjectParams,
+        process::middleware::render::extension::clipboard::ClipboardOperationOptionsProvider,
+    },
 };
+
+fn saturating_u32(value: usize) -> u32 {
+    u32::try_from(value).unwrap_or(u32::MAX)
+}
+
+fn x11_inject_params(config: &dyn Config) -> X11InjectParams {
+    let safety = config.x11_safe_injector();
+    X11InjectParams {
+        // Safe deliberately routes control-key injection through XTest even if
+        // the legacy fast path is enabled in the YAML.
+        disable_fast_inject: config.disable_x11_fast_inject()
+            || matches!(safety.profile, X11InjectorProfile::Safe),
+        use_xdotool_backend: config.x11_use_xdotool_backend(),
+        wait_for_modifiers: safety.wait_for_modifiers,
+        modifier_release_timeout_ms: saturating_u32(safety.modifier_release_timeout_ms),
+        focus_guard: safety.focus_guard,
+        focus_retry_count: saturating_u32(safety.focus_retry_count),
+        focus_retry_delay_ms: saturating_u32(safety.focus_retry_delay_ms),
+        circuit_breaker: safety.circuit_breaker,
+        fast_failure_threshold: saturating_u32(safety.fast_failure_threshold).max(1),
+        reinitialize_on_failure: safety.reinitialize_on_failure,
+        legacy_release_all_keys: safety.legacy_release_all_keys,
+    }
+}
 
 pub struct ConfigManager<'a> {
     config_store: &'a dyn ConfigStore,
@@ -121,8 +148,14 @@ impl espanso_engine::dispatch::ModeProvider for ConfigManager<'_> {
         match config.backend() {
             espanso_config::config::Backend::Inject => espanso_engine::dispatch::Mode::Event,
             espanso_config::config::Backend::Clipboard => espanso_engine::dispatch::Mode::Clipboard,
-            espanso_config::config::Backend::Auto => espanso_engine::dispatch::Mode::Auto {
-                clipboard_threshold: config.clipboard_threshold(),
+            espanso_config::config::Backend::Auto => {
+                let x11_safe = config.x11_safe_injector();
+                let clipboard_threshold = if cfg!(target_os = "linux") && !cfg!(feature = "wayland") {
+                    config.clipboard_threshold().min(x11_safe.clipboard_threshold)
+                } else {
+                    config.clipboard_threshold()
+                };
+                espanso_engine::dispatch::Mode::Auto { clipboard_threshold }
             },
         }
     }
@@ -137,11 +170,10 @@ impl super::engine::dispatch::executor::clipboard_injector::ClipboardParamsProvi
             pre_paste_delay: active.pre_paste_delay(),
             paste_shortcut_event_delay: active.paste_shortcut_event_delay(),
             paste_shortcut: active.paste_shortcut(),
-            disable_x11_fast_inject: active.disable_x11_fast_inject(),
             restore_clipboard: active.preserve_clipboard(),
             restore_clipboard_delay: active.restore_clipboard_delay(),
             x11_use_xclip_backend: active.x11_use_xclip_backend(),
-            x11_use_xdotool_backend: active.x11_use_xdotool_backend(),
+            x11: x11_inject_params(active.as_ref()),
         }
     }
 }
@@ -159,11 +191,10 @@ impl super::engine::dispatch::executor::InjectParamsProvider for ConfigManager<'
     fn get(&self) -> super::engine::dispatch::executor::InjectParams {
         let active = self.active();
         super::engine::dispatch::executor::InjectParams {
-            disable_x11_fast_inject: active.disable_x11_fast_inject(),
             inject_delay: active.inject_delay(),
             key_delay: active.key_delay(),
             evdev_modifier_delay: active.evdev_modifier_delay(),
-            x11_use_xdotool_backend: active.x11_use_xdotool_backend(),
+            x11: x11_inject_params(active.as_ref()),
         }
     }
 }
@@ -181,11 +212,21 @@ impl espanso_engine::process::UndoEnabledProvider for ConfigManager<'_> {
             return false;
         }
 
-        // Because we cannot filter out espanso-generated events when using the X11 record injection
-        // method, we need to disable undo_backspace to avoid looping (espanso picks up its own
-        // injections, causing the program to misbehave)
-        if cfg!(target_os = "linux") && self.active().disable_x11_fast_inject() {
-            return false;
+        // XTest events can be observed by the X11 detector. Undo-on-backspace is
+        // therefore disabled for profiles that may use XTest, preventing the
+        // injector from feeding its own synthetic events back into the matcher.
+        if cfg!(target_os = "linux") {
+            let active = self.active();
+            let profile = active.x11_safe_injector().profile;
+            if active.disable_x11_fast_inject()
+                || matches!(
+                    profile,
+                    X11InjectorProfile::Safe | X11InjectorProfile::Balanced
+                )
+            {
+                return false;
+            }
+            return active.undo_backspace();
         }
 
         self.active().undo_backspace()

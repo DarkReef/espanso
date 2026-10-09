@@ -38,6 +38,24 @@ pub mod evdev;
 #[cfg(target_os = "macos")]
 pub mod mac;
 
+#[cfg(all(target_os = "linux", not(feature = "wayland")))]
+extern "C" {
+    fn detect_prepare_x11_runtime(log_path: *const std::os::raw::c_char) -> i32;
+}
+
+/// Prepare Xlib for multi-threaded use and install native X11/XIO diagnostics.
+///
+/// This must be called before worker UI/detector/injector/clipboard Xlib use.
+#[cfg(all(target_os = "linux", not(feature = "wayland")))]
+pub fn prepare_x11_runtime(log_path: &std::path::Path) -> bool {
+    let path = log_path.to_string_lossy();
+    let Ok(path) = std::ffi::CString::new(path.as_bytes()) else {
+        return false;
+    };
+
+    unsafe { detect_prepare_x11_runtime(path.as_ptr()) != 0 }
+}
+
 pub type SourceCallback = Box<dyn Fn(event::InputEvent)>;
 
 pub trait Source {
@@ -51,7 +69,7 @@ pub struct SourceCreationOptions {
     pub use_evdev: bool,
 
     // Can be used to overwrite the keymap configuration
-    // used by espanso to inject key presses.
+    // used by EVDEV when loading the keymap.
     pub evdev_keyboard_rmlvo: Option<KeyboardConfig>,
 
     // List of global hotkeys the detection module has to register
@@ -59,22 +77,14 @@ pub struct SourceCreationOptions {
     pub hotkeys: Vec<HotKey>,
 
     // If true, filter out keyboard events without an explicit HID device source on Windows.
-    // This is needed to filter out the software-generated events, including
-    // those from espanso, but might need to be disabled when using some software-level keyboards.
-    // Disabling this option might conflict with the undo feature.
     pub win32_exclude_orphan_events: bool,
 
     // The maximum interval (in milliseconds) for which a keyboard layout
-    // can be cached. If switching often between different layouts, you
-    // could lower this amount to avoid the "lost detection" effect described
-    // in this issue: https://github.com/espanso/espanso/issues/745
+    // can be cached.
     pub win32_keyboard_layout_cache_interval: i64,
 }
 
-// This struct identifies the keyboard layout that
-// should be used by EVDEV when loading the keymap.
-// For more information: https://xkbcommon.org/doc/current/structxkb__rule__names.html
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct KeyboardConfig {
     pub rules: Option<String>,
     pub model: Option<String>,

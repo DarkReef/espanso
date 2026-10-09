@@ -55,6 +55,7 @@ impl<'a> funnel::Source<'a> for UISource<'a> {
             source_id: self.sequencer.next_id(),
             etype: match ui_event {
                 UIEvent::TrayIconClick => EventType::TrayIconClicked,
+                UIEvent::TrayIconDoubleClick => EventType::ShowMatchStudio,
                 UIEvent::ContextMenuClick(context_item_id) => {
                     EventType::ContextMenuClicked(ContextMenuClickedEvent { context_item_id })
                 }

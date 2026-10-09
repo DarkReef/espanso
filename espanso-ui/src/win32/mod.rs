@@ -47,6 +47,7 @@ const MAX_ICON_COUNT: usize = 3;
 const UI_EVENT_TYPE_ICON_CLICK: i32 = 1;
 const UI_EVENT_TYPE_CONTEXT_MENU_CLICK: i32 = 2;
 const UI_EVENT_TYPE_HEARTBEAT: i32 = 3;
+const UI_EVENT_TYPE_ICON_DOUBLE_CLICK: i32 = 4;
 
 // Take a look at the native.h header file for an explanation of the fields
 #[repr(C)]
@@ -77,7 +78,7 @@ extern "C" {
     ) -> i32;
     pub fn ui_destroy(window_handle: *const c_void) -> i32;
     pub fn ui_exit(window_handle: *const c_void) -> i32;
-    pub fn ui_update_tray_icon(window_handle: *const c_void, index: i32);
+    pub fn ui_update_tray_icon(window_handle: *const c_void, index: i32, animation_mode: i32);
     pub fn ui_show_context_menu(window_handle: *const c_void, payload: *const c_char);
 }
 
@@ -284,8 +285,13 @@ impl UIRemote for Win32Remote {
             return;
         }
 
+        let animation_mode = match &icon {
+            TrayIcon::Disabled => 0,
+            TrayIcon::Normal => 1,
+            TrayIcon::SystemDisabled => 2,
+        };
         if let Some(index) = self.icon_indexes.get(&icon) {
-            unsafe { ui_update_tray_icon(handle, (*index) as i32) }
+            unsafe { ui_update_tray_icon(handle, (*index) as i32, animation_mode) }
         } else {
             error!("Unable to update tray icon, invalid icon id");
         }
@@ -339,6 +345,9 @@ impl From<RawUIEvent> for Option<UIEvent> {
             UI_EVENT_TYPE_ICON_CLICK => {
                 return Some(UIEvent::TrayIconClick);
             }
+            UI_EVENT_TYPE_ICON_DOUBLE_CLICK => {
+                return Some(UIEvent::TrayIconDoubleClick);
+            }
             UI_EVENT_TYPE_CONTEXT_MENU_CLICK => {
                 return Some(UIEvent::ContextMenuClick(raw.context_menu_id));
             }
@@ -372,5 +381,15 @@ mod tests {
     fn constants_are_not_changed_by_mistake() {
         assert_eq!(MAX_FILE_PATH, 260);
         assert_eq!(MAX_ICON_COUNT, 3);
+    }
+
+    #[test]
+    fn tray_double_click_is_exposed_to_rust() {
+        let event: Option<UIEvent> = RawUIEvent {
+            event_type: UI_EVENT_TYPE_ICON_DOUBLE_CLICK,
+            context_menu_id: 0,
+        }
+        .into();
+        assert_eq!(event, Some(UIEvent::TrayIconDoubleClick));
     }
 }

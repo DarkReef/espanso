@@ -148,7 +148,7 @@ pub fn is_registered() -> bool {
                     if espanso_path.to_string_lossy() == path {
                         true
                     } else {
-                        error_eprintln!("Espanso is registered as a systemd service, but it points to another binary location:");
+                        error_eprintln!("rEspanso is registered as a systemd service, but it points to another binary location:");
                         error_eprintln!("");
                         error_eprintln!("  {}", path);
                         error_eprintln!("");
@@ -157,7 +157,9 @@ pub fn is_registered() -> bool {
                         );
                         error_eprintln!("To solve the problem, please unregister and register espanso again with these commands:");
                         error_eprintln!("");
-                        error_eprintln!("  espanso service unregister && espanso service register");
+                        error_eprintln!(
+                            "  rEspanso service unregister && rEspanso service register"
+                        );
                         error_eprintln!("");
 
                         false
@@ -193,7 +195,7 @@ pub fn start_service() -> Result<()> {
             "Systemd was not found in this system, which means espanso can't run in managed mode"
         );
         error_eprintln!(
-            "You can run it in unmanaged mode with `espanso service start --unmanaged`"
+            "You can run it in unmanaged mode with `rEspanso service start --unmanaged`"
         );
         error_eprintln!("");
         error_eprintln!(
@@ -207,10 +209,10 @@ pub fn start_service() -> Result<()> {
     }
 
     if !is_registered() {
-        error_eprintln!("Unable to start espanso as a service as it's not been registered.");
-        error_eprintln!("You can either register it first with `espanso service register` or");
+        error_eprintln!("Unable to start rEspanso as a service as it's not been registered.");
+        error_eprintln!("You can either register it first with `rEspanso service register` or");
         error_eprintln!(
-            "you can run it in unmanaged mode with `espanso service start --unmanaged`"
+            "you can run it in unmanaged mode with `rEspanso service start --unmanaged`"
         );
         error_eprintln!("");
         error_eprintln!(
@@ -254,7 +256,7 @@ pub enum StartError {
     #[error("systemctl non-zero exit code")]
     SystemctlNonZeroExitCode,
 
-    #[error("failed to launch espanso service through systemctl")]
+    #[error("failed to launch rEspanso service through systemctl")]
     SystemctlStartFailed,
 }
 

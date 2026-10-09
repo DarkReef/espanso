@@ -1,0 +1,45 @@
+# Остеоартрит: формулировка диагноза с reactive preview unstable.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/espanso/espanso/dev/schemas/match.schema.json
+
+matches:
+  - trigger: ".оа"
+    replace: "{{oa_form.result__text}}"
+    vars:
+      - name: oa_form
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 250
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            Остеоартрит: формулировка клинического диагноза
+            Локализация: [[localization]]
+            Сторона: [[side]]
+            Происхождение: [[etiology]]
+            Рентгенологическая стадия по Kellgren–Lawrence: [[stage]]
+            Для генерализованного ОА — не менее 3 групп суставов: [[involved_groups]]
+            Другая локализация: [[other_location]]
+            Осложнения / периартикулярная патология: [[complications]]
+            Деформация: [[deformity]]
+            Функциональный класс: [[functional_class]]
+          fields:
+            localization:
+              type: choice
+              values: ["Коленный сустав", "Тазобедренный сустав", "Суставы кистей", "Суставы позвоночника", "Первый плюснефаланговый сустав", "Генерализованный остеоартрит", "Другая локализация"]
+              default: "Коленный сустав"
+            side: { type: choice, values: ["Не указывать", "Правый", "Левый", "Двусторонний"], default: "Двусторонний" }
+            etiology: { type: choice, values: ["Не указывать", "Первичный", "Вторичный"], default: "Не указывать" }
+            stage: { type: choice, values: ["I", "II", "III", "IV", "Требует уточнения"], default: "II" }
+            involved_groups: { type: text, default: "" }
+            other_location: { type: text, default: "" }
+            complications: { type: text, default: "Без синовита" }
+            deformity: { type: text, default: "Нет" }
+            functional_class: { type: choice, values: ["I", "II", "III", "IV", "Требует уточнения"], default: "II" }
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/osteoarthritis.rhai"
+              function: calculate
+              depends_on: []

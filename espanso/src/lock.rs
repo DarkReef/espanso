@@ -7,18 +7,11 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *
- * espanso is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 use anyhow::Result;
 use fs2::FileExt;
+use log::{error, warn};
 use std::{
     fs::{File, OpenOptions},
     path::Path,
@@ -37,18 +30,22 @@ impl Lock {
 
     fn acquire(runtime_dir: &Path, name: &str) -> Option<Lock> {
         let lock_file_path = runtime_dir.join(format!("{name}.lock"));
-        let lock_file = OpenOptions::new()
+        let lock_file = match OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
-            .truncate(true)
+            .truncate(false)
             .open(&lock_file_path)
-            .unwrap_or_else(|_| {
-                panic!(
-                    "unable to create reference to lock file: {}",
+        {
+            Ok(file) => file,
+            Err(error) => {
+                error!(
+                    "unable to open lock file {}: {error}",
                     lock_file_path.display()
-                )
-            });
+                );
+                return None;
+            }
+        };
         if lock_file.try_lock_exclusive().is_ok() {
             Some(Lock { lock_file })
         } else {
@@ -59,8 +56,9 @@ impl Lock {
 
 impl Drop for Lock {
     fn drop(&mut self) {
-        fs2::FileExt::unlock(&self.lock_file)
-            .unwrap_or_else(|_| panic!("unable to unlock lock_file: {:?}", self.lock_file));
+        if let Err(error) = fs2::FileExt::unlock(&self.lock_file) {
+            warn!("unable to unlock lock file during shutdown: {error}");
+        }
     }
 }
 

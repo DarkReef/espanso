@@ -1,0 +1,154 @@
+# SCORE2 / SCORE2-OP для rEspanso v1.0 Unstable.
+# Расчёт выполняется один раз внутри формы и используется для preview и вставки.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/espanso/espanso/dev/schemas/match.schema.json
+
+matches:
+  - trigger: ":score2"
+    label: "SCORE2 / SCORE2-OP — реактивный расчёт"
+    replace: "{{score2_form.result__text}}"
+    vars:
+      - name: score2_form
+        type: form
+        params:
+          title: "SCORE2 / SCORE2-OP"
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 350
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            SCORE2 / SCORE2-OP: автоматический выбор модели по возрасту
+
+            Возраст (40–89 лет): [[age]]
+            Пол: [[sex]]
+            Регион риска: [[region]]
+            Текущее курение: [[current_smoker]]
+            САД, мм рт. ст.: [[sbp]]
+            Общий холестерин, ммоль/л: [[total_cholesterol]]
+            ХС-ЛПВП, ммоль/л (пусто = 1,0): [[hdl_cholesterol]]
+
+            Документированное ССЗ: [[established_cvd]]
+            Сахарный диабет: [[diabetes]]
+            СГХС / умеренная-тяжёлая ХБП / иное заведомо высокорисковое состояние: [[special_high_risk]]
+          fields:
+            age:
+              type: text
+              default: "55"
+            sex:
+              type: choice
+              values: ["Мужчина", "Женщина"]
+              default: "Мужчина"
+            region:
+              type: choice
+              values:
+                - "Низкий риск"
+                - "Умеренный риск"
+                - "Высокий риск"
+                - "Очень высокий риск (Россия)"
+              default: "Очень высокий риск (Россия)"
+            current_smoker:
+              type: choice
+              values: ["Нет", "Да"]
+              default: "Нет"
+            sbp:
+              type: text
+              default: "140"
+            total_cholesterol:
+              type: text
+              default: "5,5"
+            hdl_cholesterol:
+              type: text
+              default: ""
+            established_cvd:
+              type: choice
+              values: ["Нет", "Да"]
+              default: "Нет"
+            diabetes:
+              type: choice
+              values: ["Нет", "Да"]
+              default: "Нет"
+            special_high_risk:
+              type: choice
+              values: ["Нет", "Да"]
+              default: "Нет"
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/score2.rhai"
+              function: calculate
+              depends_on: []
+
+  - trigger: ":score2op"
+    label: "SCORE2-OP — реактивный расчёт"
+    replace: "{{score2op_form.result__text}}"
+    vars:
+      - name: score2op_form
+        type: form
+        params:
+          title: "SCORE2-OP"
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 350
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            SCORE2 / SCORE2-OP: автоматический выбор модели по возрасту
+
+            Возраст (40–89 лет): [[age]]
+            Пол: [[sex]]
+            Регион риска: [[region]]
+            Текущее курение: [[current_smoker]]
+            Сахарный диабет: [[diabetes]]
+            САД, мм рт. ст.: [[sbp]]
+            Общий холестерин, ммоль/л: [[total_cholesterol]]
+            ХС-ЛПВП, ммоль/л (пусто = 1,0): [[hdl_cholesterol]]
+
+            Документированное ССЗ: [[established_cvd]]
+            СГХС / умеренная-тяжёлая ХБП / иное заведомо высокорисковое состояние: [[special_high_risk]]
+          fields:
+            age:
+              type: text
+              default: "75"
+            sex:
+              type: choice
+              values: ["Мужчина", "Женщина"]
+              default: "Мужчина"
+            region:
+              type: choice
+              values:
+                - "Низкий риск"
+                - "Умеренный риск"
+                - "Высокий риск"
+                - "Очень высокий риск (Россия)"
+              default: "Очень высокий риск (Россия)"
+            current_smoker:
+              type: choice
+              values: ["Нет", "Да"]
+              default: "Нет"
+            diabetes:
+              type: choice
+              values: ["Нет", "Да"]
+              default: "Нет"
+            sbp:
+              type: text
+              default: "150"
+            total_cholesterol:
+              type: text
+              default: "6,0"
+            hdl_cholesterol:
+              type: text
+              default: ""
+            established_cvd:
+              type: choice
+              values: ["Нет", "Да"]
+              default: "Нет"
+            special_high_risk:
+              type: choice
+              values: ["Нет", "Да"]
+              default: "Нет"
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/score2-op.rhai"
+              function: calculate
+              depends_on: []

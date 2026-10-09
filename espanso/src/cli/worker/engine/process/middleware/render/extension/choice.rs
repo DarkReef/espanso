@@ -19,7 +19,7 @@
 
 use espanso_render::extension::choice::{ChoiceSelector, ChoiceSelectorResult};
 
-use crate::gui::{SearchItem, SearchUI};
+use crate::gui::{SearchCategory, SearchItem, SearchUI};
 
 pub struct ChoiceSelectorAdapter<'a> {
     search_ui: &'a dyn SearchUI,
@@ -51,6 +51,7 @@ fn convert_items(choices: &[espanso_render::extension::choice::Choice]) -> Vec<S
             tag: None,
             additional_search_terms: vec![],
             is_builtin: false,
+            category: SearchCategory::Triggers,
         })
         .collect()
 }

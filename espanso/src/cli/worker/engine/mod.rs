@@ -191,6 +191,8 @@ pub fn initialize_and_spawn(
             .expect("failed to initialize injector module"); // TODO: handle the options
             let clipboard = espanso_clipboard::get_clipboard(ClipboardOptions::default())
                 .expect("failed to initialize clipboard module"); // TODO: handle options
+            let clipboard_injector =
+                ClipboardInjectorAdapter::new(&*injector, &*clipboard, &config_manager);
 
             let clipboard_adapter = ClipboardAdapter::new(&*clipboard, &config_manager);
             let clipboard_extension =
@@ -206,6 +208,8 @@ pub fn initialize_and_spawn(
                 &home_path,
                 &paths.packages,
             );
+            let rhai_extension =
+                espanso_render::extension::rhai::RhaiExtension::new(&paths.config, &paths.packages);
             let shell_extension =
                 espanso_render::extension::shell::ShellExtension::new(&paths.config);
             let form_adapter = FormProviderAdapter::new(&modulo_form_ui);
@@ -219,6 +223,7 @@ pub fn initialize_and_spawn(
                 &echo_extension,
                 &random_extension,
                 &script_extension,
+                &rhai_extension,
                 &shell_extension,
                 &form_extension,
                 &choice_extension,
@@ -252,11 +257,11 @@ pub fn initialize_and_spawn(
                 &combined_match_cache,
                 &notification_manager,
                 &config_manager,
+                &clipboard_injector,
+                &combined_match_cache,
             );
 
             let event_injector = EventInjectorAdapter::new(&*injector, &config_manager);
-            let clipboard_injector =
-                ClipboardInjectorAdapter::new(&*injector, &*clipboard, &config_manager);
             let key_injector = KeyInjectorAdapter::new(&*injector, &config_manager);
             let context_menu_adapter = ContextMenuHandlerAdapter::new(&*ui_remote);
             let icon_adapter = IconHandlerAdapter::new(&*ui_remote);
@@ -278,7 +283,7 @@ pub fn initialize_and_spawn(
             // Disable previously granted linux capabilities if not needed anymore
             if has_granted_capabilities {
                 if let Err(err) = crate::capabilities::clear_capabilities() {
-                    error!("unable to revoke linux capabilities: {err}");
+                    error!("unable to revoke CAP_DAC_OVERRIDE capability: {err}");
                 }
             }
 
@@ -305,9 +310,26 @@ pub fn initialize_and_spawn(
 
             let mut engine = espanso_engine::Engine::new(&funnel, &mut processor, &dispatcher);
             let exit_mode = engine.run();
+
+            // The welcome window is a child process. Waiting for it unconditionally during
+            // shutdown can keep the worker lock alive forever (notably on Astra/X11 or when
+            // the first-run window is still open), which makes `service restart` time out.
+            // Shutdown must own the child lifecycle instead of waiting for user interaction.
             if let Some(mut handle) = welcome_handle {
-                handle.wait().expect("welcome screen died");
-            };
+                match handle.try_wait() {
+                    Ok(Some(_)) => {}
+                    Ok(None) => {
+                        if let Err(err) = handle.kill() {
+                            warn!("unable to terminate welcome screen during shutdown: {err}");
+                        } else if let Err(err) = handle.wait() {
+                            warn!("unable to reap welcome screen during shutdown: {err}");
+                        }
+                    }
+                    Err(err) => {
+                        warn!("unable to query welcome screen during shutdown: {err}");
+                    }
+                }
+            }
 
             info!("engine eventloop has terminated, propagating exit event...");
             ui_remote.exit();
@@ -333,7 +355,7 @@ fn grant_linux_capabilities(use_evdev_backend: bool) -> bool {
             warn!("EVDEV backend is being used, but without enabling linux capabilities.");
             warn!("  Although you CAN run espanso EVDEV backend as root, it's not recommended due");
             warn!(
-        "  to security reasons. Espanso supports linux capabilities to limit the attack surface"
+        "  to security reasons. rEspanso supports linux capabilities to limit the attack surface"
       );
             warn!(
                 "  area by only leveraging on the CAP_DAC_OVERRIDE capability (needed to work with"

@@ -30,6 +30,7 @@ pub fn generate(config: SearchConfig) -> types::Search {
             trigger: item.trigger,
             search_terms: item.search_terms,
             is_builtin: item.is_builtin,
+            category: item.category,
         })
         .collect();
 
@@ -40,5 +41,6 @@ pub fn generate(config: SearchConfig) -> types::Search {
         items,
         icon: config.icon,
         hint: config.hint,
+        tabs_enabled: config.tabs_enabled,
     }
 }

@@ -43,7 +43,7 @@ pub fn launch_daemon(paths_overrides: &PathsOverrides) -> Result<()> {
 
 #[derive(Error, Debug)]
 pub enum DaemonError {
-    #[error("unexpected error, 'espanso daemon' returned a non-zero exit code.")]
+    #[error("unexpected error, 'rEspanso daemon' returned a non-zero exit code.")]
     NonZeroExitCode,
 }
 

@@ -1,0 +1,117 @@
+name: Reactive Rhai preview diagnostic
+
+on:
+  push:
+    branches:
+      - feature/reactive-rhai-preview
+    paths:
+      - .github/workflows/temp-reactive-rhai-diagnostic.yml
+  pull_request:
+    branches:
+      - feature/manual-build-dynamic-vars
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reactive-rhai-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/reactive-rhai-preview
+          fetch-depth: 0
+
+      - name: Extract and apply implementation patch
+        shell: pwsh
+        run: |
+          @'
+          import base64
+          import gzip
+          import pathlib
+          import re
+
+          workflow = pathlib.Path('.github/workflows/temp-reactive-rhai-preview.yml').read_text(encoding='utf-8')
+          match = re.search(r"@'\n(?P<data>[A-Za-z0-9+/=]+)\n'@ \| Set-Content -Path reactive_patch\.b64", workflow)
+          if not match:
+              raise SystemExit('encoded reactive preview patch was not found')
+          pathlib.Path('reactive_patch.py').write_bytes(gzip.decompress(base64.b64decode(match.group('data'))))
+          '@ | Set-Content -Path extract_patch.py -Encoding utf8
+          python extract_patch.py
+          python reactive_patch.py
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-x64-portable
+          cache-on-failure: true
+
+      - name: Format sources
+        run: cargo fmt --all
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Test espanso-modulo
+        run: cargo test --locked -p espanso-modulo --lib
+
+      - name: Test espanso-render
+        run: cargo test --locked -p espanso-render --lib
+
+      - name: Test reactive preview module
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force 'target/diagnostics' | Out-Null
+          & cargo test --locked -p espanso reactive_preview -- --nocapture *>&1 | Tee-Object -FilePath 'target/diagnostics/reactive-test.log'
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "Reactive preview tests failed with exit code $exitCode" }
+
+      - name: Check espanso integration
+        run: cargo check --locked -p espanso --all-targets
+
+      - name: Test Match Studio
+        run: cargo test --locked -p espanso-editor --lib
+
+      - name: Run strict Clippy
+        run: cargo clippy --locked -p espanso-modulo -p espanso-render -p espanso --all-targets -- --deny warnings
+
+      - name: Upload patched sources on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reactive-rhai-diagnostic-sources
+          path: |
+            target/diagnostics/reactive-test.log
+            espanso-modulo/src/form/
+            espanso-modulo/src/sys/form/
+            espanso-modulo/src/sys/interop/
+            espanso-render/src/extension/form.rs
+            espanso/src/cli/modulo/
+            espanso/src/gui/
+            espanso/src/cli/worker/engine/process/middleware/render/extension/form.rs
+            reactive_patch.py
+          if-no-files-found: error
+          retention-days: 3

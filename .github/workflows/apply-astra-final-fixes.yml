@@ -1,0 +1,49 @@
+name: Repair X11 decoder regression tests
+
+on:
+  push:
+    branches: [build/x11-latest]
+    paths:
+      - .github/workflows/apply-astra-final-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: build/x11-latest
+          fetch-depth: 0
+
+      - name: Replace stale CStr-era decoder test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('espanso-detect/src/x11/mod.rs')
+          t = p.read_text(encoding='utf-8')
+          old = '''    #[test]\n    fn raw_to_input_invalid_buffer() {\n        let buffer: [u8; 24] = [123; 24];\n\n        let mut raw = default_raw_input_event();\n        raw.buffer = buffer;\n        raw.buffer_len = 5;\n\n        let result: Option<InputEvent> =\n            convert_raw_input_event_to_input_event(raw, &HashMap::new(), 0);\n        assert!(result.unwrap().into_keyboard().unwrap().value.is_none());\n    }'''
+          new = '''    #[test]\n    fn raw_to_input_valid_buffer_without_nul_is_preserved() {\n        let buffer: [u8; 24] = [123; 24];\n\n        let mut raw = default_raw_input_event();\n        raw.buffer = buffer;\n        raw.buffer_len = 5;\n\n        let result: Option<InputEvent> =\n            convert_raw_input_event_to_input_event(raw, &HashMap::new(), 0);\n        assert_eq!(\n            result.unwrap().into_keyboard().unwrap().value,\n            Some("{{{{{".to_string())\n        );\n    }\n\n    #[test]\n    fn raw_to_input_invalid_utf8_buffer_has_no_value() {\n        let mut buffer: [u8; 24] = [0; 24];\n        buffer[..2].copy_from_slice(&[0xC3, 0x28]);\n\n        let mut raw = default_raw_input_event();\n        raw.buffer = buffer;\n        raw.buffer_len = 2;\n\n        let result: Option<InputEvent> =\n            convert_raw_input_event_to_input_event(raw, &HashMap::new(), 0);\n        assert!(result.unwrap().into_keyboard().unwrap().value.is_none());\n    }'''
+          if old not in t:
+              raise SystemExit('stale decoder test anchor not found')
+          p.write_text(t.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Verify decoder test semantics
+        run: |
+          grep -F 'raw_to_input_valid_buffer_without_nul_is_preserved' espanso-detect/src/x11/mod.rs
+          grep -F 'Some("{{{{{".to_string())' espanso-detect/src/x11/mod.rs
+          grep -F 'raw_to_input_invalid_utf8_buffer_has_no_value' espanso-detect/src/x11/mod.rs
+          grep -F 'buffer[..2].copy_from_slice(&[0xC3, 0x28]);' espanso-detect/src/x11/mod.rs
+
+      - name: Commit decoder tests
+        run: |
+          git config user.name 'rEspanso CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add espanso-detect/src/x11/mod.rs
+          git commit -m 'test(x11): align decoder tests with raw byte semantics'
+          git push origin HEAD:build/x11-latest

@@ -20,9 +20,14 @@ scopeguard = "1.1.0"
 fs_extra.workspace = true
 sha2 = "0.9.6"
 hex = "0.4.3"
-reqwest = { version = "0.11.16", features = [
+# The newer 0.11.x lock graph can select hyper 0.14.32/socket2 0.5 and
+# windows-targets 0.52, whose generated GDI+ stubs conflict with wxWidgets.
+reqwest = { version = "=0.11.17", features = [
     "blocking",
 ], default-features = false }
+# Keep the last upstream-tested hyper release that still resolves socket2 0.4.
+# This direct pin is intentional even though espanso-package uses it via reqwest.
+hyper = "=0.14.26"
 
 # On Linux we don't want to depend on openssl to avoid dependency issues
 # https://github.com/espanso/espanso/issues/1056

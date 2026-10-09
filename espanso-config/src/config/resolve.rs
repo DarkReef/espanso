@@ -26,7 +26,8 @@ use super::{
     parse::ParsedConfig,
     path::calculate_paths,
     util::os_matches,
-    AppProperties, Backend, Config, RMLVOConfig, ToggleKey,
+    AppProperties, Backend, Config, RMLVOConfig, ToggleKey, X11InjectorProfile,
+    X11SafeInjectorConfig,
 };
 use crate::{counter::next_id, merge};
 use anyhow::Result;
@@ -286,7 +287,7 @@ impl Config for ResolvedConfig {
         match self.parsed.search_shortcut.as_deref() {
             Some("OFF" | "off") => None,
             Some(x) => Some(x.to_string()),
-            None => Some("ALT+SPACE".to_string()),
+            None => Some("CTRL+SPACE".to_string()),
         }
     }
 
@@ -362,6 +363,55 @@ impl Config for ResolvedConfig {
 
     fn x11_use_xdotool_backend(&self) -> bool {
         self.parsed.x11_use_xdotool_backend.unwrap_or(false)
+    }
+
+    fn x11_safe_injector(&self) -> X11SafeInjectorConfig {
+        let profile = match self.parsed.x11_injector_profile.as_deref() {
+            Some(value) => X11InjectorProfile::from_name(value).unwrap_or_else(|| {
+                error!("invalid x11_injector_profile '{value}', falling back to balanced");
+                X11InjectorProfile::Balanced
+            }),
+            None => X11InjectorProfile::Balanced,
+        };
+        let defaults = X11SafeInjectorConfig::for_profile(profile);
+
+        X11SafeInjectorConfig {
+            wait_for_modifiers: self
+                .parsed
+                .x11_wait_for_modifiers
+                .unwrap_or(defaults.wait_for_modifiers),
+            modifier_release_timeout_ms: self
+                .parsed
+                .x11_modifier_release_timeout
+                .unwrap_or(defaults.modifier_release_timeout_ms),
+            focus_guard: self.parsed.x11_focus_guard.unwrap_or(defaults.focus_guard),
+            focus_retry_count: self
+                .parsed
+                .x11_focus_retry_count
+                .unwrap_or(defaults.focus_retry_count),
+            focus_retry_delay_ms: self
+                .parsed
+                .x11_focus_retry_delay
+                .unwrap_or(defaults.focus_retry_delay_ms),
+            circuit_breaker: self
+                .parsed
+                .x11_circuit_breaker
+                .unwrap_or(defaults.circuit_breaker),
+            fast_failure_threshold: self
+                .parsed
+                .x11_fast_failure_threshold
+                .unwrap_or(defaults.fast_failure_threshold)
+                .max(1),
+            reinitialize_on_failure: self
+                .parsed
+                .x11_reinitialize_on_failure
+                .unwrap_or(defaults.reinitialize_on_failure),
+            clipboard_threshold: self
+                .parsed
+                .x11_safe_clipboard_threshold
+                .unwrap_or(defaults.clipboard_threshold),
+            ..defaults
+        }
     }
 }
 
@@ -455,6 +505,16 @@ impl ResolvedConfig {
             win32_keyboard_layout_cache_interval,
             x11_use_xclip_backend,
             x11_use_xdotool_backend,
+            x11_injector_profile,
+            x11_wait_for_modifiers,
+            x11_modifier_release_timeout,
+            x11_focus_guard,
+            x11_focus_retry_count,
+            x11_focus_retry_delay,
+            x11_circuit_breaker,
+            x11_fast_failure_threshold,
+            x11_reinitialize_on_failure,
+            x11_safe_clipboard_threshold,
             includes,
             excludes,
             extra_includes,

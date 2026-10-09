@@ -21,4 +21,6 @@ pub mod config;
 pub mod generator;
 pub mod parser;
 
-pub use crate::sys::form::show;
+pub use crate::sys::form::{
+    show, show_with_preview, ComputedPreviewResult, FormPreviewEvaluator, PreviewRequest,
+};

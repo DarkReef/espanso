@@ -60,7 +60,7 @@ pub fn prevent_running_as_root_on_macos() {
     use crate::{error_eprintln, exit_code::UNEXPECTED_RUN_AS_ROOT};
 
     if unsafe { libc::geteuid() } == 0 {
-        error_eprintln!("Espanso is being run as root, but this can create unwanted side-effects. Please run it as a normal user.");
+        error_eprintln!("rEspanso is being run as root, but this can create unwanted side-effects. Please run it as a normal user.");
         std::process::exit(UNEXPECTED_RUN_AS_ROOT);
     }
 }

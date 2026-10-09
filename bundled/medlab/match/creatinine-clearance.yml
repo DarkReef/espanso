@@ -1,0 +1,37 @@
+# Клиренс креатинина Cockcroft–Gault с reactive preview unstable.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/espanso/espanso/dev/schemas/match.schema.json
+
+matches:
+  - trigger: ":crcl"
+    replace: "{{crcl_form.result__text}}"
+    vars:
+      - name: crcl_form
+        type: form
+        params:
+          preview: true
+          preview_mode: live
+          preview_debounce_ms: 300
+          preview_layout: |
+            {{result.text}}
+          layout: |
+            Клиренс креатинина по Cockcroft–Gault
+            Пол: [[sex]]
+            Возраст, лет: [[age]]
+            Масса тела, кг: [[weight]]
+            Использованная масса: [[weight_type]]
+            Креатинин, мкмоль/л: [[creatinine]]
+          fields:
+            sex: { type: choice, values: ["Мужчина", "Женщина"], default: "Мужчина" }
+            age: { type: text, default: "65" }
+            weight: { type: text, default: "70" }
+            weight_type:
+              type: choice
+              values: ["Фактическая масса", "Идеальная масса", "Скорректированная масса"]
+              default: "Фактическая масса"
+            creatinine: { type: text, default: "100" }
+          computed:
+            result:
+              type: rhai
+              path: "%CONFIG%/scripts/creatinine-clearance.rhai"
+              function: calculate
+              depends_on: []

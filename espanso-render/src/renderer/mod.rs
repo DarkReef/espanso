@@ -28,7 +28,9 @@ use regex::{Captures, Regex};
 use std::sync::LazyLock;
 use thiserror::Error;
 
-use self::util::{inject_variables_into_params, render_variables};
+use self::util::{
+    inject_form_variables_into_params, inject_variables_into_params, render_variables,
+};
 
 mod resolve;
 mod util;
@@ -114,7 +116,13 @@ impl Renderer for DefaultRenderer<'_> {
                     }
                 } else if let Some(extension) = self.extensions.get(&variable.var_type) {
                     let variable_params = if variable.inject_vars {
-                        match inject_variables_into_params(&variable.params, &scope) {
+                        let injected_params = if variable.var_type == "form" {
+                            inject_form_variables_into_params(&variable.params, &scope)
+                        } else {
+                            inject_variables_into_params(&variable.params, &scope)
+                        };
+
+                        match injected_params {
                             Ok(augmented_params) => Cow::Owned(augmented_params),
                             Err(err) => {
                                 error!(

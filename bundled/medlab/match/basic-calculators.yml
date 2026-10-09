@@ -1,0 +1,121 @@
+# Базовые медицинские калькуляторы на Rhai.
+# Триггеры и клинические формулировки перенесены из личного base.yml.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/espanso/espanso/dev/schemas/match.schema.json
+
+matches:
+  - regex: ":imt_(?P<h>\\d{2,3})_(?P<w>\\d{2,3})\\s$"
+    label: "Рассчитать ИМТ: :imt_рост_вес"
+    replace: "{{out}}"
+    vars:
+      - name: calc_input
+        type: echo
+        params:
+          echo: "{{h}}|{{w}}"
+      - name: out
+        type: rhai
+        depends_on: [calc_input]
+        params:
+          path: "%CONFIG%/scripts/bmi.rhai"
+          function: "calculate"
+          input: "calc_input"
+
+  - regex: ":imt_diag_(?P<h>\\d{2,3})_(?P<w>\\d{2,3})\\s$"
+    label: "ИМТ для диагноза: :imt_diag_рост_вес"
+    replace: "{{out}}"
+    vars:
+      - name: calc_input
+        type: echo
+        params:
+          echo: "{{h}}|{{w}}"
+      - name: out
+        type: rhai
+        depends_on: [calc_input]
+        params:
+          path: "%CONFIG%/scripts/bmi.rhai"
+          function: "calculate_diagnosis"
+          input: "calc_input"
+
+  - regex: ":egfr_(?P<sex>[mf])_(?P<age>\\d{1,3})_(?P<cr>\\d{2,4})\\s$"
+    label: "Рассчитать рСКФ: :egfr_m/f_возраст_креатинин"
+    replace: "Скорость клубочковой фильтрации (CKD-EPI 2021): {{out}} мл/мин/1,73 м² (креатинин: {{cr}} мкмоль/л)"
+    vars:
+      - name: calc_input
+        type: echo
+        params:
+          echo: "{{sex}}|{{age}}|{{cr}}"
+      - name: out
+        type: rhai
+        depends_on: [calc_input]
+        params:
+          path: "%CONFIG%/scripts/egfr.rhai"
+          function: "calculate"
+          input: "calc_input"
+
+  - regex: ":egfr_diag_(?P<sex>[mf])_(?P<age>\\d{1,3})_(?P<cr>\\d{2,4})\\s$"
+    label: "рСКФ для диагноза: :egfr_diag_m/f_возраст_креатинин"
+    replace: "{{out}}"
+    vars:
+      - name: today
+        type: date
+        params:
+          format: "%d.%m.%Y"
+      - name: calc_input
+        type: echo
+        params:
+          echo: "{{sex}}|{{age}}|{{cr}}|{{today}}"
+      - name: out
+        type: rhai
+        depends_on: [calc_input]
+        params:
+          path: "%CONFIG%/scripts/egfr.rhai"
+          function: "calculate_diagnosis"
+          input: "calc_input"
+
+  - regex: ":anemia_(?P<hb>\\d{2,3})\\s$"
+    label: "Степень тяжести анемии по Hb"
+    replace: "{{out}}"
+    vars:
+      - name: calc_input
+        type: echo
+        params:
+          echo: "{{hb}}"
+      - name: out
+        type: rhai
+        depends_on: [calc_input]
+        params:
+          path: "%CONFIG%/scripts/anemia.rhai"
+          function: "calculate"
+          input: "calc_input"
+
+  # Последнее число — альбумин-креатининовое соотношение мочи (АКМ/ACR), мг/г.
+  - regex: "\\.ХБП_(?P<sex>[мж])_(?P<age>\\d{1,3})_(?P<cr>\\d{2,4})_(?P<acr>\\d{1,5})\\s$"
+    label: "ХБП с АКМ: .ХБП_м/ж_возраст_креатинин_АКМ"
+    replace: "{{out}}"
+    vars:
+      - name: calc_input
+        type: echo
+        params:
+          echo: "{{sex}}|{{age}}|{{cr}}|{{acr}}"
+      - name: out
+        type: rhai
+        depends_on: [calc_input]
+        params:
+          path: "%CONFIG%/scripts/ckd.rhai"
+          function: "calculate"
+          input: "calc_input"
+
+  - regex: "\\.ХБП_(?P<sex>[мж])_(?P<age>\\d{1,3})_(?P<cr>\\d{2,4})\\s$"
+    label: "ХБП без АКМ: .ХБП_м/ж_возраст_креатинин"
+    replace: "{{out}}"
+    vars:
+      - name: calc_input
+        type: echo
+        params:
+          echo: "{{sex}}|{{age}}|{{cr}}"
+      - name: out
+        type: rhai
+        depends_on: [calc_input]
+        params:
+          path: "%CONFIG%/scripts/ckd.rhai"
+          function: "calculate"
+          input: "calc_input"

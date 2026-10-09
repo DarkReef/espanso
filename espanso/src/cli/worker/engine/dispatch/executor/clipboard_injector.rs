@@ -17,16 +17,45 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::{convert::TryInto, path::PathBuf};
+use std::{
+    convert::TryInto,
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, Instant},
+};
 
 use espanso_clipboard::{Clipboard, ClipboardOperationOptions};
 use espanso_inject::{keys::Key, InjectionOptions, Injector};
-use log::error;
+use log::{debug, error, info, warn};
 
 use espanso_engine::{
     dispatch::HtmlInjector,
     dispatch::{ImageInjector, TextInjector},
+    process::SelectedTextProvider,
 };
+
+const SELECTION_COPY_TIMEOUT: Duration = Duration::from_millis(800);
+const SELECTION_COPY_POLL_INTERVAL: Duration = Duration::from_millis(20);
+const SELECTION_RESTORE_DELAY: Duration = Duration::from_millis(30);
+static SELECTION_CAPTURE_ID: AtomicU64 = AtomicU64::new(1);
+
+#[cfg(target_os = "windows")]
+#[link(name = "user32")]
+extern "system" {
+    #[link_name = "GetClipboardSequenceNumber"]
+    fn get_clipboard_sequence_number() -> u32;
+}
+
+#[cfg(target_os = "windows")]
+fn clipboard_sequence_number() -> u32 {
+    // SAFETY: GetClipboardSequenceNumber has no parameters and does not retain pointers.
+    unsafe { get_clipboard_sequence_number() }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn clipboard_sequence_number() -> u32 {
+    0
+}
 
 pub trait ClipboardParamsProvider {
     fn get(&self) -> ClipboardParams;
@@ -36,11 +65,19 @@ pub struct ClipboardParams {
     pub pre_paste_delay: usize,
     pub paste_shortcut_event_delay: usize,
     pub paste_shortcut: Option<String>,
-    pub disable_x11_fast_inject: bool,
     pub restore_clipboard: bool,
     pub restore_clipboard_delay: usize,
     pub x11_use_xclip_backend: bool,
-    pub x11_use_xdotool_backend: bool,
+    pub x11: super::X11InjectParams,
+}
+
+impl ClipboardParams {
+    fn injection_options(&self) -> InjectionOptions {
+        let mut options = InjectionOptions::default();
+        options.delay = i32::try_from(self.paste_shortcut_event_delay).unwrap_or(i32::MAX);
+        self.x11.apply_to(&mut options);
+        options
+    }
 }
 
 pub struct ClipboardInjectorAdapter<'a> {
@@ -70,8 +107,8 @@ impl<'a> ClipboardInjectorAdapter<'a> {
         ));
 
         let mut custom_combination = None;
-        if let Some(custom_shortcut) = params.paste_shortcut {
-            if let Some(combination) = parse_combination(&custom_shortcut) {
+        if let Some(custom_shortcut) = params.paste_shortcut.as_deref() {
+            if let Some(combination) = parse_combination(custom_shortcut) {
                 custom_combination = Some(combination);
             } else {
                 error!("'{custom_shortcut}' is not a valid paste shortcut");
@@ -93,12 +130,23 @@ impl<'a> ClipboardInjectorAdapter<'a> {
 
         self.injector.send_key_combination(
             &combination,
-            InjectionOptions {
-                delay: params.paste_shortcut_event_delay as i32,
-                disable_fast_inject: params.disable_x11_fast_inject,
-                x11_use_xdotool_fallback: params.x11_use_xdotool_backend,
-                ..Default::default()
-            },
+            params.injection_options(),
+        )?;
+
+        Ok(())
+    }
+
+    fn send_copy_combination(&self) -> anyhow::Result<()> {
+        let params = self.params_provider.get();
+        let combination = if cfg!(target_os = "macos") {
+            vec![Key::Meta, Key::C]
+        } else {
+            vec![Key::Control, Key::C]
+        };
+
+        self.injector.send_key_combination(
+            &combination,
+            params.injection_options(),
         )?;
 
         Ok(())
@@ -123,6 +171,191 @@ impl<'a> ClipboardInjectorAdapter<'a> {
         ClipboardOperationOptions {
             use_xclip_backend: params.x11_use_xclip_backend,
         }
+    }
+
+    fn wait_for_selected_text(
+        &self,
+        capture_id: u64,
+        previous_text: Option<&str>,
+        previous_sequence: u32,
+        options: &ClipboardOperationOptions,
+    ) -> Option<String> {
+        let started_at = Instant::now();
+        let mut polls: u32 = 0;
+
+        while started_at.elapsed() < SELECTION_COPY_TIMEOUT {
+            polls += 1;
+            let current_text = self.clipboard.get_text(options);
+            let text_changed = current_text.as_deref() != previous_text;
+            let sequence_changed =
+                cfg!(target_os = "windows") && previous_sequence != clipboard_sequence_number();
+
+            if !(text_changed || sequence_changed) {
+                std::thread::sleep(SELECTION_COPY_POLL_INTERVAL);
+                continue;
+            }
+
+            let current_len = current_text.as_ref().map(|text| text.len()).unwrap_or(0);
+            info!(
+                "[rESP-SEL-CLIP] capture={} clipboard change observed poll={} bytes={} text_changed={} sequence_changed={} elapsed_ms={}",
+                capture_id,
+                polls,
+                current_len,
+                text_changed,
+                sequence_changed,
+                started_at.elapsed().as_millis()
+            );
+
+            if let Some(text) = current_text {
+                if !text.trim().is_empty() {
+                    info!(
+                        "[rESP-SEL-CLIP] capture={} selected text ready bytes={} polls={} elapsed_ms={}",
+                        capture_id,
+                        text.len(),
+                        polls,
+                        started_at.elapsed().as_millis()
+                    );
+                    return Some(text);
+                }
+            }
+
+            std::thread::sleep(SELECTION_COPY_POLL_INTERVAL);
+        }
+
+        warn!(
+            "[rESP-SEL-CLIP] capture={} timed out polls={} timeout_ms={}",
+            capture_id,
+            polls,
+            SELECTION_COPY_TIMEOUT.as_millis()
+        );
+        None
+    }
+}
+
+impl SelectedTextProvider for ClipboardInjectorAdapter<'_> {
+    fn get_selected_text(&self) -> Option<String> {
+        let capture_id = SELECTION_CAPTURE_ID.fetch_add(1, Ordering::Relaxed);
+        let capture_started = Instant::now();
+        let params = self.params_provider.get();
+        let options = self.get_operation_options();
+
+        info!(
+            "[rESP-SEL-CLIP] capture={} begin platform={} restore_clipboard={} xclip_backend={} xdotool_backend={} event_delay_ms={} timeout_ms={}",
+            capture_id,
+            std::env::consts::OS,
+            params.restore_clipboard,
+            params.x11_use_xclip_backend,
+            params.x11.use_xdotool_backend,
+            params.paste_shortcut_event_delay,
+            SELECTION_COPY_TIMEOUT.as_millis()
+        );
+
+        let previous_text = self.clipboard.get_text(&options);
+        let previous_len = previous_text.as_ref().map(|text| text.len()).unwrap_or(0);
+        let previous_sequence = clipboard_sequence_number();
+        info!(
+            "[rESP-SEL-CLIP] capture={} baseline present={} bytes={} sequence={}",
+            capture_id,
+            previous_text.is_some(),
+            previous_len,
+            previous_sequence
+        );
+
+        // X11 has no Windows clipboard sequence counter. Clear the text first so
+        // copying the SAME selection again is distinguishable from a failed copy.
+        #[cfg(not(target_os = "windows"))]
+        {
+            let clear_started = Instant::now();
+            match self.clipboard.set_text("", &options) {
+                Ok(()) => info!(
+                    "[rESP-SEL-CLIP] capture={} clipboard cleared elapsed_ms={}",
+                    capture_id,
+                    clear_started.elapsed().as_millis()
+                ),
+                Err(error) => {
+                    error!(
+                        "[rESP-SEL-CLIP] capture={} unable to clear clipboard: {error:?}",
+                        capture_id
+                    );
+                    return None;
+                }
+            }
+        }
+
+        let copy_started = Instant::now();
+        info!("[rESP-SEL-CLIP] capture={} sending Ctrl+C", capture_id);
+        if let Err(error) = self.send_copy_combination() {
+            error!(
+                "[rESP-SEL-CLIP] capture={} Ctrl+C injection failed elapsed_ms={} error={error:?}",
+                capture_id,
+                copy_started.elapsed().as_millis()
+            );
+            let restore_result = self
+                .clipboard
+                .set_text(previous_text.as_deref().unwrap_or(""), &options);
+            info!(
+                "[rESP-SEL-CLIP] capture={} baseline restore after injection failure success={}",
+                capture_id,
+                restore_result.is_ok()
+            );
+            return None;
+        }
+        info!(
+            "[rESP-SEL-CLIP] capture={} Ctrl+C injection returned success elapsed_ms={}",
+            capture_id,
+            copy_started.elapsed().as_millis()
+        );
+
+        let baseline = if cfg!(target_os = "windows") {
+            previous_text.as_deref()
+        } else {
+            Some("")
+        };
+        let selected_text = self.wait_for_selected_text(
+            capture_id,
+            baseline,
+            previous_sequence,
+            &options,
+        );
+
+        info!(
+            "[rESP-SEL-CLIP] capture={} capture result present={} bytes={} elapsed_ms={}",
+            capture_id,
+            selected_text.is_some(),
+            selected_text.as_ref().map(|text| text.len()).unwrap_or(0),
+            capture_started.elapsed().as_millis()
+        );
+
+        if !params.restore_clipboard {
+            return selected_text;
+        }
+
+        std::thread::sleep(SELECTION_RESTORE_DELAY);
+        let restore_started = Instant::now();
+        match self
+            .clipboard
+            .set_text(previous_text.as_deref().unwrap_or(""), &options)
+        {
+            Ok(()) => info!(
+                "[rESP-SEL-CLIP] capture={} clipboard baseline restored bytes={} elapsed_ms={}",
+                capture_id,
+                previous_len,
+                restore_started.elapsed().as_millis()
+            ),
+            Err(error) => error!(
+                "[rESP-SEL-CLIP] capture={} unable to restore clipboard error={error:?}",
+                capture_id
+            ),
+        }
+
+        if selected_text.is_none() {
+            debug!(
+                "[rESP-SEL-CLIP] capture={} selection copy timed out or returned empty",
+                capture_id
+            );
+        }
+
+        selected_text
     }
 }
 

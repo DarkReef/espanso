@@ -20,6 +20,7 @@
 #[derive(Debug, PartialEq, Clone, Eq)]
 pub enum UIEvent {
     TrayIconClick,
+    TrayIconDoubleClick,
     ContextMenuClick(u32),
     Heartbeat,
 }

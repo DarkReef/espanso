@@ -85,6 +85,9 @@ pub struct YAMLMatch {
     pub form_fields: Option<Mapping>,
 
     #[serde(default)]
+    pub preview: Option<bool>,
+
+    #[serde(default)]
     pub vars: Option<Vec<YAMLVariable>>,
 
     #[serde(default)]

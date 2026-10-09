@@ -20,7 +20,8 @@
 use crate::preferences::Preferences;
 use crate::{
     exit_code::{
-        LAUNCHER_ALREADY_RUNNING, LAUNCHER_CONFIG_DIR_POPULATION_FAILURE, LAUNCHER_SUCCESS,
+        LAUNCHER_ALREADY_RUNNING, LAUNCHER_CONFIG_DIR_POPULATION_FAILURE, LAUNCHER_DAEMON_FAILURE,
+        LAUNCHER_SUCCESS,
     },
     lock::acquire_daemon_lock,
 };
@@ -68,7 +69,15 @@ fn launcher_main(args: CliModuleArgs) -> i32 {
     let preferences =
         crate::preferences::get_default(&paths.runtime).expect("unable to initialize preferences");
 
-    let is_welcome_page_enabled = !preferences.has_completed_wizard();
+    // The pol_run Astra bundle is deliberately self-contained and started through
+    // run.sh. Showing the interactive first-run wizard here blocks unmanaged
+    // service startup long enough for `service start --unmanaged` to time out.
+    // Detect the portable bundle by the Studio binary that lives in the config root
+    // and skip only that launcher wizard. The worker can still show its normal
+    // non-blocking welcome screen after the engine has actually started.
+    let is_pol_run_portable = paths.config.join("rEspanso-Match-Studio").is_file();
+    let is_welcome_page_enabled =
+        !is_pol_run_portable && !preferences.has_completed_wizard();
 
     let is_move_bundle_page_enabled = crate::cli::util::is_subject_to_app_translocation_on_macos();
 
@@ -81,8 +90,9 @@ fn launcher_main(args: CliModuleArgs) -> i32 {
     let is_migrate_page_enabled = false;
     let backup_and_migrate_handler = Box::new(move || MigrationResult::Success);
 
-    let is_auto_start_page_enabled =
-        !preferences.has_selected_auto_start_option() && !cfg!(target_os = "linux");
+    let is_auto_start_page_enabled = !paths.is_portable_mode
+        && !preferences.has_selected_auto_start_option()
+        && !cfg!(target_os = "linux");
     let preferences_clone = preferences.clone();
     let auto_start_handler = Box::new(move |auto_start| {
         preferences_clone.set_has_selected_auto_start_option(true);
@@ -193,7 +203,10 @@ fn launcher_main(args: CliModuleArgs) -> i32 {
             espanso_mac_utils::convert_to_background_app();
         }
 
-        daemon::launch_daemon(&paths_overrides).expect("failed to launch daemon");
+        if let Err(error) = daemon::launch_daemon(&paths_overrides) {
+            error!("rEspanso daemon stopped unexpectedly: {error}");
+            return LAUNCHER_DAEMON_FAILURE;
+        }
     }
 
     LAUNCHER_SUCCESS

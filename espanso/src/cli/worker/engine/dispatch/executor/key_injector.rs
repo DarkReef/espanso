@@ -17,9 +17,7 @@
  * along with espanso.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use espanso_inject::{InjectionOptions, Injector};
-use std::convert::TryInto;
-
+use espanso_inject::Injector;
 use espanso_engine::dispatch::KeyInjector;
 
 use super::InjectParamsProvider;
@@ -42,25 +40,7 @@ impl KeyInjector for KeyInjectorAdapter<'_> {
     fn inject_sequence(&self, keys: &[espanso_engine::event::input::Key]) -> anyhow::Result<()> {
         let params = self.params_provider.get();
 
-        let injection_options = InjectionOptions {
-            delay: params
-                .key_delay
-                .unwrap_or_else(|| InjectionOptions::default().delay.try_into().unwrap())
-                .try_into()
-                .unwrap(),
-            disable_fast_inject: params.disable_x11_fast_inject,
-            evdev_modifier_delay: params
-                .evdev_modifier_delay
-                .unwrap_or_else(|| {
-                    InjectionOptions::default()
-                        .evdev_modifier_delay
-                        .try_into()
-                        .unwrap()
-                })
-                .try_into()
-                .unwrap(),
-            x11_use_xdotool_fallback: params.x11_use_xdotool_backend,
-        };
+        let injection_options = params.options(params.key_delay);
 
         let converted_keys: Vec<_> = keys.iter().map(convert_to_inject_key).collect();
         self.injector.send_keys(&converted_keys, injection_options)

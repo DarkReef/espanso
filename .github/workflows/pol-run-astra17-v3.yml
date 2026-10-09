@@ -1,0 +1,325 @@
+name: pol_run Astra 1.7 X11 full portable
+
+on:
+  push:
+    branches: [pol_run, feat/clinical-extender, build/x11-latest]
+    paths:
+      - '.github/workflows/pol-run-astra17-v3.yml'
+      - 'scripts/build_pol_run_astra17.sh'
+      - 'scripts/pol_run_tray.cpp'
+      - 'scripts/export_logs.sh'
+      - 'espanso-ai/**'
+      - 'espanso-clipboard/**'
+      - 'espanso-config/**'
+      - 'espanso-engine/**'
+      - 'espanso-editor/**'
+      - 'espanso-modulo/**'
+      - 'espanso/**'
+      - 'espanso-detect/**'
+      - 'espanso-ipc/**'
+      - 'espanso-inject/**'
+      - 'espanso-info/**'
+      - 'espanso-package/**'
+      - 'espanso-render/**'
+      - 'espanso-ui/**'
+      - 'schemas/**'
+      - 'scripts/test_astra_*'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  pull_request:
+    branches: [pol_run]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pol-run-astra17-full-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Full X11 core + Match Studio + KDE tray
+    runs-on: ubuntu-22.04
+    timeout-minutes: 240
+    env:
+      RESPANSO_RUST_TOOLCHAIN: '1.98.1'
+      # Cargo incremental directories are large and poor cross-run cache material.
+      # Fingerprints + compiled deps give more predictable hosted-runner reuse.
+      CARGO_INCREMENTAL: '0'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Restore Astra Rust toolchain
+        id: astra-rust-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .ci-cache/cargo/bin
+            .ci-cache/rustup
+          key: astra-buster-rust-v1-${{ env.RESPANSO_RUST_TOOLCHAIN }}
+
+      - name: Restore Astra Cargo registry
+        id: astra-registry-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .ci-cache/cargo/registry
+            .ci-cache/cargo/git
+          key: astra-buster-registry-v1-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            astra-buster-registry-v1-
+
+      - name: Restore Astra compiled dependency cache
+        id: astra-target-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            target/.rustc_info.json
+            target/debug/.fingerprint
+            target/debug/build
+            target/debug/deps
+            target/release/.fingerprint
+            target/release/build
+            target/release/deps
+          # Deliberately independent of source SHA. The cache is a dependency
+          # baseline; Cargo fingerprints rebuild changed workspace crates.
+          # Keeping one immutable cache per Rust+lockfile avoids multi-GB cache
+          # growth after every source commit.
+          key: astra-buster-target-v4-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            # One-time migration from earlier source-keyed caches.
+            astra-buster-target-v3-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
+            astra-buster-target-v2-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}-
+
+      - name: Normalize restored cache ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Old cache generations may contain files archived with container-root
+          # ownership. Normalize before Docker starts so both Cargo and later
+          # cache/save steps can read every restored file.
+          sudo chown -R "$(id -u):$(id -g)" .ci-cache target 2>/dev/null || true
+          chmod -R u+rwX .ci-cache target 2>/dev/null || true
+
+      - name: Prepare build identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "RESPANSO_BUILD_DATE=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_ENV"
+          echo "RESPANSO_VERSION=$(awk -F'\"' '/^version =/ {print $2; exit}' espanso/Cargo.toml)" >> "$GITHUB_ENV"
+          echo "RESPANSO_BUILD_SHA=${GITHUB_SHA:0:12}" >> "$GITHUB_ENV"
+
+      - name: Verify Astra release contracts and shell scripts
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          # Keep only user-visible/release contracts here. Internal behaviour is
+          # covered by Rust tests and X11 end-to-end tests, so refactors do not
+          # have to preserve implementation-specific source strings.
+          grep -F 'DEFAULT_SELECTION_MATCH_SHORTCUT: &str = "CTRL+ALT+M"' espanso/src/cli/worker/builtin/selection.rs
+          grep -F 'FALLBACK_SELECTION_MATCH_SHORTCUT: &str = "CTRL+ALT+SHIFT+M"' espanso/src/cli/worker/builtin/selection.rs
+          grep -F 'x11_injector_profile: safe' espanso/src/res/config/default.yml
+          grep -F 'Selected text and clipboard contents are NOT intentionally logged.' scripts/export_logs.sh
+
+          bash -n \
+            scripts/build_pol_run_astra17.sh \
+            scripts/export_logs.sh \
+            scripts/test_astra_x11.sh \
+            scripts/test_astra_worker.sh \
+            scripts/test_astra_restart.sh \
+            scripts/test_astra_search_enter.sh \
+            scripts/test_astra_injector_stress.sh
+
+      - name: Build and validate full portable package in Debian 10
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p .ci-cache/cargo .ci-cache/rustup
+          HOST_UID="$(id -u)"
+          HOST_GID="$(id -g)"
+          # Preserve the container status while always normalizing bind-mount
+          # ownership on the host. Nested bind mounts (/root/.cargo, /root/.rustup)
+          # are not reliably traversed by chown on /work/.ci-cache.
+          set +e
+          docker run --rm \
+            -e RESPANSO_BUILD_DATE \
+            -e RESPANSO_VERSION \
+            -e RESPANSO_BUILD_SHA \
+            -e RESPANSO_RUST_TOOLCHAIN \
+            -e CARGO_INCREMENTAL \
+            -e HOST_UID \
+            -e HOST_GID \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -v "$GITHUB_WORKSPACE/.ci-cache/cargo:/root/.cargo" \
+            -v "$GITHUB_WORKSPACE/.ci-cache/rustup:/root/.rustup" \
+            -w /work \
+            debian:buster-slim \
+            bash -lc '
+              normalize_cache_ownership() {
+                chown -R "$HOST_UID:$HOST_GID" /root/.cargo /root/.rustup /work/target 2>/dev/null || true
+              }
+              trap normalize_cache_ownership EXIT
+              bash scripts/build_pol_run_astra17.sh
+            ' | tee target/astra-ci-build.log
+          build_status=${PIPESTATUS[0]}
+          set -e
+
+          # Belt-and-suspenders normalization on the runner also covers files
+          # restored by cache actions before the container started.
+          sudo chown -R "$(id -u):$(id -g)" .ci-cache target
+          exit "$build_status"
+
+      - name: Verify full package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          OUT=target/pol-run-astra-full
+          PACKAGE=rEspanso-pol_run-Astra17-X11-Full-x86_64
+          ROOT="$OUT/$PACKAGE"
+
+          # Debian container creates the package as root; verification runs as runner.
+          sudo chown -R "$(id -u):$(id -g)" "$OUT"
+
+          # Package assembly already happened inside the Debian 10 ABI container.
+          # Verify the immutable archive rather than modifying and compressing it again.
+          sha256sum -c "$OUT/$PACKAGE.sha256"
+          bash -n "$ROOT/export-logs.sh"
+
+          test -x "$ROOT/rEspanso-core"
+          test -x "$ROOT/rEspanso-Match-Studio"
+          test -x "$ROOT/rEspanso-Tray"
+          test -x "$ROOT/bin/xdotool"
+          test -x "$ROOT/mcp.sh"
+          test -x "$ROOT/run.sh"
+          test -x "$ROOT/start-tray.sh"
+          test -x "$ROOT/diagnose.sh"
+          test -x "$ROOT/export-logs.sh"
+          test -f "$ROOT/config/default.yml"
+          test -f "$ROOT/match/base.yml"
+          test -f "$OUT/$PACKAGE.tar.gz"
+          grep -F 'rEspanso-diagnostics-' "$ROOT/export-logs.sh"
+          grep -F 'Selected text and clipboard contents are NOT intentionally logged.' "$ROOT/export-logs.sh"
+
+          strings "$ROOT/rEspanso-Match-Studio" > "$RUNNER_TEMP/match-studio-strings.txt"
+          grep -F "$RESPANSO_BUILD_DATE" "$RUNNER_TEMP/match-studio-strings.txt"
+          grep -F "$RESPANSO_BUILD_SHA" "$RUNNER_TEMP/match-studio-strings.txt"
+
+          echo '=== core GLIBC requirements ==='
+          cat "$ROOT/core-glibc-required.txt"
+          echo '=== studio GLIBC requirements ==='
+          cat "$ROOT/studio-glibc-required.txt"
+          echo '=== tray GLIBC requirements ==='
+          cat "$ROOT/tray-glibc-required.txt"
+          echo '=== core packaged ldd ==='
+          cat "$ROOT/core-packaged-ldd.txt"
+          echo '=== studio packaged ldd ==='
+          cat "$ROOT/studio-packaged-ldd.txt"
+          echo '=== tray packaged ldd ==='
+          cat "$ROOT/tray-packaged-ldd.txt"
+          echo '=== archive ==='
+          tar -tzf "$OUT/$PACKAGE.tar.gz" > "$RUNNER_TEMP/package-files.txt"
+          head -n 180 "$RUNNER_TEMP/package-files.txt"
+
+      - name: Publish Astra build timings
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### Astra build timings'
+            echo
+            echo '| Phase | Seconds |'
+            echo '|---|---:|'
+            if [[ -f target/astra-ci-build.log ]]; then
+              grep -F '[rESP-CI-TIMING]' target/astra-ci-build.log \
+                | sed -E 's/.*phase=([^ ]+) seconds=([0-9]+).*/| `\1` | \2 |/' \
+                || true
+            else
+              echo '| build log unavailable | — |'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Astra build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-Astra-build-failure-log
+          path: target/astra-ci-build.log
+          if-no-files-found: warn
+          retention-days: 5
+
+      - name: Verify Astra cache readability
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in .ci-cache/cargo .ci-cache/rustup target/debug target/release; do
+            [[ -e "$path" ]] || continue
+            unreadable="$(find "$path" -type f ! -readable -print -quit)"
+            if [[ -n "$unreadable" ]]; then
+              echo "ERROR: cache contains unreadable file: $unreadable" >&2
+              exit 1
+            fi
+          done
+
+          {
+            echo
+            echo '### Astra cache footprint'
+            echo
+            echo '```text'
+            du -sh \
+              .ci-cache/cargo/bin \
+              .ci-cache/cargo/registry \
+              .ci-cache/cargo/git \
+              .ci-cache/rustup \
+              target/debug/deps \
+              target/release/deps 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save Astra Rust toolchain
+        if: success() && steps.astra-rust-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .ci-cache/cargo/bin
+            .ci-cache/rustup
+          key: astra-buster-rust-v1-${{ env.RESPANSO_RUST_TOOLCHAIN }}
+
+      - name: Save Astra Cargo registry
+        if: success() && steps.astra-registry-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .ci-cache/cargo/registry
+            .ci-cache/cargo/git
+          key: astra-buster-registry-v1-${{ hashFiles('Cargo.lock') }}
+
+      - name: Save Astra compiled dependency cache
+        if: success() && steps.astra-target-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            target/.rustc_info.json
+            target/debug/.fingerprint
+            target/debug/build
+            target/debug/deps
+            target/release/.fingerprint
+            target/release/build
+            target/release/deps
+          key: astra-buster-target-v4-${{ env.RESPANSO_RUST_TOOLCHAIN }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Upload full Astra portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rEspanso-pol_run-Astra17-X11-Full-x86_64
+          path: |
+            target/pol-run-astra-full/rEspanso-pol_run-Astra17-X11-Full-x86_64.tar.gz
+            target/pol-run-astra-full/rEspanso-pol_run-Astra17-X11-Full-x86_64.sha256
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0

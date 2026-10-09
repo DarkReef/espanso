@@ -1,12 +1,12 @@
 [package]
 name = "espanso"
 version = "2.4.0"
-authors = ["Federico Terzi <federicoterzi96@gmail.com>"]
+authors = ["Куцин Иван Юрьевич", "Federico Terzi <federicoterzi96@gmail.com>"]
 license = "GPL-3.0"
-description = "Cross-platform Text Expander written in Rust"
+description = "rEspanso — privacy-first cross-platform text expander and automation fork"
 readme = "../README.md"
-homepage = "https://espanso.org/"
-repository = "https://github.com/espanso/espanso"
+homepage = "https://github.com/DarkReef/espanso"
+repository = "https://github.com/DarkReef/espanso"
 edition = "2021"
 
 [features]
@@ -60,12 +60,15 @@ enum-as-inner = "0.3.3"
 dirs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+regex.workspace = true
 log-panics = "2.0.0"
 fs2 = "0.4.3"
 serde_norway.workspace = true
 fs_extra.workspace = true
 dialoguer = "0.8.0"
-colored = "2.0.0"
+# colored 2.2 uses windows-targets 0.52, whose generated GDI+ stubs conflict
+# with the GDI+ wrappers embedded in the statically linked wxWidgets build.
+colored = "=2.1.0"
 tempdir.workspace = true
 notify = "4.0.17"
 opener = "0.5.0"
@@ -87,10 +90,9 @@ espanso-mac-utils = { path = "../espanso-mac-utils" }
 [target.'cfg(target_os="linux")'.dependencies]
 caps = "0.5.2"
 const_format = "0.2.14"
-regex.workspace = true
 
 [package.metadata.deb]
-maintainer = "Auca Coyan <aucacoyan@gmail.com>"
+maintainer = "Куцин Иван Юрьевич"
 depends = "$auto"
 section = "utility"
 license-file = ["../LICENSE", "1"]

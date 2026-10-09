@@ -1,0 +1,4 @@
+rEspanso-medlab snapshot
+repository: DarkReef/rEspanso-medlab
+ref: main
+commit: 9eb1c20e0b0b510450714077e8de957eb78193a5

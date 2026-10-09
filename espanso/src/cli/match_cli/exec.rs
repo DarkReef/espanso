@@ -38,7 +38,7 @@ pub fn exec_main(cli_args: &ArgMatches, paths: &Paths) -> Result<()> {
     }
 
     if acquire_worker_lock(&paths.runtime).is_some() {
-        bail!("Worker process is not running, please start Espanso first.")
+        bail!("Worker process is not running, please start rEspanso first.")
     }
 
     let mut client = create_ipc_client_to_worker(&paths.runtime)?;

@@ -194,6 +194,10 @@ pub trait Config: Send + Sync {
     // This might improve the situation for certain locales/layouts on X11.
     fn x11_use_xdotool_backend(&self) -> bool;
 
+    // rEspanso X11 safety profile. This resolves a user-facing preset plus
+    // optional expert overrides into concrete injector behaviour.
+    fn x11_safe_injector(&self) -> X11SafeInjectorConfig;
+
     // If true, filter out keyboard events without an explicit HID device source on Windows.
     // This is needed to filter out the software-generated events, including
     // those from espanso, but might need to be disabled when using some software-level keyboards.
@@ -328,6 +332,147 @@ pub enum ToggleKey {
     LeftAlt,
     LeftShift,
     LeftMeta,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum X11InjectorProfile {
+    Safe,
+    Balanced,
+    Fast,
+    Legacy,
+}
+
+impl X11InjectorProfile {
+    pub fn from_name(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "safe" => Some(Self::Safe),
+            "balanced" => Some(Self::Balanced),
+            "fast" => Some(Self::Fast),
+            "legacy" => Some(Self::Legacy),
+            _ => None,
+        }
+    }
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Safe => "safe",
+            Self::Balanced => "balanced",
+            Self::Fast => "fast",
+            Self::Legacy => "legacy",
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct X11SafeInjectorConfig {
+    pub profile: X11InjectorProfile,
+    pub wait_for_modifiers: bool,
+    pub modifier_release_timeout_ms: usize,
+    pub focus_guard: bool,
+    pub focus_retry_count: usize,
+    pub focus_retry_delay_ms: usize,
+    pub circuit_breaker: bool,
+    pub fast_failure_threshold: usize,
+    pub reinitialize_on_failure: bool,
+    pub clipboard_threshold: usize,
+    pub legacy_release_all_keys: bool,
+}
+
+impl X11SafeInjectorConfig {
+    /// Built-in safety policy for a named X11 profile.
+    ///
+    /// User overrides are applied later by the config resolver. Keeping preset
+    /// values here gives the runtime and Match Studio a single source of truth.
+    pub const fn for_profile(profile: X11InjectorProfile) -> Self {
+        match profile {
+            X11InjectorProfile::Safe => Self {
+                profile,
+                wait_for_modifiers: true,
+                modifier_release_timeout_ms: 150,
+                focus_guard: true,
+                focus_retry_count: 3,
+                focus_retry_delay_ms: 15,
+                circuit_breaker: true,
+                fast_failure_threshold: 1,
+                reinitialize_on_failure: true,
+                clipboard_threshold: 48,
+                legacy_release_all_keys: false,
+            },
+            X11InjectorProfile::Balanced => Self {
+                profile,
+                wait_for_modifiers: true,
+                modifier_release_timeout_ms: 100,
+                focus_guard: true,
+                focus_retry_count: 2,
+                focus_retry_delay_ms: 10,
+                circuit_breaker: true,
+                fast_failure_threshold: 2,
+                reinitialize_on_failure: true,
+                clipboard_threshold: 100,
+                legacy_release_all_keys: false,
+            },
+            X11InjectorProfile::Fast => Self {
+                profile,
+                wait_for_modifiers: true,
+                modifier_release_timeout_ms: 40,
+                focus_guard: false,
+                focus_retry_count: 0,
+                focus_retry_delay_ms: 0,
+                circuit_breaker: false,
+                fast_failure_threshold: 3,
+                reinitialize_on_failure: false,
+                clipboard_threshold: usize::MAX,
+                legacy_release_all_keys: false,
+            },
+            X11InjectorProfile::Legacy => Self {
+                profile,
+                wait_for_modifiers: false,
+                modifier_release_timeout_ms: 0,
+                focus_guard: false,
+                focus_retry_count: 0,
+                focus_retry_delay_ms: 0,
+                circuit_breaker: false,
+                fast_failure_threshold: 3,
+                reinitialize_on_failure: false,
+                clipboard_threshold: usize::MAX,
+                legacy_release_all_keys: true,
+            },
+        }
+    }
+}
+
+#[cfg(test)]
+mod x11_profile_tests {
+    use super::{X11InjectorProfile, X11SafeInjectorConfig};
+
+    #[test]
+    fn profile_names_round_trip() {
+        for profile in [
+            X11InjectorProfile::Safe,
+            X11InjectorProfile::Balanced,
+            X11InjectorProfile::Fast,
+            X11InjectorProfile::Legacy,
+        ] {
+            assert_eq!(X11InjectorProfile::from_name(profile.name()), Some(profile));
+        }
+        assert_eq!(
+            X11InjectorProfile::from_name("SAFE"),
+            Some(X11InjectorProfile::Safe)
+        );
+        assert_eq!(X11InjectorProfile::from_name("unknown"), None);
+    }
+
+    #[test]
+    fn safe_profile_keeps_conservative_defaults() {
+        let safe = X11SafeInjectorConfig::for_profile(X11InjectorProfile::Safe);
+        assert!(safe.wait_for_modifiers);
+        assert!(safe.focus_guard);
+        assert!(safe.circuit_breaker);
+        assert!(safe.reinitialize_on_failure);
+        assert!(!safe.legacy_release_all_keys);
+        assert_eq!(safe.modifier_release_timeout_ms, 150);
+        assert_eq!(safe.clipboard_threshold, 48);
+    }
 }
 
 #[derive(Debug, Clone, Default)]

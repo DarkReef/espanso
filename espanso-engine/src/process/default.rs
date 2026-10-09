@@ -34,6 +34,7 @@ use super::{
         open_config::ConfigMiddleware,
         open_config::ConfigPathProvider,
         render::RenderMiddleware,
+        selection_match::{SelectedTextProvider, SelectionMatchMiddleware, SelectionMatchResolver},
         stats::StatsMiddleware,
     },
     AltCodeSynthEnabledProvider, DisableOptions, EnabledStatusProvider, MatchFilter,
@@ -80,6 +81,8 @@ impl<'a> DefaultProcessor<'a> {
         match_resolver: &'a dyn MatchResolver,
         notification_manager: &'a dyn NotificationManager,
         alt_code_synth_enabled_provider: &'a dyn AltCodeSynthEnabledProvider,
+        selected_text_provider: &'a dyn SelectedTextProvider,
+        selection_match_resolver: &'a dyn SelectionMatchResolver,
     ) -> Self {
         Self {
             event_queue: VecDeque::new(),
@@ -122,6 +125,14 @@ impl<'a> DefaultProcessor<'a> {
                 Box::new(NotificationMiddleware::new(notification_manager)),
                 Box::new(DelayForModifierReleaseMiddleware::new(
                     modifier_status_provider,
+                )),
+                Box::new(super::middleware::ai_rewrite::AiRewriteMiddleware::new(
+                    selected_text_provider,
+                    config_path_provider,
+                )),
+                Box::new(SelectionMatchMiddleware::new(
+                    selected_text_provider,
+                    selection_match_resolver,
                 )),
             ],
         }

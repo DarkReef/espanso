@@ -1,0 +1,366 @@
+name: Release rEspanso v1.0 unstable
+
+on:
+  pull_request:
+    branches:
+      - rEspanso-feature
+    paths:
+      - .github/workflows/release-respanso-v1-unstable.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RELEASE_TAG: respanso-v1.0-unstable
+  RELEASE_TITLE: rEspanso Win v1.0 Unstable
+
+concurrency:
+  group: respanso-v1.0-unstable-release
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows x86_64 portable
+    runs-on: windows-2022
+    timeout-minutes: 150
+
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: respanso-v1-unstable-windows
+          cache-on-failure: true
+
+      - name: Validate formatting and focused tests
+        shell: pwsh
+        run: |
+          cargo fmt --all -- --check
+          cargo test --locked -p espanso-render --lib
+          cargo test --locked -p espanso-modulo --lib
+          cargo test --locked -p espanso reactive_preview
+
+      - name: Build Windows release binaries
+        shell: pwsh
+        run: |
+          cargo build --locked --release -p espanso --bin espanso --bin respanso-portable
+          cargo build --locked --release -p espanso-editor --bin espanso-editor
+
+          $core = (Resolve-Path "target/release/espanso.exe").Path
+          $launcher = (Resolve-Path "target/release/respanso-portable.exe").Path
+          $studio = (Resolve-Path "target/release/espanso-editor.exe").Path
+
+          "EXEC_PATH=$core" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "LAUNCHER_PATH=$launcher" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "EDITOR_PATH=$studio" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Assemble and verify Windows portable package
+        shell: pwsh
+        run: |
+          & "./scripts/build_windows_native_portable_with_studio.ps1"
+
+          $source = "target/windows/rEspanso-Native-Portable-with-Studio-Windows-x86_64.zip"
+          $archive = "target/windows/rEspanso-Windows-x86_64-v1.0-unstable.zip"
+          Move-Item $source $archive -Force
+
+          $entries = tar -tf $archive
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows portable archive could not be listed"
+          }
+
+          foreach ($required in @(
+            "rEspanso.exe",
+            "rEspanso-core.exe",
+            "rEspanso Match Studio.exe",
+            "config/default.yml",
+            "match/base.yml"
+          )) {
+            if (-not ($entries -match [regex]::Escape($required))) {
+              throw "Windows archive is missing $required"
+            }
+          }
+
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  rEspanso-Windows-x86_64-v1.0-unstable.zip" |
+            Set-Content "target/windows/rEspanso-Windows-x86_64-v1.0-unstable.sha256" -Encoding ascii
+
+      - name: Upload Windows release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: respanso-windows-x86_64
+          path: |
+            target/windows/rEspanso-Windows-x86_64-v1.0-unstable.zip
+            target/windows/rEspanso-Windows-x86_64-v1.0-unstable.sha256
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  linux:
+    name: Linux ${{ matrix.label }} x86_64
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: x11
+            label: X11
+            features: modulo,vendored-tls
+          - id: wayland
+            label: Wayland
+            features: modulo,vendored-tls,wayland
+
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Linux build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            git \
+            libdbus-1-dev \
+            libssl-dev \
+            'libwxgtk3.*-dev' \
+            libx11-dev \
+            libxkbcommon-dev \
+            libxtst-dev \
+            pkg-config \
+            wl-clipboard
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+          components: rustfmt
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: respanso-v1-unstable-linux-${{ matrix.id }}
+          cache-on-failure: true
+
+      - name: Build Linux ${{ matrix.label }} release
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cargo fmt --all -- --check
+          cargo build --locked --release -p espanso --bin espanso \
+            --no-default-features \
+            --features '${{ matrix.features }}'
+          cargo build --locked --release -p espanso-editor --bin espanso-editor
+          ./target/release/espanso --version
+
+      - name: Assemble Linux ${{ matrix.label }} archive
+        shell: bash
+        env:
+          VARIANT_ID: ${{ matrix.id }}
+          VARIANT_LABEL: ${{ matrix.label }}
+        run: |
+          set -euxo pipefail
+
+          package="rEspanso-Linux-${VARIANT_LABEL}-x86_64-v1.0-unstable"
+          root="target/linux/${package}"
+          archive="target/linux/${package}.tar.gz"
+
+          rm -rf "$root" "$archive"
+          mkdir -p \
+            "$root/config" \
+            "$root/match" \
+            "$root/runtime" \
+            "$root/packages" \
+            "$root/scripts" \
+            "$root/docs"
+
+          cp target/release/espanso "$root/rEspanso-core"
+          cp target/release/espanso-editor "$root/rEspanso-Match-Studio"
+          cp espanso/src/res/config/default.yml "$root/config/default.yml"
+          cp espanso/src/res/config/base.yml "$root/match/base.yml"
+          cp -R docs/respanso/. "$root/docs/"
+          cp LICENSE "$root/LICENSE.txt"
+
+          cat > "$root/rEspanso" <<'LAUNCHER'
+          #!/usr/bin/env bash
+          set -e
+          ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          exec "$ROOT/rEspanso-core" "$@"
+          LAUNCHER
+
+          cat > "$root/scripts/example.rhai" <<'RHAI'
+          let length = input.len;
+          if length > 0 {
+              `Триггер ${trigger}: получено ${length} символов`
+          } else {
+              "Пустая строка"
+          }
+          RHAI
+
+          cat > "$root/README-FIRST.txt" <<EOF
+          rEspanso v1.0 unstable — Linux ${VARIANT_LABEL} x86_64
+
+          Это экспериментальная динамически связанная сборка для Linux.
+          Запуск движка: ./rEspanso
+          Match Studio: ./rEspanso-Match-Studio
+
+          Перед первым запуском:
+            chmod +x rEspanso rEspanso-core rEspanso-Match-Studio
+
+          Для Ubuntu/Debian обычно нужны runtime-библиотеки wxWidgets, D-Bus,
+          OpenSSL, XKB и X11. Для Wayland также нужен wl-clipboard.
+
+          Вариант: ${VARIANT_LABEL}
+          Канал: unstable
+          EOF
+
+          chmod +x "$root/rEspanso" "$root/rEspanso-core" "$root/rEspanso-Match-Studio"
+
+          ldd "$root/rEspanso-core" > "$root/LINKED-LIBRARIES.txt"
+          ldd "$root/rEspanso-Match-Studio" >> "$root/LINKED-LIBRARIES.txt"
+
+          test -x "$root/rEspanso"
+          test -x "$root/rEspanso-core"
+          test -x "$root/rEspanso-Match-Studio"
+          test -f "$root/config/default.yml"
+          test -f "$root/match/base.yml"
+
+          tar -C target/linux -czf "$archive" "$package"
+          tar -tzf "$archive" | grep -F "$package/rEspanso-core"
+          tar -tzf "$archive" | grep -F "$package/rEspanso-Match-Studio"
+
+          sha256sum "$archive" > "${archive%.tar.gz}.sha256"
+
+      - name: Upload Linux ${{ matrix.label }} release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: respanso-linux-${{ matrix.id }}-x86_64
+          path: |
+            target/linux/rEspanso-Linux-${{ matrix.label }}-x86_64-v1.0-unstable.tar.gz
+            target/linux/rEspanso-Linux-${{ matrix.label }}-x86_64-v1.0-unstable.sha256
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  release:
+    name: Publish GitHub pre-release
+    runs-on: ubuntu-latest
+    needs:
+      - windows
+      - linux
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Download verified build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify release assets and generate combined checksums
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ls -lah release-assets
+
+          test -f release-assets/rEspanso-Windows-x86_64-v1.0-unstable.zip
+          test -f release-assets/rEspanso-Linux-X11-x86_64-v1.0-unstable.tar.gz
+          test -f release-assets/rEspanso-Linux-Wayland-x86_64-v1.0-unstable.tar.gz
+
+          find release-assets -maxdepth 1 -type f \
+            \( -name '*.zip' -o -name '*.tar.gz' \) \
+            -print0 |
+            sort -z |
+            xargs -0 sha256sum |
+            sed 's#release-assets/##' > release-assets/SHA256SUMS.txt
+
+          cat release-assets/SHA256SUMS.txt
+
+      - name: Write release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          # rEspanso Win v1.0 Unstable
+
+          Первый публичный нестабильный релиз форка rEspanso с нативным движком,
+          portable launcher и rEspanso Match Studio.
+
+          ## Основная сборка
+
+          - `rEspanso-Windows-x86_64-v1.0-unstable.zip` — проверенная Windows portable-сборка.
+          - В архив входят `rEspanso.exe`, `rEspanso-core.exe`, Match Studio,
+            базовая конфигурация, документация и Visual C++ runtime.
+
+          ## Экспериментальные Linux-сборки
+
+          - `rEspanso-Linux-X11-x86_64-v1.0-unstable.tar.gz`
+          - `rEspanso-Linux-Wayland-x86_64-v1.0-unstable.tar.gz`
+
+          Linux-архивы собраны из тех же исходников и содержат движок и Match Studio,
+          но пока динамически связаны с системными библиотеками. Это тестовые сборки,
+          а не универсальные AppImage/DEB-пакеты.
+
+          ## Проверка целостности
+
+          Контрольные суммы всех основных архивов находятся в `SHA256SUMS.txt`.
+
+          ## Статус
+
+          Канал: **unstable / pre-release**. Не рекомендуется заменять им рабочую
+          стабильную установку без резервной копии конфигурации.
+          EOF
+
+      - name: Publish or update pre-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euxo pipefail
+
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$RELEASE_TITLE" \
+              --notes-file release-notes.md \
+              --prerelease
+            gh release upload "$RELEASE_TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$RELEASE_TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$TARGET_SHA" \
+              --title "$RELEASE_TITLE" \
+              --notes-file release-notes.md \
+              --prerelease
+          fi
+
+      - name: Upload complete release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: respanso-v1.0-unstable-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0

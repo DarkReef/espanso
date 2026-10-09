@@ -22,7 +22,7 @@ use clap::ArgMatches;
 use espanso_modulo::textview::TextViewOptions;
 
 pub fn textview_main(matches: &ArgMatches, icon_paths: &IconPaths) -> i32 {
-    let title = matches.value_of("title").unwrap_or("Espanso");
+    let title = matches.value_of("title").unwrap_or("rEspanso");
 
     let input_file = matches
         .value_of("input_file")

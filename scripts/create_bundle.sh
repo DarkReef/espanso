@@ -9,7 +9,7 @@
 
 set -Eeuf -o pipefail
 
-readonly TARGET_DIR=target/mac/Espanso.app
+readonly TARGET_DIR=target/mac/rEspanso.app
 
 main() {
   # Pass in the binary to bundle as "$1"; default to universal
